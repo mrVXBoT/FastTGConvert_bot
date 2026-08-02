@@ -1,0 +1,662 @@
+{
+  "bot": "@FastTGConvert_bot",
+  "joined_required_channels": [
+    "https://t.me/FastTGConvert"
+  ],
+  "limits": {
+    "max_depth": 4,
+    "max_nodes": 50
+  },
+  "nodes": [
+    {
+      "message_id": 56,
+      "text": "👋 Telegram Account Checker Bot\n\nহ্যালো, Echo > Null! একটি অপশন বেছে নিন:",
+      "buttons": [
+        {
+          "text": "━━━ 🔍 CHECK ━━━",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔍 সেশন চেক",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🛡️ স্প্যাম চেক",
+          "row": 1,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "📨 OTP পড়ুন",
+          "row": 2,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "📋 কন্টাক্ট চেক",
+          "row": 2,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 🔄 CONVERT ━━━",
+          "row": 3,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔄 সেশন → Tdata",
+          "row": 4,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔄 Tdata → সেশন",
+          "row": 4,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "📝 সেশন → Json",
+          "row": 5,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "📄 অ্যাকাউন্ট → Txt",
+          "row": 5,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 📁 FILE TOOLS ━━━",
+          "row": 6,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "✂️ ফাইল স্প্লিট",
+          "row": 7,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔀 ফাইল মার্জ",
+          "row": 7,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 🔐 2FA ━━━",
+          "row": 8,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔐 2FA পরিবর্তন",
+          "row": 9,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔓 2FA বন্ধ",
+          "row": 9,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "🔄 2FA রিসেট",
+          "row": 10,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 📢 CHANNEL ━━━",
+          "row": 11,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 📢 চ্যানেল জয়েন",
+          "row": 12,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 🚪 চ্যানেল লিভ",
+          "row": 12,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 👤 ACCOUNT ━━━",
+          "row": 13,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 🧹 চ্যাট ক্লিন",
+          "row": 14,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 🗑️ কন্টাক্ট ক্লিয়ার",
+          "row": 14,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 📵 কন্টাক্ট ডিলিট",
+          "row": 15,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 🎭 প্রোফাইল সেটআপ",
+          "row": 16,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 📅 অ্যাকাউন্ট বয়স",
+          "row": 17,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ ⚡ ADVANCED ━━━",
+          "row": 18,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 📨 মাস মেসেজ",
+          "row": 19,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 ☠️ কিল সেশন",
+          "row": 20,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 🔄 ফ্রেশ সেশন",
+          "row": 20,
+          "column": 1,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 🔒 PRIVACY ━━━",
+          "row": 21,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 🔒 প্রাইভেসি সেট",
+          "row": 22,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ 💎 VIP ━━━",
+          "row": 23,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "💎 VIP কিনুন",
+          "row": 24,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "━━━ ⚙️ SETTINGS ━━━",
+          "row": 25,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "❓ সাহায্য ও সাপোর্ট",
+          "row": 26,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🇧🇩 বাংলা",
+          "row": 26,
+          "column": 1,
+          "kind": "callback"
+        }
+      ],
+      "path": []
+    },
+    {
+      "message_id": 60,
+      "text": "🔍 সেশন চেক\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔍 সেশন চেক"
+      ]
+    },
+    {
+      "message_id": 62,
+      "text": "🛡️ স্প্যাম চেক\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🛡️ স্প্যাম চেক"
+      ]
+    },
+    {
+      "message_id": 64,
+      "text": "📨 OTP পড়ুন\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "📨 OTP পড়ুন"
+      ]
+    },
+    {
+      "message_id": 66,
+      "text": "📋 কন্টাক্ট চেক\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "📋 কন্টাক্ট চেক"
+      ]
+    },
+    {
+      "message_id": 70,
+      "text": "🔄 সেশন → Tdata\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔄 সেশন → Tdata"
+      ]
+    },
+    {
+      "message_id": 72,
+      "text": "🔄 Tdata → সেশন\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔄 Tdata → সেশন"
+      ]
+    },
+    {
+      "message_id": 74,
+      "text": "📝 সেশন → Json\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "📝 সেশন → Json"
+      ]
+    },
+    {
+      "message_id": 76,
+      "text": "📄 অ্যাকাউন্ট → Txt\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "📄 অ্যাকাউন্ট → Txt"
+      ]
+    },
+    {
+      "message_id": 80,
+      "text": "✂️ ফাইল স্প্লিট\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "✂️ ফাইল স্প্লিট"
+      ]
+    },
+    {
+      "message_id": 82,
+      "text": "🔀 ফাইল মার্জ\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔀 ফাইল মার্জ"
+      ]
+    },
+    {
+      "message_id": 86,
+      "text": "🔐 2FA পরিবর্তন\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔐 2FA পরিবর্তন"
+      ]
+    },
+    {
+      "message_id": 88,
+      "text": "🔓 2FA বন্ধ\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔓 2FA বন্ধ"
+      ]
+    },
+    {
+      "message_id": 90,
+      "text": "🔄 2FA রিসেট\n\nএকটি .session ফাইল বা .zip পাঠান।\n\n/cancel — বাতিল করতে।",
+      "buttons": [],
+      "path": [
+        "🔄 2FA রিসেট"
+      ]
+    },
+    {
+      "message_id": 94,
+      "text": "💎 এই ফিচারটি শুধুমাত্র VIP ব্যবহারকারীদের জন্য।\n\nVIP মেম্বারশিপ পেতে নিচের বাটনে ক্লিক করুন।\n\n💎 Go back to the main menu to buy VIP.",
+      "buttons": [
+        {
+          "text": "💎 Buy VIP",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "💎 📢 চ্যানেল জয়েন"
+      ]
+    },
+    {
+      "message_id": 124,
+      "text": "👑 VIP মেম্বারশিপ কিনুন\n\nVIP নিলে সকল প্রিমিয়াম ফিচার ব্যবহার করতে পারবেন।\n\n📦 কত মাসের VIP নিতে চান?",
+      "buttons": [
+        {
+          "text": "📅 1 মাস — 10 USDT $",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "📅 2 মাস — 18 USDT $",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "📅 3 মাস — 25 USDT $",
+          "row": 2,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "📅 6 মাস — 50 USDT $",
+          "row": 3,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "📅 12 মাস — 80 USDT $",
+          "row": 4,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔙 বাতিল",
+          "row": 5,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "💎 VIP কিনুন"
+      ]
+    },
+    {
+      "message_id": 128,
+      "text": "❓ সাহায্য ও সাপোর্ট\n\nনিচের বাটনে ক্লিক করে অ্যাডমিন/সাপোর্টের সাথে যোগাযোগ করুন:\n\n👤 @A_d_m_i_n_1_0",
+      "buttons": [
+        {
+          "text": "💬 Contact Support @A_d_m_i_n_1_0",
+          "row": 0,
+          "column": 0,
+          "kind": "external"
+        },
+        {
+          "text": "🔙 পেছনে",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "❓ সাহায্য ও সাপোর্ট"
+      ]
+    },
+    {
+      "message_id": 130,
+      "text": "🌐 Choose Language\n\nPick your preferred language below:\n\n🌐 Choose Language\n\nPick your preferred language below:",
+      "buttons": [
+        {
+          "text": "🇧🇩 বাংলা",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🇬🇧 English",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🇮🇳 हिन्दी",
+          "row": 2,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🇵🇰 اردو",
+          "row": 3,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🇸🇦 العربية",
+          "row": 4,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🇨🇳 中文",
+          "row": 5,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🚀 /start",
+          "row": 6,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "🇧🇩 বাংলা"
+      ]
+    },
+    {
+      "message_id": 132,
+      "text": "🛒 💰 পেমেন্ট করুন\n━━━━━━━━━━━━━━━━━━━━━━\n📦 প্যাকেজ: 1 মাস VIP\n💵 পরিমাণ: 10 USDT $\n\n💳 পেমেন্ট পদ্ধতি বেছে নিন:",
+      "buttons": [
+        {
+          "text": "💳 Manual Payment",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🤖 Auto Payment",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔙 পেছনে",
+          "row": 2,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 1 মাস — 10 USDT $"
+      ]
+    },
+    {
+      "message_id": 134,
+      "text": "🛒 💰 পেমেন্ট করুন\n━━━━━━━━━━━━━━━━━━━━━━\n📦 প্যাকেজ: 2 মাস VIP\n💵 পরিমাণ: 18 USDT $\n\n💳 পেমেন্ট পদ্ধতি বেছে নিন:",
+      "buttons": [
+        {
+          "text": "💳 Manual Payment",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🤖 Auto Payment",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔙 পেছনে",
+          "row": 2,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 2 মাস — 18 USDT $"
+      ]
+    },
+    {
+      "message_id": 136,
+      "text": "🛒 💰 পেমেন্ট করুন\n━━━━━━━━━━━━━━━━━━━━━━\n📦 প্যাকেজ: 3 মাস VIP\n💵 পরিমাণ: 25 USDT $\n\n💳 পেমেন্ট পদ্ধতি বেছে নিন:",
+      "buttons": [
+        {
+          "text": "💳 Manual Payment",
+          "row": 0,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🤖 Auto Payment",
+          "row": 1,
+          "column": 0,
+          "kind": "callback"
+        },
+        {
+          "text": "🔙 পেছনে",
+          "row": 2,
+          "column": 0,
+          "kind": "callback"
+        }
+      ],
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 3 মাস — 25 USDT $"
+      ]
+    },
+    {
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 6 মাস — 50 USDT $"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 12 মাস — 80 USDT $"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "💎 VIP কিনুন",
+        "🔙 বাতিল"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "❓ সাহায্য ও সাপোর্ট",
+        "🔙 পেছনে"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🇧🇩 বাংলা"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🇬🇧 English"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🇮🇳 हिन्दी"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🇵🇰 اردو"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🇸🇦 العربية"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🇨🇳 中文"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "🇧🇩 বাংলা",
+        "🚀 /start"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 1 মাস — 10 USDT $",
+        "🔙 পেছনে"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 2 মাস — 18 USDT $",
+        "🔙 পেছনে"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    },
+    {
+      "path": [
+        "💎 VIP কিনুন",
+        "📅 3 মাস — 25 USDT $",
+        "🔙 পেছনে"
+      ],
+      "error": "A wait of 3179 seconds is required (caused by SendMessageRequest)"
+    }
+  ]
+}

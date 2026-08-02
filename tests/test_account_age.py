@@ -1,0 +1,233 @@
+import sqlite3
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from aiogram.types import CallbackQuery
+
+from app.handlers.files import account_age_noop
+from app.keyboards import account_age_result_menu
+from app.locales import ACCOUNT_AGE_MESSAGES, ENTER_ACCOUNT_AGE_PROMPT, LANGUAGES
+from app.services.account_age import (
+    estimate_account_creation,
+    fetch_single_account_age,
+    format_account_age_report,
+    process_account_age_check,
+)
+
+
+def _create_session(path: Path, user_id: int = 123456789) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE version (number integer primary key)")
+        conn.execute(
+            "CREATE TABLE sessions (dc_id integer, server_address text, port integer, auth_key blob)"
+        )
+        conn.execute(
+            "INSERT INTO sessions VALUES (1, '127.0.0.1', 80, ?)",
+            (b"\x01" * 256,),
+        )
+        conn.commit()
+    return path
+
+
+@pytest.fixture
+def dummy_session(tmp_path: Path) -> Path:
+    return _create_session(tmp_path / "test.session")
+
+
+def test_estimate_account_creation():
+    year, month, age_str = estimate_account_creation(150_000_000)
+    assert year == 2016
+    assert month == 1
+    assert "2016" in age_str
+
+    year_large, _month_large, age_large = estimate_account_creation(9_999_999_999)
+    assert year_large == 2025
+    assert "Estimated after November 2025 (Confidence: Low)" in age_large
+    assert "exceeds verified public community dataset limit" in age_large
+
+
+def test_estimate_account_creation_edge_cases(tmp_path: Path):
+    from app.services.account_age import (
+        DatasetCorruptError,
+        DatasetNotFoundError,
+    )
+
+    # 1. Zero ID (min bound)
+    _y0, _m0, str0 = estimate_account_creation(0)
+    assert "Estimated August 2013" in str0
+
+    # 2. Exact milestone ID match (8559682245 -> 2025-11-11)
+    year_exact, month_exact, str_exact = estimate_account_creation(8559682245)
+    assert year_exact == 2025
+    assert month_exact == 11
+    assert "11/11/2025" in str_exact
+
+    # 3. Missing dataset file exception test
+    non_existent = tmp_path / "non_existent.json"
+    with pytest.raises(DatasetNotFoundError):
+        estimate_account_creation(100, dataset_path=non_existent)
+
+    # 4. Corrupt dataset file exception test
+    corrupt_file = tmp_path / "corrupt.json"
+    corrupt_file.write_text("invalid json content", encoding="utf-8")
+    with pytest.raises(DatasetCorruptError):
+        estimate_account_creation(100, dataset_path=corrupt_file)
+
+    # 5. Invalid calendar date test (e.g. Feb 30th)
+    invalid_date_file = tmp_path / "invalid_date.json"
+    invalid_date_file.write_text(
+        '[{"id": 100, "date": "2024-02-30"}]', encoding="utf-8"
+    )
+    with pytest.raises(DatasetCorruptError):
+        estimate_account_creation(100, dataset_path=invalid_date_file)
+
+    # 6. Duplicate ID test
+    dup_id_file = tmp_path / "dup_id.json"
+    dup_id_file.write_text(
+        '[{"id": 100, "date": "2020-01-01"}, {"id": 100, "date": "2020-02-01"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(DatasetCorruptError):
+        estimate_account_creation(100, dataset_path=dup_id_file)
+
+
+@pytest.mark.asyncio
+async def test_fetch_single_account_age(dummy_session: Path):
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+
+    class DummyMe:
+        id = 350_000_000
+        phone = "989123456789"
+        first_name = "Alice"
+        username = "alicesmith"
+
+    mock_client.get_me.return_value = DummyMe()
+
+    class DummyMsg:
+        import datetime
+
+        date = datetime.datetime(2017, 4, 15, 10, 0, 0, tzinfo=datetime.UTC)
+
+    mock_client.get_messages.return_value = [DummyMsg()]
+
+    with patch("telethon.TelegramClient", return_value=mock_client):
+        info = await fetch_single_account_age(dummy_session, [(123, "hash")])
+
+    assert info is not None
+    assert info.user_id == 350_000_000
+    assert info.phone == "989123456789"
+    assert info.username == "alicesmith"
+    assert info.first_name == "Alice"
+    assert "2017" in info.creation_estimate
+    assert info.exact_creation_date == "2017-04-15"
+
+
+@pytest.mark.asyncio
+async def test_process_account_age_check(dummy_session: Path):
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+
+    class DummyMe:
+        id = 150_000_000
+        phone = "989123456789"
+        first_name = "Bob"
+        username = "bobjones"
+
+    mock_client.get_me.return_value = DummyMe()
+    mock_client.get_messages.return_value = []
+
+    with patch("telethon.TelegramClient", return_value=mock_client):
+        res = await process_account_age_check(dummy_session, [(123, "hash")])
+
+    assert res.total == 1
+    assert res.checked == 1
+    assert res.failed == 0
+    assert len(res.accounts) == 1
+    assert res.accounts[0].user_id == 150_000_000
+
+
+@pytest.mark.asyncio
+async def test_account_age_noop_callback():
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.answer = AsyncMock()
+    await account_age_noop(cb)
+    cb.answer.assert_called_once()
+
+
+def test_account_age_locales_and_keyboards():
+    for lang in LANGUAGES:
+        assert lang in ENTER_ACCOUNT_AGE_PROMPT
+        assert lang in ACCOUNT_AGE_MESSAGES
+        assert ACCOUNT_AGE_MESSAGES[lang]["fetching"]
+        assert ACCOUNT_AGE_MESSAGES[lang]["report_title"]
+
+    kb = account_age_result_menu(5, 4, 1, "en")
+    assert len(kb.inline_keyboard) == 3
+
+
+def test_format_account_age_report(dummy_session: Path):
+    from app.services.account_age import AccountAgeInfo, AccountAgeResult
+
+    info = AccountAgeInfo(
+        session_name="test.session",
+        user_id=8656186825,
+        phone="244921908295",
+        username="jamie2559",
+        first_name="Jamie",
+        last_name="Austin",
+        is_premium=False,
+        dc_id=4,
+        creation_estimate="~ 28/4/2026\nEstimated 28 Apr 2026 (3 months ago)",
+        exact_creation_date=None,
+    )
+    res = AccountAgeResult(total=1, checked=1, failed=0, accounts=(info,))
+    msgs = ACCOUNT_AGE_MESSAGES["en"]
+
+    formatted = format_account_age_report(res, msgs)
+    assert "Jamie Austin" in formatted
+    assert "8656186825" in formatted
+    assert "@jamie2559" in formatted
+    assert "❌ No" in formatted
+    assert "🇳🇱 DC4" in formatted
+    assert "Estimated Account Age" in formatted
+    assert "Community Dataset" in formatted
+
+
+def test_account_age_pagination_keyboard():
+    from app.services.account_age import AccountAgeInfo, AccountAgeResult
+
+    acc1 = AccountAgeInfo(
+        "s1.session", 100, "111", "user1", "U1", "", False, 1, "~ 2020"
+    )
+    acc2 = AccountAgeInfo(
+        "s2.session", 200, "222", "user2", "U2", "", True, 2, "~ 2021"
+    )
+    acc3 = AccountAgeInfo(
+        "s3.session", 300, "333", "user3", "U3", "", False, 3, "~ 2022"
+    )
+    accs = (acc1, acc2, acc3)
+    res = AccountAgeResult(total=3, checked=3, failed=0, accounts=accs)
+    msgs = ACCOUNT_AGE_MESSAGES["en"]
+
+    p0 = format_account_age_report(res, msgs, page=0)
+    assert "Accounts (1/3)" in p0
+    assert "U1" in p0
+
+    p1 = format_account_age_report(res, msgs, page=1)
+    assert "Accounts (2/3)" in p1
+    assert "U2" in p1
+
+    kb_small = account_age_result_menu(3, 3, 0, "en", page=1, total_pages=3)
+    assert len(kb_small.inline_keyboard) == 4
+    nav = kb_small.inline_keyboard[0]
+    assert any("Prev" in b.text for b in nav)
+    assert any("Next" in b.text for b in nav)
+
+    kb_large = account_age_result_menu(10, 10, 0, "en", page=2, total_pages=10)
+    assert len(kb_large.inline_keyboard) == 4
+    nav_large = kb_large.inline_keyboard[0]
+    assert nav_large[0].text == "⏮"
+    assert nav_large[-1].text == "⏭"

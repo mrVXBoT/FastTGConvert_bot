@@ -1,0 +1,9 @@
+aiogram<4,>=3.30
+SQLAlchemy<2.1,>=2.0.51
+pydantic-settings<3,>=2.10
+
+[dev]
+pytest<9,>=8.4
+pytest-asyncio<2,>=1.1
+ruff<1,>=0.12
+mypy<2,>=1.17

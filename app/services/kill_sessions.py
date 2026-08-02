@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+import logging
+import shutil
+import tempfile
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path
+
+from app.services.contacts_checker import extract_zip_sessions_safe
+from app.services.file_merge import _is_valid_sqlite_session
+from app.services.session_to_tdata import _ensure_opentele_patched
+
+LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SessionKillDetail:
+    session_name: str
+    status: str  # 'ok' | 'fresh_forbidden' | 'unauthorized' | 'invalid_sqlite' | 'error'
+    message: str
+
+
+@dataclass(frozen=True)
+class KillSessionsResult:
+    total: int
+    killed: int
+    fresh_forbidden: int
+    failed: int
+    details: tuple[SessionKillDetail, ...]
+
+
+async def kill_single_session_others(
+    session_file: Path,
+    credentials: list[tuple[int, str]],
+) -> tuple[str, str]:
+    """Execute ResetAuthorizationsRequest for a single session file.
+
+    Returns (status, message).
+    Possible status: 'ok', 'fresh_forbidden', 'unauthorized', 'error'
+    """
+    if not _is_valid_sqlite_session(session_file):
+        return "invalid_sqlite", "Invalid SQLite database or missing auth_key"
+
+    try:
+        from telethon import TelegramClient, functions
+        from telethon.errors import (
+            AuthKeyUnregisteredError,
+            FreshResetAuthorisationForbiddenError,
+            RPCError,
+            SessionRevokedError,
+            SessionTooFreshError,
+            UserDeactivatedError,
+        )
+    except ModuleNotFoundError:
+        LOGGER.error("Telethon not installed for kill session")
+        return "error", "Telethon library missing"
+
+    for api_id, api_hash in credentials:
+        with tempfile.TemporaryDirectory(prefix="ftgc_kill_sess_") as tmp:
+            run_sess = Path(tmp) / "account.session"
+            shutil.copy2(session_file, run_sess)
+            stem = str(run_sess.with_suffix(""))
+
+            client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+            try:
+                await client.connect()
+                if not await client.is_user_authorized():
+                    return "unauthorized", "Session unauthorized or revoked"
+
+                await client(functions.auth.ResetAuthorizationsRequest())
+                return "ok", "Successfully logged out all other sessions"
+            except (FreshResetAuthorisationForbiddenError, SessionTooFreshError):
+                LOGGER.info("Session %s is fresh (<24h); cannot reset authorizations yet", session_file.name)
+                return "fresh_forbidden", "Account session is < 24h old; Telegram requires 24h before resetting other sessions"
+            except (AuthKeyUnregisteredError, SessionRevokedError, UserDeactivatedError):
+                return "unauthorized", "Session revoked or deactivated"
+            except RPCError as exc:
+                if "FRESH_RESET_AUTHORISATION_FORBIDDEN" in str(exc) or "SESSION_TOO_FRESH" in str(exc):
+                    return "fresh_forbidden", "Account session is < 24h old; Telegram requires 24h before resetting other sessions"
+                LOGGER.debug("Kill session RPC error with api_id=%d: %s", api_id, exc)
+                return "error", f"RPCError: {exc}"
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("Kill session error with api_id=%d: %s", api_id, exc)
+                continue
+            finally:
+                with suppress(Exception):
+                    await client.disconnect()
+
+    return "error", "Connection failed across all credentials"
+
+
+async def process_kill_sessions(
+    input_path: Path,
+    credentials: list[tuple[int, str]],
+    *,
+    original_name: str | None = None,
+) -> KillSessionsResult:
+    """Extract sessions from ZIP or single .session and terminate all other active sessions."""
+    _ensure_opentele_patched()
+    temp_dir: tempfile.TemporaryDirectory[str] | None = None
+    session_files: list[Path] = []
+
+    try:
+        suffix = Path(original_name or input_path.name).suffix.lower()
+        if suffix == ".zip":
+            temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_kill_zip_")
+            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+        elif suffix == ".session":
+            if original_name:
+                temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_kill_one_")
+                copied = Path(temp_dir.name) / Path(original_name).name
+                shutil.copy2(input_path, copied)
+                session_files = [copied]
+            else:
+                session_files = [input_path]
+
+        total = len(session_files)
+        killed = 0
+        fresh_forbidden = 0
+        failed = 0
+        details: list[SessionKillDetail] = []
+
+        for sess_file in session_files:
+            st, msg = await kill_single_session_others(sess_file, credentials)
+            if st == "ok":
+                killed += 1
+            elif st == "fresh_forbidden":
+                fresh_forbidden += 1
+            else:
+                failed += 1
+
+            details.append(
+                SessionKillDetail(
+                    session_name=sess_file.name,
+                    status=st,
+                    message=msg,
+                )
+            )
+
+        return KillSessionsResult(
+            total=total,
+            killed=killed,
+            fresh_forbidden=fresh_forbidden,
+            failed=failed,
+            details=tuple(details),
+        )
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()

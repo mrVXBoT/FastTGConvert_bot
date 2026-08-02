@@ -1,0 +1,1 @@
+"""FastTGConvert bot package."""

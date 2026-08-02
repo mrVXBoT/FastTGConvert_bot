@@ -1,0 +1,33 @@
+[project]
+name = "fasttgconvert-bot"
+version = "0.1.0"
+description = "Safe Telegram file analysis and conversion bot"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.30,<4",
+    "SQLAlchemy>=2.0.51,<2.1",
+    "pydantic-settings>=2.10,<3",
+    "telethon>=1.36,<2",
+    "opentele>=1.15,<2",
+    "phonenumbers>=9,<10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.1,<2",
+    "ruff>=0.12,<1",
+    "mypy>=1.17,<2",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["data*", "tests*", "scripts*"]
