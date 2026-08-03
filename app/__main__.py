@@ -56,10 +56,32 @@ async def main() -> None:
                 add_admin_user(session, settings.admin_id, role="SUPER_ADMIN")
                 logger.info("System owner %d registered with SUPER_ADMIN role.", settings.admin_id)
 
+    from app.ui import EmojiRegistry
+    EmojiRegistry.load_from_settings(settings)
+    with session_factory() as session:
+        EmojiRegistry.load_from_db(session)
+
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+
+    from aiogram.methods import (
+        EditMessageCaption,
+        EditMessageText,
+        SendDocument,
+        SendMessage,
+        SendPhoto,
+    )
+
+    @bot.session.middleware
+    async def emoji_enrich_middleware(make_request, b_inst, method):
+        if isinstance(method, (SendMessage, EditMessageText)) and method.text:
+            method.text = EmojiRegistry.enrich_text(method.text)
+        elif isinstance(method, (SendDocument, SendPhoto, EditMessageCaption)) and method.caption:
+            method.caption = EmojiRegistry.enrich_text(method.caption)
+        return await make_request(b_inst, method)
+
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.update.outer_middleware(TracingMiddleware())
     

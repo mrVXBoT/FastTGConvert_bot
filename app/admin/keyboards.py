@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.db.models import User
 
 from app.locales import get_admin_locale
+from app.ui import Button, ButtonStyle
 
 
 def build_admin_main_menu_keyboard(lang: str = "en", admin_role: str = "SUPPORT") -> InlineKeyboardMarkup:
@@ -36,36 +37,36 @@ def build_admin_main_menu_keyboard(lang: str = "en", admin_role: str = "SUPPORT"
     # Stats + Users (SUPPORT+)
     row1: list[InlineKeyboardButton] = []
     if has_permission(admin_role, "SUPPORT"):
-        row1.append(InlineKeyboardButton(text=loc["btn_stats"], callback_data=AdminNav(action="stats").pack()))
-        row1.append(InlineKeyboardButton(text=loc["btn_users"], callback_data=AdminNav(action="users").pack()))
+        row1.append(Button.create(loc["btn_stats"], AdminNav(action="stats").pack(), style=ButtonStyle.PRIMARY, emoji_key="STATS"))
+        row1.append(Button.create(loc["btn_users"], AdminNav(action="users").pack(), style=ButtonStyle.PRIMARY, emoji_key="USERS"))
     if row1:
         kb.append(row1)
 
     # Broadcast + Support Settings (ADMIN+)
     row2: list[InlineKeyboardButton] = []
     if has_permission(admin_role, "ADMIN"):
-        row2.append(InlineKeyboardButton(text=loc["btn_broadcast"], callback_data=AdminNav(action="broadcast").pack()))
-        row2.append(InlineKeyboardButton(text=loc["btn_support"], callback_data=AdminNav(action="support").pack()))
+        row2.append(Button.create(loc["btn_broadcast"], AdminNav(action="broadcast").pack(), style=ButtonStyle.PRIMARY, emoji_key="BROADCAST"))
+        row2.append(Button.create(loc["btn_support"], AdminNav(action="support").pack(), style=ButtonStyle.PRIMARY, emoji_key="SUPPORT"))
     if row2:
         kb.append(row2)
 
     # Force Join + VIP (SUPER_ADMIN for Force Join, ADMIN for VIP)
     row3: list[InlineKeyboardButton] = []
     if has_permission(admin_role, "SUPER_ADMIN"):
-        row3.append(InlineKeyboardButton(text=loc["btn_force_join"], callback_data=AdminNav(action="force_join").pack()))
+        row3.append(Button.create(loc["btn_force_join"], AdminNav(action="force_join").pack(), style=ButtonStyle.PRIMARY, emoji_key="FORCE_JOIN"))
     if has_permission(admin_role, "ADMIN"):
-        row3.append(InlineKeyboardButton(text=loc["btn_vip"], callback_data=AdminNav(action="vip").pack()))
+        row3.append(Button.create(loc["btn_vip"], AdminNav(action="vip").pack(), style=ButtonStyle.SUCCESS, emoji_key="VIP"))
     if row3:
         kb.append(row3)
 
     # Admins Management (SUPER_ADMIN+)
     if has_permission(admin_role, "SUPER_ADMIN"):
-        kb.append([InlineKeyboardButton(text=loc["btn_admins"], callback_data=AdminNav(action="admins").pack())])
+        kb.append([Button.create(loc["btn_admins"], AdminNav(action="admins").pack(), style=ButtonStyle.PRIMARY, emoji_key="ADMIN")])
 
     # Language + Close (always visible)
     kb.append([
-        InlineKeyboardButton(text="🌐 Language", callback_data=AdminNav(action="language").pack()),
-        InlineKeyboardButton(text=loc["btn_close"], callback_data=AdminNav(action="close").pack()),
+        Button.create(loc.get("btn_language", "Language"), AdminNav(action="language").pack(), style=ButtonStyle.PRIMARY, emoji_key="SETTINGS"),
+        Button.create(loc["btn_close"], AdminNav(action="close").pack(), style=ButtonStyle.DANGER, emoji_key="CANCEL"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -74,12 +75,12 @@ def build_stats_keyboard() -> InlineKeyboardMarkup:
     """Statistics Period Filter Keyboard."""
     kb = [
         [
-            InlineKeyboardButton(text="📅 Today", callback_data=StatsNav(period="today").pack()),
-            InlineKeyboardButton(text="📆 This Week", callback_data=StatsNav(period="week").pack()),
-            InlineKeyboardButton(text="📅 This Month", callback_data=StatsNav(period="month").pack()),
+            Button.create("Today", StatsNav(period="today").pack(), style=ButtonStyle.PRIMARY, emoji_key="STATS"),
+            Button.create("This Week", StatsNav(period="week").pack(), style=ButtonStyle.PRIMARY, emoji_key="STATS"),
+            Button.create("This Month", StatsNav(period="month").pack(), style=ButtonStyle.PRIMARY, emoji_key="STATS"),
         ],
         [
-            InlineKeyboardButton(text="⬅️ Back", callback_data=AdminNav(action="home").pack()),
+            Button.create("Back", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -92,11 +93,13 @@ def build_users_pagination_keyboard(users: list[User], page: int, total_pages: i
     # Quick View action buttons for each user card on the page
     user_row: list[InlineKeyboardButton] = []
     for u in users:
-        label = f"👁 View @{u.username}" if u.username else f"👁 View #{u.telegram_id}"
+        label = f"View @{u.username}" if u.username else f"View #{u.telegram_id}"
         user_row.append(
-            InlineKeyboardButton(
+            Button.create(
                 text=label,
                 callback_data=UserAction(action="view", user_id=u.telegram_id).pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key="VIEW",
             )
         )
         if len(user_row) == 2:
@@ -108,35 +111,35 @@ def build_users_pagination_keyboard(users: list[User], page: int, total_pages: i
     # Pagination navigation row
     nav_row: list[InlineKeyboardButton] = []
     if page > 1:
-        nav_row.append(InlineKeyboardButton(text="⬅️ Previous", callback_data=UserNav(page=page - 1, search=search).pack()))
+        nav_row.append(Button.create("Previous", UserNav(page=page - 1, search=search).pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK"))
     nav_row.append(InlineKeyboardButton(text=f"Page {page}/{max(1, total_pages)}", callback_data="ignore"))
     if page < total_pages:
-        nav_row.append(InlineKeyboardButton(text="Next ➡️", callback_data=UserNav(page=page + 1, search=search).pack()))
+        nav_row.append(Button.create("Next", UserNav(page=page + 1, search=search).pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK"))
 
     kb.append(nav_row)
-    kb.append([InlineKeyboardButton(text="🔍 Search User", callback_data="adm_usr_search")])
-    kb.append([InlineKeyboardButton(text="⬅️ Back to Admin Panel", callback_data=AdminNav(action="home").pack())])
+    kb.append([Button.create("Search User", "adm_usr_search", style=ButtonStyle.PRIMARY, emoji_key="SEARCH")])
+    kb.append([Button.create("Back to Admin Panel", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
 def build_user_detail_keyboard(user_id: int, is_vip: bool, is_banned: bool) -> InlineKeyboardMarkup:
     """User Details Action Keyboard."""
     vip_btn = (
-        InlineKeyboardButton(text="❌ Remove VIP", callback_data=UserAction(action="remove_vip", user_id=user_id).pack())
+        Button.create("Remove VIP", UserAction(action="remove_vip", user_id=user_id).pack(), style=ButtonStyle.DANGER, emoji_key="VIP")
         if is_vip
-        else InlineKeyboardButton(text="💎 Give VIP", callback_data=UserAction(action="give_vip", user_id=user_id).pack())
+        else Button.create("Give VIP", UserAction(action="give_vip", user_id=user_id).pack(), style=ButtonStyle.SUCCESS, emoji_key="VIP")
     )
 
     ban_btn = (
-        InlineKeyboardButton(text="🟢 Unban User", callback_data=UserAction(action="unban", user_id=user_id).pack())
+        Button.create("Unban User", UserAction(action="unban", user_id=user_id).pack(), style=ButtonStyle.SUCCESS, emoji_key="UNBAN")
         if is_banned
-        else InlineKeyboardButton(text="🚫 Ban User", callback_data=UserAction(action="ban", user_id=user_id).pack())
+        else Button.create("Ban User", UserAction(action="ban", user_id=user_id).pack(), style=ButtonStyle.DANGER, emoji_key="BAN")
     )
 
     kb = [
         [vip_btn, ban_btn],
-        [InlineKeyboardButton(text="📩 Send Direct Message", callback_data=UserAction(action="msg", user_id=user_id).pack())],
-        [InlineKeyboardButton(text="⬅️ Back to Users", callback_data=AdminNav(action="users").pack())],
+        [Button.create("Send Direct Message", UserAction(action="msg", user_id=user_id).pack(), style=ButtonStyle.PRIMARY, emoji_key="MESSAGE")],
+        [Button.create("Back to Users", AdminNav(action="users").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -145,16 +148,16 @@ def build_vip_menu_keyboard() -> InlineKeyboardMarkup:
     """VIP Management Main Submenu Keyboard."""
     kb = [
         [
-            InlineKeyboardButton(text="⚙️ Feature Access Control", callback_data=VIPNav(section="features").pack()),
+            Button.create("Feature Access Control", VIPNav(section="features").pack(), style=ButtonStyle.PRIMARY, emoji_key="SECURITY"),
         ],
         [
-            InlineKeyboardButton(text="📦 VIP Plans Management", callback_data=VIPNav(section="plans").pack()),
+            Button.create("VIP Plans Management", VIPNav(section="plans").pack(), style=ButtonStyle.SUCCESS, emoji_key="VIP"),
         ],
         [
-            InlineKeyboardButton(text="💳 Payment Gateways & Wallets", callback_data=VIPNav(section="payments").pack()),
+            Button.create("Payment Gateways & Wallets", VIPNav(section="payments").pack(), style=ButtonStyle.PRIMARY, emoji_key="PAYMENT"),
         ],
         [
-            InlineKeyboardButton(text="⬅️ Back to Admin Panel", callback_data=AdminNav(action="home").pack()),
+            Button.create("Back to Admin Panel", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -164,16 +167,20 @@ def build_feature_gates_keyboard(features: list[FeatureGate]) -> InlineKeyboardM
     """Feature Gate Access Level Toggle Keyboard."""
     kb = []
     for fg in features:
-        status_icon = "🟢 VIP ONLY" if fg.access_level == "VIP_ONLY" else "⚪ FREE FOR ALL"
+        is_vip = fg.access_level == "VIP_ONLY"
+        status_label = "VIP ONLY" if is_vip else "FREE FOR ALL"
+        style = ButtonStyle.SUCCESS if is_vip else ButtonStyle.PRIMARY
         kb.append(
             [
-                InlineKeyboardButton(
-                    text=f"{fg.title}: {status_icon}",
+                Button.create(
+                    text=f"{fg.title}: {status_label}",
                     callback_data=FeatureToggle(feature_key=fg.feature_key).pack(),
+                    style=style,
+                    emoji_key="SECURITY",
                 )
             ]
         )
-    kb.append([InlineKeyboardButton(text="⬅️ Back to VIP Menu", callback_data=AdminNav(action="vip").pack())])
+    kb.append([Button.create("Back to VIP Menu", AdminNav(action="vip").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -183,18 +190,22 @@ def build_vip_plans_keyboard(plans: list[VIPPlan]) -> InlineKeyboardMarkup:
     for plan in plans:
         kb.append(
             [
-                InlineKeyboardButton(
-                    text=f"📅 {plan.name} — {plan.price}$",
+                Button.create(
+                    text=f"{plan.name} — {plan.price}$",
                     callback_data=VIPPlanAction(action="view", plan_id=plan.id).pack(),
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="VIP",
                 ),
-                InlineKeyboardButton(
-                    text="🗑️ Delete",
+                Button.create(
+                    text="Delete",
                     callback_data=VIPPlanAction(action="delete", plan_id=plan.id).pack(),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DELETE",
                 ),
             ]
         )
-    kb.append([InlineKeyboardButton(text="➕ Add New VIP Plan", callback_data=VIPPlanAction(action="add", plan_id=0).pack())])
-    kb.append([InlineKeyboardButton(text="⬅️ Back to VIP Menu", callback_data=AdminNav(action="vip").pack())])
+    kb.append([Button.create("Add New VIP Plan", VIPPlanAction(action="add", plan_id=0).pack(), style=ButtonStyle.SUCCESS, emoji_key="ADD")])
+    kb.append([Button.create("Back to VIP Menu", AdminNav(action="vip").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -204,11 +215,11 @@ def build_pending_payments_keyboard(pending_list: list[Payment]) -> InlineKeyboa
     for p in pending_list:
         kb.append(
             [
-                InlineKeyboardButton(text=f"✅ Approve #{p.id} (${p.amount})", callback_data=PaymentAction(action="approve", payment_id=p.id).pack()),
-                InlineKeyboardButton(text=f"❌ Reject #{p.id}", callback_data=PaymentAction(action="reject", payment_id=p.id).pack()),
+                Button.create(f"Approve #{p.id} (${p.amount})", PaymentAction(action="approve", payment_id=p.id).pack(), style=ButtonStyle.SUCCESS, emoji_key="SUCCESS"),
+                Button.create(f"Reject #{p.id}", PaymentAction(action="reject", payment_id=p.id).pack(), style=ButtonStyle.DANGER, emoji_key="CANCEL"),
             ]
         )
-    kb.append([InlineKeyboardButton(text="⬅️ Back to VIP Menu", callback_data=AdminNav(action="vip").pack())])
+    kb.append([Button.create("Back to VIP Menu", AdminNav(action="vip").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -216,15 +227,15 @@ def build_force_join_keyboard(channels: list[ForceJoinChannel]) -> InlineKeyboar
     """Force Join Channels Keyboard."""
     kb = []
     for ch in channels:
-        status = "🟢 ON" if ch.is_active else "🔴 OFF"
+        status = "ON" if ch.is_active else "OFF"
         kb.append(
             [
-                InlineKeyboardButton(text=f"{ch.title} ({status})", callback_data=ForceJoinAction(action="toggle", channel_id=ch.channel_id).pack()),
-                InlineKeyboardButton(text="🗑️ Remove", callback_data=ForceJoinAction(action="remove", channel_id=ch.channel_id).pack()),
+                Button.create(f"{ch.title} ({status})", ForceJoinAction(action="toggle", channel_id=ch.channel_id).pack(), style=ButtonStyle.PRIMARY, emoji_key="FORCE_JOIN"),
+                Button.create("Remove", ForceJoinAction(action="remove", channel_id=ch.channel_id).pack(), style=ButtonStyle.DANGER, emoji_key="DELETE"),
             ]
         )
-    kb.append([InlineKeyboardButton(text="➕ Add Channel", callback_data=ForceJoinAction(action="add", channel_id="").pack())])
-    kb.append([InlineKeyboardButton(text="⬅️ Back to Admin Panel", callback_data=AdminNav(action="home").pack())])
+    kb.append([Button.create("Add Channel", ForceJoinAction(action="add", channel_id="").pack(), style=ButtonStyle.SUCCESS, emoji_key="ADD")])
+    kb.append([Button.create("Back to Admin Panel", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -232,8 +243,8 @@ def build_broadcast_preview_keyboard() -> InlineKeyboardMarkup:
     """Broadcast Confirmation Preview Keyboard."""
     kb = [
         [
-            InlineKeyboardButton(text="🚀 Confirm & Send Broadcast", callback_data="adm_bcast_send"),
-            InlineKeyboardButton(text="❌ Cancel", callback_data="adm_bcast_cancel"),
+            Button.create("Confirm & Send Broadcast", "adm_bcast_send", style=ButtonStyle.SUCCESS, emoji_key="BROADCAST"),
+            Button.create("Cancel", "adm_bcast_cancel", style=ButtonStyle.DANGER, emoji_key="CANCEL"),
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -243,7 +254,7 @@ def build_admin_cancel_keyboard(back_target: str = "home") -> InlineKeyboardMark
     """Build a standard Cancel / Back inline button keyboard to exit prompt states."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Cancel", callback_data=AdminNav(action=back_target).pack())]
+            [Button.create("Cancel", AdminNav(action=back_target).pack(), style=ButtonStyle.DANGER, emoji_key="CANCEL")]
         ]
     )
 
@@ -263,11 +274,13 @@ def build_admin_list_keyboard(admins: list[AdminUser]) -> InlineKeyboardMarkup:
     kb: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for adm in admins:
-        label = f"👁 View #{adm.telegram_id}"
+        label = f"View #{adm.telegram_id}"
         row.append(
-            InlineKeyboardButton(
+            Button.create(
                 text=label,
                 callback_data=AdminMgmtAction(action="view", admin_id=adm.telegram_id).pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key="VIEW",
             )
         )
         if len(row) == 2:
@@ -275,8 +288,8 @@ def build_admin_list_keyboard(admins: list[AdminUser]) -> InlineKeyboardMarkup:
             row = []
     if row:
         kb.append(row)
-    kb.append([InlineKeyboardButton(text="➕ Add Admin", callback_data=AdminMgmtAction(action="add_start").pack())])
-    kb.append([InlineKeyboardButton(text="⬅️ Back to Admin Panel", callback_data=AdminNav(action="home").pack())])
+    kb.append([Button.create("Add Admin", AdminMgmtAction(action="add_start").pack(), style=ButtonStyle.SUCCESS, emoji_key="ADD")])
+    kb.append([Button.create("Back to Admin Panel", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -284,10 +297,10 @@ def build_admin_detail_keyboard(admin_id: int) -> InlineKeyboardMarkup:
     """Admin detail action keyboard: Change Role, Remove, Back."""
     kb = [
         [
-            InlineKeyboardButton(text="✏️ Change Role", callback_data=AdminMgmtAction(action="role_menu", admin_id=admin_id).pack()),
-            InlineKeyboardButton(text="❌ Remove", callback_data=AdminMgmtAction(action="confirm_remove", admin_id=admin_id).pack()),
+            Button.create("Change Role", AdminMgmtAction(action="role_menu", admin_id=admin_id).pack(), style=ButtonStyle.PRIMARY, emoji_key="EDIT"),
+            Button.create("Remove", AdminMgmtAction(action="confirm_remove", admin_id=admin_id).pack(), style=ButtonStyle.DANGER, emoji_key="DELETE"),
         ],
-        [InlineKeyboardButton(text="⬅️ Back to Admins", callback_data=AdminNav(action="admins").pack())],
+        [Button.create("Back to Admins", AdminNav(action="admins").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -299,12 +312,14 @@ def build_admin_role_selector_keyboard(admin_id: int, current_role: str = "") ->
         prefix = "✅ " if role == current_role else ""
         emoji = ROLE_EMOJI.get(role, "")
         kb.append([
-            InlineKeyboardButton(
+            Button.create(
                 text=f"{prefix}{emoji} {role}",
                 callback_data=AdminMgmtAction(action="set_role", admin_id=admin_id, role=role).pack(),
+                style=ButtonStyle.PRIMARY,
+                include_emoji=False,
             )
         ])
-    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data=AdminMgmtAction(action="view", admin_id=admin_id).pack())])
+    kb.append([Button.create("Back", AdminMgmtAction(action="view", admin_id=admin_id).pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -312,8 +327,8 @@ def build_admin_confirm_remove_keyboard(admin_id: int) -> InlineKeyboardMarkup:
     """Confirm removal keyboard."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🗑️ Yes, Remove", callback_data=AdminMgmtAction(action="do_remove", admin_id=admin_id).pack()),
-            InlineKeyboardButton(text="❌ Cancel", callback_data=AdminMgmtAction(action="view", admin_id=admin_id).pack()),
+            Button.create("Yes, Remove", AdminMgmtAction(action="do_remove", admin_id=admin_id).pack(), style=ButtonStyle.DANGER, emoji_key="DELETE"),
+            Button.create("Cancel", AdminMgmtAction(action="view", admin_id=admin_id).pack(), style=ButtonStyle.PRIMARY, emoji_key="CANCEL"),
         ]
     ])
 
@@ -324,22 +339,24 @@ def build_add_admin_role_selector_keyboard() -> InlineKeyboardMarkup:
     for role in ADMIN_ROLES:
         emoji = ROLE_EMOJI.get(role, "")
         kb.append([
-            InlineKeyboardButton(
+            Button.create(
                 text=f"{emoji} {role}",
                 callback_data=AdminMgmtAction(action="add_start", role=role).pack(),
+                style=ButtonStyle.PRIMARY,
+                include_emoji=False,
             )
         ])
-    kb.append([InlineKeyboardButton(text="❌ Cancel", callback_data=AdminNav(action="admins").pack())])
+    kb.append([Button.create("Cancel", AdminNav(action="admins").pack(), style=ButtonStyle.DANGER, emoji_key="CANCEL")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
 ADMIN_LANGUAGES = {
-    "en": "🇬🇧 English",
-    "bn": "🇧🇩 বাংলা",
-    "hi": "🇮🇳 हिन्दी",
-    "ur": "🇵🇰 اردو",
-    "ar": "🇸🇦 العربية",
-    "zh": "🇨🇳 中文",
+    "bn": ("বাংলা", "FLAG_BN"),
+    "en": ("English", "FLAG_EN"),
+    "hi": ("हिन्दी", "FLAG_HI"),
+    "ur": ("اردو", "FLAG_UR"),
+    "ar": ("العربية", "FLAG_AR"),
+    "zh": ("中文", "FLAG_ZH"),
 }
 
 
@@ -348,8 +365,15 @@ def build_admin_language_keyboard(current_lang: str = "en") -> InlineKeyboardMar
     from app.admin.callbacks import AdminLangAction
 
     kb = []
-    for code, label in ADMIN_LANGUAGES.items():
+    for code, (label, emoji_key) in ADMIN_LANGUAGES.items():
         prefix = "✅ " if code == current_lang else ""
-        kb.append([InlineKeyboardButton(text=f"{prefix}{label}", callback_data=AdminLangAction(lang=code).pack())])
-    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data=AdminNav(action="home").pack())])
+        kb.append([
+            Button.create(
+                f"{prefix}{label}",
+                AdminLangAction(lang=code).pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key=emoji_key,
+            )
+        ])
+    kb.append([Button.create("Back", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)

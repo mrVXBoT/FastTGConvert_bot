@@ -27,10 +27,16 @@ from app.locales import (
     get_locale,
     menu_labels,
 )
+from app.ui import Button, ButtonStyle, EmojiRegistry
 
 
-def button(text: str, action: str = "feature:restricted") -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=action)
+def button(
+    text: str,
+    action: str = "feature:restricted",
+    style: ButtonStyle | str | None = None,
+    emoji_key: str | None = None,
+) -> InlineKeyboardButton:
+    return Button.create(text=text, callback_data=action, style=style, emoji_key=emoji_key)
 
 
 def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
@@ -40,152 +46,209 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
     label = iter(menu_labels(language))
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [button(f"━━ 🔍 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SEARCH")],
             [
                 button(
-                    f"🔍 {next(label)}",
+                    next(label),
                     file_action("tool:session_check", "quick:session_check"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SEARCH",
                 ),
                 button(
-                    f"🛡️ {next(label)}",
+                    next(label),
                     file_action("tool:spam_check", "quick:spam_check"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SPAM",
                 ),
             ],
             [
                 button(
-                    f"📨 {next(label)}",
+                    next(label),
                     file_action("tool:read_otp", "quick:read_otp"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="OTP",
                 ),
                 button(
-                    f"📋 {next(label)}",
+                    next(label),
                     file_action("tool:check_contacts", "quick:check_contacts"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONTACTS",
                 ),
             ],
-            [button(f"━━ 🔄 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="CONVERT")],
             [
                 button(
-                    f"🔄 {next(label)}",
+                    next(label),
                     file_action("tool:session_to_tdata", "quick:session_to_tdata"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONVERT",
                 ),
                 button(
-                    f"🔄 {next(label)}",
+                    next(label),
                     file_action("tool:tdata_to_session", "quick:tdata_to_session"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONVERT",
                 ),
             ],
             [
                 button(
-                    f"📝 {next(label)}",
+                    next(label),
                     file_action("tool:session_to_json", "quick:session_to_json"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="EXPORT",
                 ),
                 button(
-                    f"📄 {next(label)}",
+                    next(label),
                     file_action("tool:account_to_txt", "quick:account_to_txt"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="EXPORT",
                 ),
             ],
-            [button(f"━━ 📁 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SPLIT")],
             [
                 button(
-                    f"✂️ {next(label)}",
+                    next(label),
                     file_action("tool:split", "quick:file_split"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SPLIT",
                 ),
                 button(
-                    f"🔀 {next(label)}",
+                    next(label),
                     file_action("tool:file_merge", "quick:file_merge"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="MERGE",
                 ),
             ],
-            [button(f"━━ 🔐 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SECURITY")],
             [
                 button(
-                    f"🔐 {next(label)}",
+                    next(label),
                     file_action("tool:change_2fa", "quick:change_2fa"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SECURITY",
                 ),
                 button(
-                    f"🔓 {next(label)}",
+                    next(label),
                     file_action("tool:disable_2fa", "quick:disable_2fa"),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="UNLOCK",
                 ),
             ],
             [
                 button(
-                    f"🔄 {next(label)}",
+                    next(label),
                     file_action("tool:reset_2fa", "quick:reset_2fa"),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="RESET",
                 )
             ],
-            [button(f"━━ 📢 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="BROADCAST")],
             [
                 button(
-                    f"📢 {next(label)}",
+                    next(label),
                     file_action("tool:channel_join", "quick:channel_join"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="FORCE_JOIN",
                 ),
                 button(
-                    f"🚪 {next(label)}",
+                    next(label),
                     file_action("tool:leave_channel", "quick:leave_channel"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BACK",
                 ),
             ],
-            [button(f"━━ 👤 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="USERS")],
             [
                 button(
-                    f"🧹 {next(label)}",
+                    next(label),
                     file_action("tool:clean_chat", "quick:clean_chat"),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DELETE",
                 ),
                 button(
-                    f"🗑️ {next(label)}",
+                    next(label),
                     file_action("tool:clear_contact", "quick:clear_contact"),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DELETE",
                 ),
             ],
             [
                 button(
-                    f"📵 {next(label)}",
+                    next(label),
                     file_action("tool:delete_contact", "quick:delete_contact"),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DELETE",
                 )
             ],
             [
                 button(
-                    f"🎭 {next(label)}",
+                    next(label),
                     file_action("tool:profile_setup", "quick:profile_setup"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SETTINGS",
                 )
             ],
             [
                 button(
-                    f"📅 {next(label)}",
+                    next(label),
                     file_action("tool:account_age", "quick:account_age"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="STATS",
                 )
             ],
-            [button(f"━━ ⚡ {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="STATS")],
             [
                 button(
-                    f"📨 {next(label)}",
+                    next(label),
                     file_action("tool:mass_message", "quick:mass_message"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BROADCAST",
                 )
             ],
             [
                 button(
-                    f"☠️ {next(label)}",
+                    next(label),
                     file_action("tool:kill_sessions", "quick:kill_sessions"),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="RESET",
                 ),
                 button(
-                    f"🔄 {next(label)}",
+                    next(label),
                     file_action("tool:fresh_session", "quick:fresh_session"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="REFRESH",
                 ),
             ],
             [
                 button(
-                    f"📦 {next(label)}",
+                    next(label),
                     file_action("tool:list_checker", "quick:list_checker"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SEARCH",
                 )
             ],
-            [button(f"━━ 🔒 {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SECURITY")],
             [
                 button(
-                    f"🔒 {next(label)}",
+                    next(label),
                     file_action("tool:privacy_settings", "quick:privacy_settings"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SECURITY",
                 )
             ],
-            [button(f"━━ 👑 {next(label)} ━━", "section:noop")],
-            [button(f"👑 {next(label)}", "menu:plan")],
-            [button(f"━━ ⚙️ {next(label)} ━━", "section:noop")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.SUCCESS, emoji_key="VIP")],
+            [button(next(label), "menu:plan", style=ButtonStyle.SUCCESS, emoji_key="VIP")],
+            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SETTINGS")],
             [
-                button(f"❓ {next(label)}", "menu:help"),
-                button(get_locale(language).language_name, "menu:language"),
+                button(next(label), "menu:help", style=ButtonStyle.PRIMARY, emoji_key="SUPPORT"),
+                button(
+                    get_locale(language).language_name.split(maxsplit=1)[-1]
+                    if EmojiRegistry.get_custom_emoji_id(f"FLAG_{language.upper()}")
+                    else get_locale(language).language_name,
+                    "menu:language",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key=f"FLAG_{language.upper()}",
+                ),
             ],
         ]
     )
@@ -227,7 +290,7 @@ def help_support_menu(support_id: str, language: str = "en") -> InlineKeyboardMa
         label = HELP_BUTTON_LABELS.get(language, HELP_BUTTON_LABELS["en"])
         rows.append([InlineKeyboardButton(text=f"💬 {label} {display}", url=url)])
     back = BACK_LABELS.get(language, BACK_LABELS["en"])
-    rows.append([button(f"◀️ {back}", "menu:back")])
+    rows.append([button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -235,9 +298,11 @@ def cancel_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
+                Button.create(
                     text=CANCEL_LABELS.get(language, CANCEL_LABELS["en"]),
                     callback_data="action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
                 )
             ]
         ]
@@ -249,20 +314,27 @@ def file_split_choice_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
+                button(
                     text=messages["btn_country"],
-                    callback_data="split_type:country",
+                    action="split_type:country",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SPLIT",
                 )
             ],
             [
-                InlineKeyboardButton(
+                button(
                     text=messages["btn_quantity"],
-                    callback_data="split_type:quantity",
+                    action="split_type:quantity",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SPLIT",
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=messages["btn_cancel"], callback_data="action:cancel"
+                button(
+                    text=messages["btn_cancel"],
+                    action="action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
                 )
             ],
         ]
@@ -408,28 +480,31 @@ def channel_result_menu(
 
 
 def language_menu(selected_language: str | None = None) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=locale.language_name, callback_data=f"language:{code}"
-                )
-            ]
-            for code, locale in LANGUAGES.items()
-        ]
-        + [
-            [
-                InlineKeyboardButton(
-                    text="🚀 /start",
-                    callback_data=(
-                        f"language:start:{selected_language}"
-                        if selected_language in LANGUAGES
-                        else "language:start"
-                    ),
-                )
-            ]
-        ]
+    rows = []
+    for code, locale in LANGUAGES.items():
+        emoji_key = f"FLAG_{code.upper()}"
+        _, custom_id = EmojiRegistry.resolve_icon(emoji_key)
+        if custom_id:
+            parts = locale.language_name.split(maxsplit=1)
+            text = parts[1] if len(parts) > 1 else locale.language_name
+        else:
+            text = locale.language_name
+
+        btn = Button.create(
+            text=text,
+            callback_data=f"language:{code}",
+            style=ButtonStyle.PRIMARY,
+            emoji_key=emoji_key,
+        )
+        rows.append([btn])
+
+    start_cb = (
+        f"language:start:{selected_language}"
+        if selected_language in LANGUAGES
+        else "language:start"
     )
+    rows.append([InlineKeyboardButton(text="🚀 /start", callback_data=start_cb)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def membership_menu(
@@ -1414,14 +1489,25 @@ def user_vip_plans_menu(plans: list, language: str = "en") -> InlineKeyboardMark
     for p in plans:
         kb.append(
             [
-                InlineKeyboardButton(
-                    text=f"📅 {p.name} — {p.price} USD",
+                Button.create(
+                    text=f"{p.name} — {p.price} USD",
                     callback_data=f"buy_plan:{p.id}",
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="VIP",
                 )
             ]
         )
     back_lbl = BACK_LABELS.get(language, BACK_LABELS["en"])
-    kb.append([InlineKeyboardButton(text=f"◀️ {back_lbl}", callback_data="menu:back")])
+    kb.append(
+        [
+            Button.create(
+                text=back_lbl,
+                callback_data="menu:back",
+                style=ButtonStyle.PRIMARY,
+                emoji_key="BACK",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 

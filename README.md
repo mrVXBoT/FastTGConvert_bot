@@ -7,7 +7,7 @@
 [![Framework](https://img.shields.io/badge/Aiogram-3.x-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://docs.aiogram.dev/)
 [![Database](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlalchemy.org/)
 [![Observability](https://img.shields.io/badge/Prometheus-Ready-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io/)
-[![Test Suite](https://img.shields.io/badge/Tests-296%20Passed-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](tests/)
+[![Test Suite](https://img.shields.io/badge/Tests-300%20Passed-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](tests/)
 [![Security](https://img.shields.io/badge/Security-Fernet%20AES--128-blueviolet?style=for-the-badge)](docs/README_EN.md#5-security-architecture)
 
 <p align="center">
@@ -510,12 +510,59 @@ FastTGConvert_bot/
  │    ├── handlers/            # End-User Handlers (Files, OTP, Start, VIP)
  │    ├── middlewares/         # Global Middlewares (UserStatus, Tracing)
  │    ├── services/            # Core Domain Services (Telethon, Converters, Security)
+ │    ├── ui/                  # Centralized UI Design System (Button, Theme, Emojis, Entities)
  │    └── config.py            # Pydantic BaseSettings Config
  ├── docs/                     # Multi-language Technical Documentation
- ├── tests/                    # Pytest Suite (296 Tests)
+ ├── tests/                    # Pytest Suite (300 Tests)
  ├── pyproject.toml            # Project Dependencies & Tool Configuration
  └── README.md                 # Root Product Documentation Hub
 ```
+
+### 12.2 Centralized UI Design System & Telegram Premium Custom Emojis
+
+FastTGConvert features a type-safe **UI Design System (`app/ui/`)** engineered for Telegram Premium styling:
+
+1. **Button Styles (`ButtonStyle`)**:
+   - `PRIMARY`: Default navigation and information buttons.
+   - `SUCCESS`: VIP actions, activations, and positive confirms (`💎`, `💳`).
+   - `DANGER`: Destructive actions, bans, resets, and channel removals (`🚨`, `🗑️`, `🚫`).
+
+2. **Centralized Theme Configuration (`app/ui/theme.py`)**:
+   - Standardized style aliases (`VIP_COLOR`, `DELETE_COLOR`, `BACK_COLOR`, `PRIMARY_COLOR`, `SUCCESS_COLOR`) ensure zero hardcoded button colors.
+
+### 12.3 How to Configure Telegram Premium Custom Emoji
+
+FastTGConvert natively supports Telegram Premium Custom Emoji IDs across all inline keyboards and system notification texts.
+
+#### Step 1: Extracting Telegram Custom Emoji ID
+1. Send any Telegram Premium custom emoji in a Telegram message to **`@getidsbot`** or inspect the message using Telethon / Aiogram (`message.entities[0].custom_emoji_id`).
+2. Copy the 19-digit numeric `custom_emoji_id` string (e.g., `5431692226462719272`).
+
+#### Step 2: Adding Verified Emoji IDs to `.env`
+Add verified custom emoji IDs extracted from actual Telegram Premium emoji packs into your `.env` configuration file:
+
+```env
+# Example verified custom emoji IDs
+CUSTOM_EMOJI_VIP=
+CUSTOM_EMOJI_USERS=
+CUSTOM_EMOJI_ADMIN=
+CUSTOM_EMOJI_STATS=
+CUSTOM_EMOJI_SETTINGS=
+CUSTOM_EMOJI_SUCCESS=
+CUSTOM_EMOJI_DELETE=
+CUSTOM_EMOJI_BACK=
+CUSTOM_EMOJI_BROADCAST=
+CUSTOM_EMOJI_SUPPORT=
+CUSTOM_EMOJI_FORCE_JOIN=
+CUSTOM_EMOJI_SEARCH=
+CUSTOM_EMOJI_SECURITY=
+CUSTOM_EMOJI_CANCEL=
+```
+
+#### Step 3: How the Bot Utilizes Custom Emojis
+- **Inline Keyboards**: Automatically populates `icon_custom_emoji_id` on `InlineKeyboardButton` objects via `Button.create()`.
+- **Text Messages**: Generates `MessageEntity(type="custom_emoji", custom_emoji_id=...)` via `format_text_with_custom_emojis()`.
+- **Automatic Fallback**: If a custom emoji ID is empty or unsupported by a client, Telegram automatically displays the fallback unicode icon (`💎`, `⚙️`, `📊`).
 
 ---
 
@@ -535,16 +582,18 @@ FastTGConvert uses `pytest`, `mypy`, and `ruff` to ensure strict code quality:
 ```
 
 **Latest QA Execution Results**:
-- **Total Tests**: `296 passed`
-- **Execution Time**: `3.44s`
-- **Mypy Status**: `Success: no issues found in 74 source files`
+- **Total Tests**: `300 passed` (100% Pass)
+- **Execution Time**: `3.43s`
+- **Mypy Status**: `Success: no issues found in 79 source files`
 - **Ruff Status**: `All checks passed!`
 
 ---
 
 ## 14. Release Changelog
 
-### Version 5.x — Enterprise RBAC & Observability Milestone
+### Version 5.x — Enterprise RBAC, Observability & Telegram UI Design System
+- **Telegram UI Design System**: Migrated 100% of user and admin inline keyboards to `Button.create()` with native Telegram button styling (`PRIMARY`, `SUCCESS`, `DANGER`).
+- **Telegram Premium Custom Emojis**: Added support for Telegram Premium `custom_emoji_id` with automatic unicode fallback.
 - **Full Inline-Keyboard Admin Panel**: Deprecated legacy slash commands in favor of interactive inline cards.
 - **Hierarchical RBAC System**: Added 4-tier admin permissions (`OWNER`, `SUPER_ADMIN`, `ADMIN`, `SUPPORT`).
 - **Dynamic Feature Access Control**: Seeded 27 bot features into `feature_gates` table for real-time FREE/VIP toggling.

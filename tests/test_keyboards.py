@@ -41,9 +41,9 @@ def test_main_menu_is_rendered_in_selected_language() -> None:
     english = main_menu("en")
     arabic = main_menu("ar")
     chinese = main_menu("zh")
-    assert english.inline_keyboard[0][0].text == "━━ 🔍 CHECK ━━"
-    assert arabic.inline_keyboard[0][0].text == "━━ 🔍 فحص ━━"
-    assert chinese.inline_keyboard[0][0].text == "━━ 🔍 检查 ━━"
+    assert english.inline_keyboard[0][0].text == "🔍 ━━ CHECK ━━"
+    assert arabic.inline_keyboard[0][0].text == "🔍 ━━ فحص ━━"
+    assert chinese.inline_keyboard[0][0].text == "🔍 ━━ 检查 ━━"
     assert arabic.inline_keyboard[-1][1].text == "🇸🇦 العربية"
 
 
