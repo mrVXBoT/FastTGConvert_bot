@@ -14,6 +14,7 @@ from aiogram import Bot, F, Router, html
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     FSInputFile,
     InlineKeyboardButton,
@@ -50,12 +51,19 @@ from app.keyboards import (
     fresh_session_result_menu,
     kill_sessions_confirm_menu,
     kill_sessions_result_menu,
+    list_checker_cancel_menu,
+    list_checker_result_menu,
     main_menu,
     mass_message_confirm_menu,
     mass_message_delay_menu,
     mass_message_live_menu,
     mass_message_recipients_menu,
     otp_initial_menu,
+    privacy_custom_menu,
+    privacy_mode_menu,
+    privacy_presets_menu,
+    privacy_result_menu,
+    privacy_value_menu,
     profile_setup_account_menu,
     profile_setup_result_menu,
     quick_action_menu,
@@ -103,8 +111,10 @@ from app.locales import (
     FRESH_SESSION_MESSAGES,
     KILL_SESSIONS_CONFIRM_PROMPT,
     KILL_SESSIONS_MESSAGES,
+    LIST_CHECKER_MESSAGES,
     MASS_MESSAGE_MESSAGES,
     MASS_MESSAGE_PROMPTS,
+    PRIVACY_SETTINGS_MESSAGES,
     PROFILE_SETUP_ABOUT_PROMPT,
     PROFILE_SETUP_ACCOUNT_PROMPT,
     PROFILE_SETUP_MESSAGES,
@@ -162,6 +172,7 @@ from app.services.files import (
 )
 from app.services.fresh_session import process_fresh_sessions
 from app.services.kill_sessions import process_kill_sessions
+from app.services.list_checker import compare_archive_files
 from app.services.mass_message import (
     GlobalRateLimiter,
     Recipient,
@@ -172,11 +183,13 @@ from app.services.mass_message import (
     parse_recipients_from_file,
     send_mass_message_to_recipient,
 )
+from app.services.privacy_settings import process_privacy_settings
 from app.services.profile_setup import (
     fetch_account_profile,
     package_profile_setup_results,
     update_account_profile,
 )
+from app.services.proxy import resolve_user_proxy
 from app.services.records import create_file_and_job, finish_job
 from app.services.session_split import (
     SessionSplitResult,
@@ -217,7 +230,9 @@ from app.states import (
     FileMerge,
     FreshSession,
     KillSessions,
+    ListChecker,
     MassMessage,
+    PrivacySettings,
     ProfileSetup,
     ReadOTP,
     Reset2FA,
@@ -460,11 +475,13 @@ async def analyze_document(
         try:
             path, name = await download_document(message, bot, settings, language)
             state_data = await state.get_data()
+            user_proxy = resolve_user_proxy(session_factory, message.from_user.id)
             if state_data.get("check_contacts"):
                 contacts_res = await process_contacts_check(
                     path,
                     output_dir=settings.storage_dir / "outbox",
                     credentials=settings.api_credential_list,
+                    proxy=user_proxy,
                 )
                 await _stop_progress(progress_task)
                 try:
@@ -500,12 +517,9 @@ async def analyze_document(
                 live_check = state_data.get("live_spam_check", False)
                 result = await check_sessions(
                     path,
-                    # Both Session Check and Spam Check must validate the
-                    # uploaded session live. ``live_check`` only selects the
-                    # result presentation; it must not disable live status
-                    # detection for Session Check.
                     credentials=settings.api_credential_list,
                     timeout=settings.spambot_timeout,
+                    proxy=user_proxy,
                 )
                 await _stop_progress(progress_task)
                 render_func = (
@@ -1326,12 +1340,14 @@ async def confirm_clean_chat_selection(
 
     out_res: Path | None = None
     try:
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
         res_cln = await process_clean_chat(
             temp_path,
             output_dir=settings.storage_dir / "outbox",
             mode=sorted(selected),
             credentials=settings.api_credential_list,
             original_name=original_name,
+            proxy=user_proxy,
         )
         out_res = res_cln.output_path
         report = msgs_clean["done"].format(
@@ -2153,8 +2169,12 @@ async def receive_account_age_file(
             await state.clear()
             return
 
+        user_proxy = resolve_user_proxy(session_factory, message.from_user.id)
         res = await process_account_age_check(
-            path, settings.api_credential_list, original_name=name
+            path,
+            settings.api_credential_list,
+            original_name=name,
+            proxy=user_proxy,
         )
         if res.total == 0 or res.checked == 0 or not res.accounts:
             path.unlink(missing_ok=True)
@@ -2309,11 +2329,13 @@ async def receive_clear_contacts_file(
         status = await message.answer(msgs_clear["processing"])
         out_res: Path | None = None
         try:
+            user_proxy = resolve_user_proxy(session_factory, message.from_user.id)
             res_clr = await process_clear_contacts(
                 path,
                 output_dir=settings.storage_dir / "outbox",
                 credentials=settings.api_credential_list,
                 original_name=name,
+                proxy=user_proxy,
             )
             out_res = res_clr.output_path
             report = msgs_clear["done"].format(
@@ -2454,10 +2476,12 @@ async def confirm_kill_sessions(
     await callback.message.edit_text(msgs["processing"])
 
     try:
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
         res = await process_kill_sessions(
             input_path,
             credentials=settings.api_credential_list,
             original_name=original_name,
+            proxy=user_proxy,
         )
         report = msgs["done"].format(
             killed=res.killed,
@@ -2669,6 +2693,474 @@ async def confirm_fresh_session(
 @router.callback_query(F.data == "fresh_sess:noop")
 async def fresh_session_noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+# ─── List Checker Flow ─────────────────────────────────────────────────────────
+
+
+@router.callback_query(F.data == "tool:list_checker")
+async def request_list_checker(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await callback.answer()
+    if not isinstance(callback.message, Message):
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = LIST_CHECKER_MESSAGES.get(language, LIST_CHECKER_MESSAGES["en"])
+    await state.set_state(ListChecker.waiting_for_file1)
+    await callback.message.edit_text(
+        msgs["file1_prompt"],
+        reply_markup=list_checker_cancel_menu(language),
+    )
+
+
+@router.message(StateFilter(ListChecker.waiting_for_file1), F.document)
+async def receive_list_checker_file1(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not message.document or not message.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, message.from_user.id)
+    msgs = LIST_CHECKER_MESSAGES.get(language, LIST_CHECKER_MESSAGES["en"])
+
+    filename = message.document.file_name or "file1.zip"
+    if not filename.lower().endswith(".zip"):
+        await message.reply(msgs["invalid_format"], reply_markup=list_checker_cancel_menu(language))
+        return
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_list_checker_"))
+    file1_path = temp_dir / filename
+    await bot.download(message.document, destination=file1_path)
+
+    await state.update_data(
+        temp_dir=str(temp_dir),
+        file1_path=str(file1_path),
+        file1_name=filename,
+    )
+    await state.set_state(ListChecker.waiting_for_file2)
+    prompt = msgs["file2_prompt"].format(name=html.quote(filename))
+    await message.reply(prompt, reply_markup=list_checker_cancel_menu(language))
+
+
+@router.message(StateFilter(ListChecker.waiting_for_file2), F.document)
+async def receive_list_checker_file2(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not message.document or not message.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, message.from_user.id)
+    msgs = LIST_CHECKER_MESSAGES.get(language, LIST_CHECKER_MESSAGES["en"])
+
+    filename = message.document.file_name or "file2.zip"
+    if not filename.lower().endswith(".zip"):
+        await message.reply(msgs["invalid_format"], reply_markup=list_checker_cancel_menu(language))
+        return
+
+    data = await state.get_data()
+    temp_dir_str = data.get("temp_dir")
+    file1_path_str = data.get("file1_path")
+    if not temp_dir_str or not file1_path_str:
+        await state.clear()
+        await message.reply(msgs["file1_prompt"], reply_markup=list_checker_cancel_menu(language))
+        return
+
+    temp_dir = Path(temp_dir_str)
+    file1_path = Path(file1_path_str)
+    file2_path = temp_dir / filename
+
+    proc_msg = await message.reply(msgs["processing"])
+
+    try:
+        await bot.download(message.document, destination=file2_path)
+        res = await asyncio.to_thread(compare_archive_files, file1_path, file2_path)
+
+        if res.total == 0:
+            await proc_msg.edit_text(msgs["no_match"], reply_markup=main_menu(language))
+        else:
+            if res.output_bytes:
+                input_file = BufferedInputFile(
+                    res.output_bytes, filename="matched_files.zip"
+                )
+                caption = msgs["result_caption"].format(total=res.total)
+                await message.reply_document(document=input_file, caption=caption)
+
+            report = msgs["done"].format(
+                tdata=res.tdata_count,
+                session=res.session_count,
+                json=res.json_count,
+                total=res.total,
+            )
+            await proc_msg.edit_text(
+                report,
+                reply_markup=list_checker_result_menu(
+                    res.tdata_count, res.session_count, res.json_count, res.total, language
+                ),
+            )
+    except Exception as e:  # noqa: BLE001
+        LOGGER.warning("List checker error: %s", e)
+        await proc_msg.edit_text(msgs["invalid_format"], reply_markup=main_menu(language))
+    finally:
+        if temp_dir_str:
+            import shutil
+            shutil.rmtree(temp_dir_str, ignore_errors=True)
+        await state.clear()
+
+
+# ── Privacy Settings Handlers ────────────────────────────────────────────────
+
+@router.callback_query(F.data == "tool:privacy_settings")
+async def start_privacy_settings(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    await state.set_state(PrivacySettings.waiting_for_file)
+    await callback.message.edit_text(
+        msgs["prompt_file"],
+        reply_markup=cancel_menu(language),
+    )
+
+
+@router.message(StateFilter(PrivacySettings.waiting_for_file), F.document)
+async def receive_privacy_settings_file(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not message.document or not message.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, message.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    filename = message.document.file_name or "session.zip"
+    ext = Path(filename).suffix.lower()
+    if ext not in (".session", ".zip"):
+        await message.reply(
+            msgs["invalid_file"],
+            reply_markup=cancel_menu(language),
+        )
+        return
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_privacy_"))
+    saved_file = temp_dir / filename
+    await bot.download(message.document, destination=saved_file)
+
+    await state.update_data(
+        temp_dir=str(temp_dir),
+        file_path=str(saved_file),
+        filename=filename,
+    )
+    await state.set_state(PrivacySettings.selecting_mode)
+    await message.reply(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+
+
+@router.callback_query(StateFilter(PrivacySettings.waiting_for_2fa), F.data == "privacy:skip_2fa")
+async def privacy_skip_2fa_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    await state.set_state(PrivacySettings.selecting_mode)
+    await callback.message.edit_text(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+
+
+@router.callback_query(F.data == "privacy:skip_2fa")
+async def skip_privacy_settings_2fa(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    await state.update_data(password=None)
+    await state.set_state(PrivacySettings.selecting_mode)
+    await callback.message.edit_text(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+
+
+@router.callback_query(F.data.startswith("privacy:mode:"))
+async def select_privacy_mode(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    mode = callback.data.split(":")[-1]
+    if mode == "preset":
+        await state.set_state(PrivacySettings.selecting_preset)
+        await callback.message.edit_text(msgs["prompt_preset"], reply_markup=privacy_presets_menu(language))
+    elif mode == "custom":
+        data = await state.get_data()
+        current_rules = data.get("custom_rules") or {
+            "last_seen": "nobody",
+            "phone_number": "nobody",
+            "profile_photo": "contacts",
+            "forwarded_messages": "nobody",
+            "calls": "nobody",
+            "p2p_calls": "nobody",
+            "group_invites": "contacts",
+            "voice_messages": "nobody",
+        }
+        await state.update_data(custom_rules=current_rules)
+        await state.set_state(PrivacySettings.selecting_rule_key)
+        await callback.message.edit_text(
+            msgs["prompt_rule_key"], reply_markup=privacy_custom_menu(language, current_rules)
+        )
+
+
+@router.callback_query(F.data == "privacy:back_mode")
+async def privacy_back_mode(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    await state.set_state(PrivacySettings.selecting_mode)
+    await callback.message.edit_text(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+
+
+@router.callback_query(F.data == "privacy:back_custom")
+async def privacy_back_custom(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    data = await state.get_data()
+    current_rules = data.get("custom_rules") or {}
+    await state.set_state(PrivacySettings.selecting_rule_key)
+    await callback.message.edit_text(
+        msgs["prompt_rule_key"], reply_markup=privacy_custom_menu(language, current_rules)
+    )
+
+
+@router.callback_query(F.data.startswith("privacy:preset:"))
+async def apply_privacy_preset_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    preset_name = callback.data.split(":")[-1]
+    data = await state.get_data()
+    file_path_str = data.get("file_path")
+    temp_dir_str = data.get("temp_dir")
+    password = data.get("password")
+
+    if not file_path_str:
+        await state.clear()
+        await callback.message.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+        return
+
+    proc_msg = await callback.message.edit_text(msgs["processing"])
+    if not isinstance(proc_msg, Message):
+        return
+
+    file_path = Path(file_path_str)
+    try:
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
+        res = await process_privacy_settings(
+            input_path=file_path,
+            password=password,
+            preset_name=preset_name,
+            proxy=user_proxy,
+        )
+
+        preset_label = msgs["presets"].get(preset_name, preset_name)
+        details_text = ""
+        failed_sessions = [d.session_name for d in res.details if d.status != "ok"]
+        if failed_sessions:
+            details_text = "\n\n<b>Failed Sessions:</b>\n• " + "\n• ".join(failed_sessions[:10])
+
+        report = msgs["done"].format(
+            total=res.total,
+            succeeded=res.succeeded,
+            failed=res.failed,
+            preset=preset_label,
+            details=details_text,
+        )
+
+        await proc_msg.edit_text(
+            report,
+            reply_markup=privacy_result_menu(res.total, res.succeeded, res.failed, language),
+        )
+    except Exception:
+        LOGGER.exception("Privacy settings processing error for user %s", callback.from_user.id)
+        await proc_msg.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+    finally:
+        if temp_dir_str:
+            import shutil
+            shutil.rmtree(temp_dir_str, ignore_errors=True)
+        await state.clear()
+
+
+@router.callback_query(F.data.startswith("privacy:rule:"))
+async def select_privacy_rule_key(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    rule_key = callback.data.split(":")[-1]
+    rule_name = msgs["rules"].get(rule_key, rule_key)
+
+    await state.update_data(active_rule_key=rule_key)
+    await state.set_state(PrivacySettings.selecting_rule_value)
+    prompt = msgs["prompt_rule_value"].format(rule_name=rule_name)
+    await callback.message.edit_text(prompt, reply_markup=privacy_value_menu(language, rule_key))
+
+
+@router.callback_query(F.data.startswith("privacy:val:"))
+async def select_privacy_rule_value(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    parts = callback.data.split(":")
+    rule_key = parts[2]
+    choice_val = parts[3]
+
+    data = await state.get_data()
+    custom_rules = data.get("custom_rules") or {}
+    custom_rules[rule_key] = choice_val
+
+    await state.update_data(custom_rules=custom_rules)
+    await state.set_state(PrivacySettings.selecting_rule_key)
+    await callback.message.edit_text(
+        msgs["prompt_rule_key"], reply_markup=privacy_custom_menu(language, custom_rules)
+    )
+
+
+@router.callback_query(F.data == "privacy:apply_custom")
+async def apply_custom_privacy_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or not callback.from_user:
+        return
+    with session_factory() as db_sess:
+        language = get_user_language(db_sess, callback.from_user.id)
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+
+    data = await state.get_data()
+    file_path_str = data.get("file_path")
+    temp_dir_str = data.get("temp_dir")
+    password = data.get("password")
+    custom_rules = data.get("custom_rules") or {}
+
+    if not file_path_str:
+        await state.clear()
+        await callback.message.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+        return
+
+    proc_msg = await callback.message.edit_text(msgs["processing"])
+    if not isinstance(proc_msg, Message):
+        return
+
+    file_path = Path(file_path_str)
+    try:
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
+        res = await process_privacy_settings(
+            input_path=file_path,
+            password=password,
+            rules=custom_rules,
+            preset_name="custom",
+            proxy=user_proxy,
+        )
+
+        preset_label = msgs["presets"].get("custom", "Custom Rules")
+        details_text = ""
+        failed_sessions = [d.session_name for d in res.details if d.status != "ok"]
+        if failed_sessions:
+            details_text = "\n\n<b>Failed Sessions:</b>\n• " + "\n• ".join(failed_sessions[:10])
+
+        report = msgs["done"].format(
+            total=res.total,
+            succeeded=res.succeeded,
+            failed=res.failed,
+            preset=preset_label,
+            details=details_text,
+        )
+
+        await proc_msg.edit_text(
+            report,
+            reply_markup=privacy_result_menu(res.total, res.succeeded, res.failed, language),
+        )
+    except Exception:
+        LOGGER.exception("Custom privacy settings processing error for user %s", callback.from_user.id)
+        await proc_msg.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+    finally:
+        if temp_dir_str:
+            import shutil
+            shutil.rmtree(temp_dir_str, ignore_errors=True)
+        await state.clear()
+
+
+@router.callback_query(F.data == "privacy:noop")
+async def privacy_noop_handler(callback: CallbackQuery) -> None:
+    await callback.answer()
+
+
+@router.callback_query(F.data == "list_check:noop")
+async def list_check_noop(callback: CallbackQuery) -> None:
+    await callback.answer()
+
 
 
 
@@ -3889,6 +4381,7 @@ async def process_quick_action(
 
     file_path = Path(temp_file_path_str)
     await callback.answer()
+    user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
 
     if action in {"session_check", "spam_check"}:
         await state.set_state(AnalyzeFile.waiting_for_file)
@@ -3903,6 +4396,7 @@ async def process_quick_action(
                 file_path,
                 credentials=settings.api_credential_list,
                 timeout=settings.spambot_timeout,
+                proxy=user_proxy,
             )
             spam_mode = action == "spam_check"
             renderer = render_spam_result if spam_mode else render_session_result
@@ -3929,6 +4423,7 @@ async def process_quick_action(
                 file_path,
                 settings.storage_dir / "outbox",
                 settings.api_credential_list,
+                proxy=user_proxy,
             )
             contacts_output = result_contacts.ok_zip_path
             await callback.message.edit_text(
@@ -4506,8 +5001,12 @@ async def process_quick_action(
             await state.clear()
             return
 
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
         res = await process_account_age_check(
-            file_path, settings.api_credential_list, original_name=original_name
+            file_path,
+            settings.api_credential_list,
+            original_name=original_name,
+            proxy=user_proxy,
         )
         file_path.unlink(missing_ok=True)
 
@@ -4608,6 +5107,55 @@ async def process_quick_action(
         )
         return
 
+    elif action == "list_checker":
+        if not isinstance(callback.message, Message):
+            file_path.unlink(missing_ok=True)
+            await state.clear()
+            return
+        filename = original_name or file_path.name
+        temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_list_checker_"))
+        saved_file = temp_dir / filename
+        shutil.copy2(file_path, saved_file)
+        file_path.unlink(missing_ok=True)
+
+        await state.update_data(
+            temp_dir=str(temp_dir),
+            file1_path=str(saved_file),
+            file1_name=filename,
+        )
+        await state.set_state(ListChecker.waiting_for_file2)
+        msgs_lc = LIST_CHECKER_MESSAGES.get(language, LIST_CHECKER_MESSAGES["en"])
+        prompt = msgs_lc["file2_prompt"].format(name=html.quote(filename))
+        await callback.message.edit_text(
+            prompt,
+            reply_markup=list_checker_cancel_menu(language),
+        )
+        return
+
+    elif action == "privacy_settings":
+        if not isinstance(callback.message, Message):
+            file_path.unlink(missing_ok=True)
+            await state.clear()
+            return
+        filename = original_name or file_path.name
+        temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_privacy_"))
+        saved_file = temp_dir / filename
+        shutil.copy2(file_path, saved_file)
+        file_path.unlink(missing_ok=True)
+
+        await state.update_data(
+            temp_dir=str(temp_dir),
+            file_path=str(saved_file),
+            filename=filename,
+        )
+        await state.set_state(PrivacySettings.selecting_mode)
+        msgs_priv = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+        await callback.message.edit_text(
+            msgs_priv["prompt_mode"],
+            reply_markup=privacy_mode_menu(language),
+        )
+        return
+
     elif action == "clear_contact":
         if not isinstance(callback.message, Message):
             file_path.unlink(missing_ok=True)
@@ -4623,11 +5171,13 @@ async def process_quick_action(
             return
         out_clr: Path | None = None
         try:
+            user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
             res_clr = await process_clear_contacts(
                 file_path,
                 output_dir=settings.storage_dir / "outbox",
                 credentials=settings.api_credential_list,
                 original_name=original_name,
+                proxy=user_proxy,
             )
             out_clr = res_clr.output_path
             report = msgs_clear["done"].format(

@@ -19,6 +19,7 @@ from app.locales import (
     HELP_BUTTON_LABELS,
     KILL_SESSIONS_MESSAGES,
     LANGUAGES,
+    PRIVACY_SETTINGS_MESSAGES,
     PROFILE_SETUP_MESSAGES,
     READ_OTP_MESSAGES,
     SESSION_TO_JSON_MESSAGES,
@@ -145,31 +146,42 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
             ],
             [
                 button(
-                    f"💎 📅 {next(label)}",
+                    f"📅 {next(label)}",
                     file_action("tool:account_age", "quick:account_age"),
                 )
             ],
             [button(f"━━ ⚡ {next(label)} ━━", "section:noop")],
             [
                 button(
-                    f"💎 📨 {next(label)}",
+                    f"📨 {next(label)}",
                     file_action("tool:mass_message", "quick:mass_message"),
                 )
             ],
             [
                 button(
-                    f"💎 ☠️ {next(label)}",
+                    f"☠️ {next(label)}",
                     file_action("tool:kill_sessions", "quick:kill_sessions"),
                 ),
                 button(
-                    f"💎 🔄 {next(label)}",
+                    f"🔄 {next(label)}",
                     file_action("tool:fresh_session", "quick:fresh_session"),
                 ),
             ],
+            [
+                button(
+                    f"📦 {next(label)}",
+                    file_action("tool:list_checker", "quick:list_checker"),
+                )
+            ],
             [button(f"━━ 🔒 {next(label)} ━━", "section:noop")],
-            [button(f"💎 🔒 {next(label)}", "menu:privacy")],
-            [button(f"━━ 💎 {next(label)} ━━", "section:noop")],
-            [button(f"💎 {next(label)}", "menu:plan")],
+            [
+                button(
+                    f"🔒 {next(label)}",
+                    file_action("tool:privacy_settings", "quick:privacy_settings"),
+                )
+            ],
+            [button(f"━━ 👑 {next(label)} ━━", "section:noop")],
+            [button(f"👑 {next(label)}", "menu:plan")],
             [button(f"━━ ⚙️ {next(label)} ━━", "section:noop")],
             [
                 button(f"❓ {next(label)}", "menu:help"),
@@ -1220,4 +1232,198 @@ def mass_message_paused_menu(
             ],
         ]
     )
+
+
+def list_checker_cancel_menu(language: str = "en") -> InlineKeyboardMarkup:
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=cancel_label, callback_data="action:cancel")]]
+    )
+
+
+def list_checker_result_menu(
+    tdata: int, session: int, json_cnt: int, total: int, language: str = "en"
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button("📁 Tdata", "list_check:noop"),
+                button(str(tdata), "list_check:noop"),
+            ],
+            [
+                button("🔑 Session", "list_check:noop"),
+                button(str(session), "list_check:noop"),
+            ],
+            [
+                button("📄 JSON", "list_check:noop"),
+                button(str(json_cnt), "list_check:noop"),
+            ],
+            [
+                button("✅ Total", "list_check:noop"),
+                button(str(total), "list_check:noop"),
+            ],
+        ]
+    )
+
+
+def privacy_2fa_menu(language: str = "en") -> InlineKeyboardMarkup:
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [button("⏩ Skip", "privacy:skip_2fa")],
+            [button(cancel_label, "action:cancel")],
+        ]
+    )
+
+
+def privacy_mode_menu(language: str = "en") -> InlineKeyboardMarkup:
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [button(msgs["btn_preset"], "privacy:mode:preset")],
+            [button(msgs["btn_custom"], "privacy:mode:custom")],
+            [button(cancel_label, "action:cancel")],
+        ]
+    )
+
+
+def privacy_presets_menu(language: str = "en") -> InlineKeyboardMarkup:
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    presets = msgs["presets"]
+    back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [button(presets["maximum"], "privacy:preset:maximum")],
+            [button(presets["medium"], "privacy:preset:medium")],
+            [button(presets["open"], "privacy:preset:open")],
+            [button(back_label, "privacy:back_mode")],
+        ]
+    )
+
+
+def privacy_custom_menu(
+    language: str = "en", current_rules: dict[str, str] | None = None
+) -> InlineKeyboardMarkup:
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    rules_dict = msgs["rules"]
+    values_dict = msgs["values"]
+    rules_state = current_rules or {}
+    back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
+
+    rows = []
+    for key, name in rules_dict.items():
+        val = rules_state.get(key, "nobody")
+        val_name = values_dict.get(val, val)
+        rows.append([button(f"{name}: {val_name}", f"privacy:rule:{key}")])
+
+    rows.append([button(msgs["btn_apply_custom"], "privacy:apply_custom")])
+    rows.append([button(back_label, "privacy:back_mode")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def privacy_value_menu(language: str = "en", rule_key: str = "") -> InlineKeyboardMarkup:
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    values_dict = msgs["values"]
+    back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
+
+    rows = [
+        [button(values_dict["everybody"], f"privacy:val:{rule_key}:everybody")],
+        [button(values_dict["contacts"], f"privacy:val:{rule_key}:contacts")],
+        [button(values_dict["nobody"], f"privacy:val:{rule_key}:nobody")],
+        [button(back_label, "privacy:back_custom")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def privacy_result_menu(
+    total: int, succeeded: int, failed: int, language: str = "en"
+) -> InlineKeyboardMarkup:
+    msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(msgs["btn_total"], "privacy:noop"),
+                button(str(total), "privacy:noop"),
+            ],
+            [
+                button(msgs["btn_ok"], "privacy:noop"),
+                button(str(succeeded), "privacy:noop"),
+            ],
+            [
+                button(msgs["btn_failed"], "privacy:noop"),
+                button(str(failed), "privacy:noop"),
+            ],
+        ]
+    )
+
+
+def proxy_menu(has_proxy: bool = False, language: str = "en") -> InlineKeyboardMarkup:
+    labels = {
+        "en": {
+            "set": "⚙️ Set Proxy",
+            "view": "📡 View Current Proxy",
+            "remove": "🗑️ Remove Proxy",
+            "back": "⬅️ Back",
+        },
+        "bn": {
+            "set": "⚙️ প্রক্সি সেট করুন",
+            "view": "📡 বর্তমান প্রক্সি দেখুন",
+            "remove": "🗑️ প্রক্সি রিমুভ করুন",
+            "back": "⬅️ ব্যাক",
+        },
+        "hi": {
+            "set": "⚙️ प्रॉक्सी सेट करें",
+            "view": "📡 वर्तमान प्रॉक्सी देखें",
+            "remove": "🗑️ प्रॉक्सी हटाएं",
+            "back": "⬅️ वापस",
+        },
+        "ur": {
+            "set": "⚙️ پروکسی سیٹ کریں",
+            "view": "📡 موجودہ پروکسی دیکھیں",
+            "remove": "🗑️ پروکسی ختم کریں",
+            "back": "⬅️ واپس",
+        },
+        "ar": {
+            "set": "⚙️ ضبط البروكسي",
+            "view": "📡 عرض البروكسي الحالي",
+            "remove": "🗑️ إزالة البروكسي",
+            "back": "⬅️ عودة",
+        },
+        "zh": {
+            "set": "⚙️ 设置代理",
+            "view": "📡 查看当前代理",
+            "remove": "🗑️ 删除代理",
+            "back": "⬅️ 返回",
+        },
+    }
+    l = labels.get(language, labels["en"])
+    rows = [
+        [button(l["set"], "proxy:set")],
+        [button(l["view"], "proxy:view")],
+    ]
+    if has_proxy:
+        rows.append([button(l["remove"], "proxy:remove")])
+    rows.append([button(l["back"], "menu:back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def user_vip_plans_menu(plans: list, language: str = "en") -> InlineKeyboardMarkup:
+    """Generate dynamic user VIP purchase plans keyboard."""
+    kb = []
+    for p in plans:
+        kb.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📅 {p.name} — {p.price} USD",
+                    callback_data=f"buy_plan:{p.id}",
+                )
+            ]
+        )
+    back_lbl = BACK_LABELS.get(language, BACK_LABELS["en"])
+    kb.append([InlineKeyboardButton(text=f"◀️ {back_lbl}", callback_data="menu:back")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+
 

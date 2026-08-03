@@ -21,6 +21,7 @@ from app.locales import ARCHIVE_ERRORS, READ_OTP_MESSAGES, READ_OTP_PROMPTS
 from app.otp_results import OTPAccountResult, OTPCode, render_otp_account
 from app.services.files import UnsafeArchiveError
 from app.services.otp_reader import logout_account_session, read_account_otps
+from app.services.proxy import resolve_user_proxy
 from app.states import ReadOTP
 
 router = Router(name="otp")
@@ -232,8 +233,9 @@ async def handle_otp_check(
     session_path_str = curr.get("session_path")
     if session_path_str and settings.api_credential_list:
         path = Path(session_path_str)
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
         user_info, live_codes = await read_account_otps(
-            path, settings.api_credential_list
+            path, settings.api_credential_list, proxy=user_proxy
         )
         if user_info.get("user"):
             user_val = user_info["user"]
@@ -295,8 +297,9 @@ async def handle_otp_check_again(
     session_path_str = curr.get("session_path")
     if session_path_str and settings.api_credential_list:
         path = Path(session_path_str)
+        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
         user_info, live_codes = await read_account_otps(
-            path, settings.api_credential_list, since_dt=since_dt
+            path, settings.api_credential_list, since_dt=since_dt, proxy=user_proxy
         )
         if user_info.get("user"):
             user_val = user_info["user"]
@@ -343,8 +346,9 @@ async def handle_otp_logout(
         curr = sessions[index]
         session_path_str = curr.get("session_path")
         if session_path_str and settings.api_credential_list:
+            user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
             await logout_account_session(
-                Path(session_path_str), settings.api_credential_list
+                Path(session_path_str), settings.api_credential_list, proxy=user_proxy
             )
 
     msgs = READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])

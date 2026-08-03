@@ -85,3 +85,73 @@ async def test_back_button_edits_help_message_into_main_menu() -> None:
     assert "Telegram Account Checker Bot" in text
     assert "Choose an option" in text
     callback.message.answer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_command_referral_returns_referral_link() -> None:
+    from app.handlers.start import command_referral
+
+    message = MagicMock(spec=Message)
+    message.from_user = MagicMock(id=8762735692)
+    message.answer = AsyncMock()
+
+    mock_bot = MagicMock()
+    mock_bot.get_me = AsyncMock(return_value=MagicMock(username="FastTGConvert_bot"))
+
+    mock_session = MagicMock()
+    mock_sf = MagicMock(return_value=mock_session)
+
+    with patch("app.handlers.start.get_user_language", return_value="en"):
+        await command_referral(message, mock_bot, mock_sf)
+
+    message.answer.assert_awaited_once()
+    args, kwargs = message.answer.await_args
+    assert "https://t.me/FastTGConvert_bot?start=ref_8762735692" in args[0]
+    assert kwargs.get("disable_web_page_preview") is True
+
+
+@pytest.mark.asyncio
+async def test_command_proxy_returns_proxy_setup_instructions() -> None:
+    from app.handlers.start import command_proxy
+
+    message = MagicMock(spec=Message)
+    message.from_user = MagicMock(id=12345)
+    message.answer = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_sf = MagicMock(return_value=mock_session)
+
+    with (
+        patch("app.handlers.start.get_user_language", return_value="en"),
+        patch("app.handlers.start.get_user_proxy", return_value=None),
+    ):
+        await command_proxy(message, mock_sf)
+
+    message.answer.assert_awaited_once()
+    text = message.answer.await_args.args[0]
+    assert "Your Proxy Setup" in text
+    assert "No Proxy set" in text
+
+
+@pytest.mark.asyncio
+async def test_process_proxy_input_validates_and_saves() -> None:
+    from app.handlers.start import process_proxy_input
+
+    message = MagicMock(spec=Message)
+    message.from_user = MagicMock(id=12345)
+    message.text = "socks5://1.2.3.4:1080"
+    message.answer = AsyncMock()
+
+    state = AsyncMock(spec=FSMContext)
+    mock_sf = MagicMock()
+
+    with (
+        patch("app.handlers.start.get_user_language", return_value="en"),
+        patch("app.handlers.start.set_user_proxy") as mock_set,
+        patch("app.services.proxy.test_proxy_connection", return_value=(True, "OK")),
+    ):
+        await process_proxy_input(message, state, mock_sf)
+
+    mock_set.assert_called_once()
+    state.clear.assert_awaited_once()
+    assert message.answer.call_count >= 1

@@ -105,6 +105,7 @@ class FreshSession(StatesGroup):
     confirming = State()
 
 
+
 class MassMessage(StatesGroup):
     waiting_for_file = State()
     waiting_for_recipients = State()
@@ -112,4 +113,22 @@ class MassMessage(StatesGroup):
     configuring_delay = State()
     confirming = State()
     running = State()
+
+
+class ListChecker(StatesGroup):
+    waiting_for_file1 = State()
+    waiting_for_file2 = State()
+
+
+class PrivacySettings(StatesGroup):
+    waiting_for_file = State()
+    waiting_for_2fa = State()
+    selecting_mode = State()
+    selecting_preset = State()
+    selecting_rule_key = State()
+    selecting_rule_value = State()
+
+
+class ProxyState(StatesGroup):
+    waiting_for_proxy = State()
 

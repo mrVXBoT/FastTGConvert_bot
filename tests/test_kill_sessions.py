@@ -1,11 +1,9 @@
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.services.kill_sessions import (
-    KillSessionsResult,
-    SessionKillDetail,
     kill_single_session_others,
     process_kill_sessions,
 )

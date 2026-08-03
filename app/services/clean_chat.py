@@ -5,7 +5,6 @@ import shutil
 import tempfile
 import zipfile
 from collections.abc import Collection
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -46,6 +45,7 @@ async def clean_session_chats(
     session_file: Path,
     credentials: list[tuple[int, str]],
     mode: str | Collection[str] = "all",
+    proxy: tuple | None = None,
 ) -> bool:
     """
     Connect via Telethon and clean chats for a session account according to mode.
@@ -56,28 +56,19 @@ async def clean_session_chats(
     if not credentials or not session_file.exists():
         return False
 
-    try:
-        from telethon import TelegramClient  # type: ignore[import-untyped]
-    except ModuleNotFoundError:
-        LOGGER.error("Telethon not installed for clean chat")
-        return False
+    from app.services.telethon_factory import create_telethon_client
 
-    with tempfile.TemporaryDirectory(prefix="ftgc_clean_chat_") as tmp:
-        run_sess = Path(tmp) / "account.session"
-        shutil.copy2(session_file, run_sess)
-        stem = str(run_sess.with_suffix(""))
-
-        for api_id, api_hash in credentials:
-            client = None
-            cleaned = False
-            try:
-                client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
-                await client.connect()
-                if not await client.is_user_authorized():
+    for api_id, api_hash in credentials:
+        cleaned = False
+        try:
+            async with create_telethon_client(
+                session_file, api_id, api_hash, proxy=proxy
+            ) as client:
+                if not await client.is_user_authorized():  # type: ignore[attr-defined]
                     continue
 
                 failed_dialogs = 0
-                async for dialog in client.iter_dialogs():
+                async for dialog in client.iter_dialogs():  # type: ignore[attr-defined]
                     is_user = getattr(dialog, "is_user", False)
                     is_group = getattr(dialog, "is_group", False)
                     is_channel = getattr(dialog, "is_channel", False)
@@ -101,10 +92,7 @@ async def clean_session_chats(
                     if should_clean:
                         entity = dialog.entity
                         try:
-                            # For users this removes the dialog only for the current
-                            # account. For groups/channels Telethon leaves or
-                            # unsubscribes, which is the intended Clean Chat action.
-                            await client.delete_dialog(entity, revoke=False)
+                            await client.delete_dialog(entity, revoke=False)  # type: ignore[attr-defined]
                         except Exception as exc:  # noqa: BLE001
                             failed_dialogs += 1
                             LOGGER.warning(
@@ -114,18 +102,13 @@ async def clean_session_chats(
                             )
 
                 cleaned = failed_dialogs == 0
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.warning(
-                    "Clean chat attempt failed with api_id=%d: %s", api_id, exc
-                )
-            finally:
-                if client is not None:
-                    with suppress(Exception):
-                        await client.disconnect()
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning(
+                "Clean chat attempt failed with api_id=%d: %s", api_id, exc
+            )
 
-            if cleaned:
-                shutil.copy2(run_sess, session_file)
-                return True
+        if cleaned:
+            return True
 
     return False
 
@@ -137,6 +120,7 @@ async def process_clean_chat(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    proxy: tuple | None = None,
 ) -> CleanChatResult:
     selected_categories = normalize_clean_chat_selection(mode)
     _ensure_opentele_patched()
@@ -168,7 +152,7 @@ async def process_clean_chat(
                 continue
 
             cleaned = await clean_session_chats(
-                sess_file, credentials, mode=selected_categories
+                sess_file, credentials, mode=selected_categories, proxy=proxy
             )
             if cleaned:
                 success_files.append(sess_file)

@@ -31,6 +31,7 @@ class ContactsCheckResult:
 async def check_session_contacts_live(
     session_path: Path,
     credentials: list[tuple[int, str]],
+    proxy: tuple | None = None,
 ) -> tuple[bool | None, int]:
     """
     Connect via Telethon and fetch contacts count.
@@ -79,7 +80,7 @@ async def check_session_contacts_live(
             client = None
             try:
                 client = TelegramClient(
-                    session_str, api_id, api_hash, receive_updates=False
+                    session_str, api_id, api_hash, receive_updates=False, proxy=proxy
                 )
                 await client.connect()
                 if not await client.is_user_authorized():
@@ -191,6 +192,7 @@ async def process_contacts_check(
     input_path: Path,
     output_dir: Path,
     credentials: list[tuple[int, str]] | None = None,
+    proxy: tuple | None = None,
 ) -> ContactsCheckResult:
     """
     Process input file (.session or .zip) for contacts checking.
@@ -217,7 +219,7 @@ async def process_contacts_check(
             is_ok: bool = False
             if credentials:
                 live_status, _ = await check_session_contacts_live(
-                    sess_file, credentials
+                    sess_file, credentials, proxy=proxy
                 )
                 if live_status is not None:
                     is_ok = live_status

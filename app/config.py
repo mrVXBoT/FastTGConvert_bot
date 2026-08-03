@@ -18,12 +18,20 @@ class Settings(BaseSettings):
     required_channels: str = ""
     # Telegram username, t.me URL, tg:// user URL, or numeric user ID.
     support_id: str = ""
+    admin_id: int = 0
     # Telegram API credentials – comma-separated list of  id:hash  pairs.
     # Example: API_CREDENTIALS=12345:abc,67890:def
     # Obtained from https://my.telegram.org  (keep this secret!)
     api_credentials: str = ""
     # Seconds to wait for @SpamBot reply before timing out
     spambot_timeout: int = Field(default=15, ge=5, le=60)
+    # Optional 32-byte url-safe base64 key for encrypting user proxy passwords
+    proxy_encryption_key: str = ""
+    # Prometheus HTTP metrics exporter configuration
+    metrics_enabled: bool = True
+    metrics_host: str = "127.0.0.1"
+    metrics_port: int = Field(default=8080, ge=1000, le=65535)
+    metrics_auth_token: str = ""
 
     @property
     def api_credential_list(self) -> list[tuple[int, str]]:

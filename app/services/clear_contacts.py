@@ -28,6 +28,7 @@ class ClearContactsResult:
 async def clear_session_contacts(
     session_file: Path,
     credentials: list[tuple[int, str]],
+    proxy: tuple | None = None,
 ) -> bool:
     if not credentials or not session_file.exists():
         return False
@@ -47,7 +48,9 @@ async def clear_session_contacts(
             client = None
             cleared = False
             try:
-                client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+                client = TelegramClient(
+                    stem, api_id, api_hash, receive_updates=False, proxy=proxy
+                )
                 await client.connect()
                 if not await client.is_user_authorized():
                     continue
@@ -100,6 +103,7 @@ async def process_clear_contacts(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    proxy: tuple | None = None,
 ) -> ClearContactsResult:
     _ensure_opentele_patched()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -129,7 +133,9 @@ async def process_clear_contacts(
                 failed += 1
                 continue
 
-            cleared = await clear_session_contacts(sess_file, credentials)
+            cleared = await clear_session_contacts(
+                sess_file, credentials, proxy=proxy
+            )
             if cleared:
                 success_files.append(sess_file)
             else:

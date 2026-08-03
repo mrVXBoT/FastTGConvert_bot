@@ -33,6 +33,7 @@ class KillSessionsResult:
 async def kill_single_session_others(
     session_file: Path,
     credentials: list[tuple[int, str]],
+    proxy: tuple | None = None,
 ) -> tuple[str, str]:
     """Execute ResetAuthorizationsRequest for a single session file.
 
@@ -43,8 +44,8 @@ async def kill_single_session_others(
         return "invalid_sqlite", "Invalid SQLite database or missing auth_key"
 
     try:
-        from telethon import TelegramClient, functions
-        from telethon.errors import (
+        from telethon import TelegramClient, functions  # type: ignore[import-untyped]
+        from telethon.errors import (  # type: ignore[import-untyped]
             AuthKeyUnregisteredError,
             FreshResetAuthorisationForbiddenError,
             RPCError,
@@ -62,7 +63,9 @@ async def kill_single_session_others(
             shutil.copy2(session_file, run_sess)
             stem = str(run_sess.with_suffix(""))
 
-            client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+            client = TelegramClient(
+                stem, api_id, api_hash, receive_updates=False, proxy=proxy
+            )
             try:
                 await client.connect()
                 if not await client.is_user_authorized():
@@ -95,6 +98,7 @@ async def process_kill_sessions(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    proxy: tuple | None = None,
 ) -> KillSessionsResult:
     """Extract sessions from ZIP or single .session and terminate all other active sessions."""
     _ensure_opentele_patched()
@@ -122,7 +126,7 @@ async def process_kill_sessions(
         details: list[SessionKillDetail] = []
 
         for sess_file in session_files:
-            st, msg = await kill_single_session_others(sess_file, credentials)
+            st, msg = await kill_single_session_others(sess_file, credentials, proxy=proxy)
             if st == "ok":
                 killed += 1
             elif st == "fresh_forbidden":

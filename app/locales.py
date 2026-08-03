@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -77,6 +78,91 @@ LANGUAGES = {
     ),
 }
 
+ADMIN_LOCALES: dict[str, dict[str, str]] = {
+    "en": {
+        "title": "👑 **Admin Control Panel**",
+        "btn_stats": "📊 Statistics",
+        "btn_users": "👥 Users",
+        "btn_broadcast": "📢 Broadcast",
+        "btn_admins": "👮 Admins",
+        "btn_force_join": "📌 Force Join",
+        "btn_support": "🎧 Support",
+        "btn_vip": "💎 VIP Management",
+        "btn_close": "❌ Close Panel",
+        "btn_back": "⬅️ Back",
+        "access_denied": "❌ Access Denied: Admin privileges required.",
+    },
+    "bn": {
+        "title": "👑 **এডমিন কন্ট্রোল প্যানেল**",
+        "btn_stats": "📊 পরিসংখ্যান",
+        "btn_users": "👥 ইউজার পরিচালনা",
+        "btn_broadcast": "📢 সার্বজনীন বার্তা",
+        "btn_admins": "👮 এডমিন তালিকা",
+        "btn_force_join": "📌 বাধ্যতামূলক জয়েন",
+        "btn_support": "🎧 সাপোর্ট সেটিংস",
+        "btn_vip": "💎 VIP ব্যবস্থাপনা",
+        "btn_close": "❌ প্যানেল বন্ধ",
+        "btn_back": "⬅️ ফিরে যান",
+        "access_denied": "❌ প্রবেশাধিকার অস্বীকৃত: এডমিন ক্ষমতা আবশ্যক।",
+    },
+    "hi": {
+        "title": "👑 **एडमिन कंट्रोल पैनल**",
+        "btn_stats": "📊 आंकड़े",
+        "btn_users": "👥 उपयोगकर्ता",
+        "btn_broadcast": "📢 ब्रॉडकास्ट",
+        "btn_admins": "👮 एडमिन",
+        "btn_force_join": "📌 अनिवार्य जॉइन",
+        "btn_support": "🎧 सपोर्ट",
+        "btn_vip": "💎 VIP प्रबंधन",
+        "btn_close": "❌ पैनल बंद करें",
+        "btn_back": "⬅️ वापस",
+        "access_denied": "❌ पहुंच अस्वीकृत: एडमिन अनुमतियां आवश्यक।",
+    },
+    "ur": {
+        "title": "👑 **ایڈمن کنٹرول پینل**",
+        "btn_stats": "📊 اعداد و شمار",
+        "btn_users": "👥 صارفین",
+        "btn_broadcast": "📢 نشریات",
+        "btn_admins": "👮 ایڈمنز",
+        "btn_force_join": "📌 لازمی شمولیت",
+        "btn_support": "🎧 سپورٹ",
+        "btn_vip": "💎 VIP مینجمنٹ",
+        "btn_close": "❌ پینل بند کریں",
+        "btn_back": "⬅️ واپس",
+        "access_denied": "❌ رسائی مسترد: ایڈمن کے اختیارات درکار ہیں۔",
+    },
+    "ar": {
+        "title": "👑 **لوحة تحكم المشرف**",
+        "btn_stats": "📊 الإحصائيات",
+        "btn_users": "👥 إدارة المستخدمين",
+        "btn_broadcast": "📢 الإذاعة الجماعية",
+        "btn_admins": "👮 المشرفين",
+        "btn_force_join": "📌 الاشتراك الإجباري",
+        "btn_support": "🎧 إعدادات الدعم",
+        "btn_vip": "💎 إدارة VIP والخطط",
+        "btn_close": "❌ إغلاق اللوحة",
+        "btn_back": "⬅️ عودة",
+        "access_denied": "❌ تم رفض الوصول: يتطلب صلاحيات المشرف.",
+    },
+    "zh": {
+        "title": "👑 **管理员控制面板**",
+        "btn_stats": "📊 数据统计",
+        "btn_users": "👥 用户管理",
+        "btn_broadcast": "📢 广播群发",
+        "btn_admins": "👮 管理员列表",
+        "btn_force_join": "📌 强制关注频道",
+        "btn_support": "🎧 客服支持设置",
+        "btn_vip": "💎 VIP 与方案管理",
+        "btn_close": "❌ 关闭面板",
+        "btn_back": "⬅️ 返回",
+        "access_denied": "❌ 拒绝访问：需要管理员权限。",
+    },
+}
+
+
+def get_admin_locale(lang: str = "en") -> dict[str, str]:
+    return ADMIN_LOCALES.get(lang, ADMIN_LOCALES["en"])
+
 LANGUAGE_PROMPT = "🌐 <b>Choose Language</b>\n\nPick your preferred language below:"
 
 LANGUAGE_PROMPTS = {
@@ -86,6 +172,234 @@ LANGUAGE_PROMPTS = {
     "ur": "🌐 <b>زبان منتخب کریں</b>\n\nنیچے اپنی پسندیدہ زبان منتخب کریں:",
     "ar": "🌐 <b>اختر اللغة</b>\n\nاختر لغتك المفضلة أدناه:",
     "zh": "🌐 <b>选择语言</b>\n\n请在下方选择您的首选语言：",
+}
+
+REFERRAL_MESSAGES: dict[str, str] = {
+    "en": (
+        "🔗 <b>Your Referral Link</b>\n\n"
+        "<code>{ref_link}</code>\n\n"
+        "📊 <b>Your Stats</b>\n"
+        "  👥 Referred: <b>{referred}</b> users\n"
+        "  🎁 VIP days earned: <b>{earned_days}</b>\n\n"
+        "🥇 <b>Reward Tiers</b>\n"
+        "  🏆 <b>1 refs</b> → 1 days FREE VIP\n"
+        "  🏆 <b>7 refs</b> → 7 days FREE VIP\n"
+        "  🏆 <b>15 refs</b> → 15 days FREE VIP\n"
+        "  🏆 <b>30 refs</b> → 30 days FREE VIP\n\n"
+        "Share your link! Every new user who joins via your link counts. 🔗"
+    ),
+    "bn": (
+        "🔗 <b>আপনার রেফারেল লিংক</b>\n\n"
+        "<code>{ref_link}</code>\n\n"
+        "📊 <b>আপনার পরিসংখ্যান</b>\n"
+        "  👥 রেফারেল: <b>{referred}</b> জন\n"
+        "  🎁 অর্জিত VIP দিন: <b>{earned_days}</b>\n\n"
+        "🥇 <b>পুরস্কার স্তর</b>\n"
+        "  🏆 <b>1 রেফার</b> → 1 দিন ফ্রি VIP\n"
+        "  🏆 <b>7 রেফার</b> → 7 দিন ফ্রি VIP\n"
+        "  🏆 <b>15 রেফার</b> → 15 দিন ফ্রি VIP\n"
+        "  🏆 <b>30 রেফার</b> → 30 দিন ফ্রি VIP\n\n"
+        "আপনার লিংক শেয়ার করুন! আপনার লিংকের মাধ্যমে আসা প্রতিটি নতুন ইউজার যুক্ত হবে। 🔗"
+    ),
+    "hi": (
+        "🔗 <b>आपका रेफ़रल लिंक</b>\n\n"
+        "<code>{ref_link}</code>\n\n"
+        "📊 <b>आपके आंकड़े</b>\n"
+        "  👥 आमंत्रित: <b>{referred}</b> उपयोगकर्ता\n"
+        "  🎁 अर्जित VIP दिन: <b>{earned_days}</b>\n\n"
+        "🥇 <b>पुरस्कार स्तर</b>\n"
+        "  🏆 <b>1 रेफ़रल</b> → 1 दिन मुफ़्त VIP\n"
+        "  🏆 <b>7 रेफ़रल</b> → 7 दिन मुफ़्त VIP\n"
+        "  🏆 <b>15 रेफ़रल</b> → 15 दिन मुफ़्त VIP\n"
+        "  🏆 <b>30 रेफ़रल</b> → 30 दिन मुफ़्त VIP\n\n"
+        "अपना लिंक साझा करें! आपके लिंक के माध्यम से जुड़ने वाला प्रत्येक नया उपयोगकर्ता गिना जाता है। 🔗"
+    ),
+    "ur": (
+        "🔗 <b>آپ کا ریفرل لنک</b>\n\n"
+        "<code>{ref_link}</code>\n\n"
+        "📊 <b>آپ کے اعداد و شمار</b>\n"
+        "  👥 شامل کیے گئے: <b>{referred}</b> صارفین\n"
+        "  🎁 حاصل شدہ VIP ایام: <b>{earned_days}</b>\n\n"
+        "🥇 <b>انعامی درجات</b>\n"
+        "  🏆 <b>1 ریفرل</b> → 1 دن مفت VIP\n"
+        "  🏆 <b>7 ریفرل</b> → 7 دن مفت VIP\n"
+        "  🏆 <b>15 ریفرل</b> → 15 دن مفت VIP\n"
+        "  🏆 <b>30 ریفرل</b> → 30 دن مفت VIP\n\n"
+        "اپنا لنک شیئر کریں! آپ کے لنک سے شامل ہونے والا ہر نیا صارف شمار ہوگا۔ 🔗"
+    ),
+    "ar": (
+        "🔗 <b>رابط الإحالة الخاص بك</b>\n\n"
+        "<code>{ref_link}</code>\n\n"
+        "📊 <b>إحصائياتك</b>\n"
+        "  👥 تمت إحالتهم: <b>{referred}</b> مستخدمين\n"
+        "  🎁 أيام VIP المكتسبة: <b>{earned_days}</b>\n\n"
+        "🥇 <b>مستويات المكافآت</b>\n"
+        "  🏆 <b>1 إحالة</b> → يوم 1 VIP مجاني\n"
+        "  🏆 <b>7 إحالات</b> → 7 أيام VIP مجاناً\n"
+        "  🏆 <b>15 إحالة</b> → 15 يوم VIP مجاناً\n"
+        "  🏆 <b>30 إحالة</b> → 30 يوم VIP مجاناً\n\n"
+        "شارك رابطك! كل مستخدم جديد ينضم عبر رابطك يمنحك نقاطاً. 🔗"
+    ),
+    "zh": (
+        "🔗 <b>您的推荐链接</b>\n\n"
+        "<code>{ref_link}</code>\n\n"
+        "📊 <b>您的统计数据</b>\n"
+        "  👥 已推荐: <b>{referred}</b> 用户\n"
+        "  🎁 已获得 VIP 天数: <b>{earned_days}</b>\n\n"
+        "🥇 <b>奖励阶梯</b>\n"
+        "  🏆 <b>1 人推荐</b> → 1 天免费 VIP\n"
+        "  🏆 <b>7 人推荐</b> → 7 天免费 VIP\n"
+        "  🏆 <b>15 人推荐</b> → 15 天免费 VIP\n"
+        "  🏆 <b>30 人推荐</b> → 30 天免费 VIP\n\n"
+        "分享您的链接！通过您的链接加入的每一位新用户都算数。 🔗"
+    ),
+}
+
+PROXY_MESSAGES: dict[str, str] = {
+    "en": (
+        "🌐 <b>Your Proxy Setup</b>\n\n"
+        "Send your proxy in one of these formats:\n\n"
+        "<code>socks5://host:port</code>\n"
+        "<code>socks5://user:pass@host:port</code>\n"
+        "<code>http://host:port</code>\n\n"
+        "Examples:\n"
+        "<code>socks5://103.1.2.3:1080</code>\n"
+        "<code>socks5://myuser:mypass@45.6.7.8:1080</code>"
+    ),
+    "bn": (
+        "🌐 <b>আপনার প্রক্সি সেটআপ</b>\n\n"
+        "নিচের যেকোনো একটি ফরম্যাটে প্রক্সি পাঠান:\n\n"
+        "<code>socks5://host:port</code>\n"
+        "<code>socks5://user:pass@host:port</code>\n"
+        "<code>http://host:port</code>\n\n"
+        "উদাহরণ:\n"
+        "<code>socks5://103.1.2.3:1080</code>\n"
+        "<code>socks5://myuser:mypass@45.6.7.8:1080</code>"
+    ),
+    "hi": (
+        "🌐 <b>आपका प्रॉक्सी सेटअप</b>\n\n"
+        "इनमें से किसी एक प्रारूप में अपना प्रॉक्सी भेजें:\n\n"
+        "<code>socks5://host:port</code>\n"
+        "<code>socks5://user:pass@host:port</code>\n"
+        "<code>http://host:port</code>\n\n"
+        "उदाहरण:\n"
+        "<code>socks5://103.1.2.3:1080</code>\n"
+        "<code>socks5://myuser:mypass@45.6.7.8:1080</code>"
+    ),
+    "ur": (
+        "🌐 <b>آپ کا پروکسی سیٹ اپ</b>\n\n"
+        "درج ذیل میں سے کسی ایک فارمیٹ میں اپنا پروکسی بھیجیں:\n\n"
+        "<code>socks5://host:port</code>\n"
+        "<code>socks5://user:pass@host:port</code>\n"
+        "<code>http://host:port</code>\n\n"
+        "مثالیں:\n"
+        "<code>socks5://103.1.2.3:1080</code>\n"
+        "<code>socks5://myuser:mypass@45.6.7.8:1080</code>"
+    ),
+    "ar": (
+        "🌐 <b>إعداد البروكسي الخاص بك</b>\n\n"
+        "أرسل البروكسي بأحد التنسيقات التالية:\n\n"
+        "<code>socks5://host:port</code>\n"
+        "<code>socks5://user:pass@host:port</code>\n"
+        "<code>http://host:port</code>\n\n"
+        "أمثلة:\n"
+        "<code>socks5://103.1.2.3:1080</code>\n"
+        "<code>socks5://myuser:mypass@45.6.7.8:1080</code>"
+    ),
+    "zh": (
+        "🌐 <b>您的代理设置</b>\n\n"
+        "请以以下格式之一发送您的代理：\n\n"
+        "<code>socks5://host:port</code>\n"
+        "<code>socks5://user:pass@host:port</code>\n"
+        "<code>http://host:port</code>\n\n"
+        "示例：\n"
+        "<code>socks5://103.1.2.3:1080</code>\n"
+        "<code>socks5://myuser:mypass@45.6.7.8:1080</code>"
+    ),
+}
+
+
+def proxy_status_text(proxy: str | None, language: str = "en") -> str:
+    texts = {
+        "en": {
+            "title": "🌐 <b>Your Proxy Setup</b>",
+            "none": "❌ <b>No Proxy set.</b>\n\nYour files use the default proxy.",
+            "set": "✅ <b>Current Proxy:</b> <code>{proxy}</code>\n\nYour files will use your custom proxy.",
+        },
+        "bn": {
+            "title": "🌐 <b>আপনার প্রক্সি সেটআপ</b>",
+            "none": "❌ <b>কোন প্রক্সি সেট করা নেই।</b>\n\nআপনার ফাইল ডিফোল্ট প্রক্সি ব্যবহার করছে।",
+            "set": "✅ <b>বর্তমান প্রক্সি:</b> <code>{proxy}</code>\n\nআপনার ফাইল কাস্টম প্রক্সি ব্যবহার করবে।",
+        },
+        "hi": {
+            "title": "🌐 <b>आपका प्रॉक्सी सेटअप</b>",
+            "none": "❌ <b>कोई प्रॉक्सी सेट नहीं है।</b>\n\nआपकी फ़ाइलें डिफ़ॉल्ट प्रॉक्सी का उपयोग करती हैं।",
+            "set": "✅ <b>वर्तमान प्रॉक्सी:</b> <code>{proxy}</code>\n\nआपकी फ़ाइलें आपके कस्टम प्रॉक्सी का उपयोग करेंगी।",
+        },
+        "ur": {
+            "title": "🌐 <b>آپ کا پروکسی سیٹ اپ</b>",
+            "none": "❌ <b>کوئی پروکسی سیٹ نہیں ہے۔</b>\n\nآپ کی فائلیں ڈیفالٹ پروکسی استعمال کرتی ہیں۔",
+            "set": "✅ <b>موجودہ پروکسی:</b> <code>{proxy}</code>\n\nآپ کی فائلیں آپ کا کسٹم پروکسی استعمال کریں گی۔",
+        },
+        "ar": {
+            "title": "🌐 <b>إعداد البروكسي الخاص بك</b>",
+            "none": "❌ <b>لم يتم ضبط أي بروكسي.</b>\n\nملفاتك تستخدم البروكسي الافتراضي.",
+            "set": "✅ <b>البروكسي الحالي:</b> <code>{proxy}</code>\n\nملفاتك ستستخدم البروكسي المخصص.",
+        },
+        "zh": {
+            "title": "🌐 <b>您的代理设置</b>",
+            "none": "❌ <b>未设置代理。</b>\n\n您的文件将使用默认代理。",
+            "set": "✅ <b>当前代理:</b> <code>{proxy}</code>\n\n您的文件将使用您的自定义代理。",
+        },
+    }
+    t = texts.get(language, texts["en"])
+    status = t["set"].format(proxy=proxy) if proxy else t["none"]
+    return f"{t['title']}\n\n{status}"
+
+
+PROXY_SUCCESS_MESSAGES: dict[str, str] = {
+    "en": "✅ <b>Proxy set successfully!</b>\nYour proxy: <code>{proxy}</code>",
+    "bn": "✅ <b>প্রক্সি সফলভাবে সেট করা হয়েছে!</b>\nআপনার প্রক্সি: <code>{proxy}</code>",
+    "hi": "✅ <b>प्रॉक्सी सफलतापूर्वक सेट हो गया!</b>\nआपका प्रॉक्सी: <code>{proxy}</code>",
+    "ur": "✅ <b>پروکسی کامیابی کے ساتھ سیٹ ہو گیا!</b>\nآپ کا پروکسی: <code>{proxy}</code>",
+    "ar": "✅ <b>تم ضبط البروكسي بنجاح!</b>\nالبروكسي الخاص بك: <code>{proxy}</code>",
+    "zh": "✅ <b>代理设置成功！</b>\n您的代理: <code>{proxy}</code>",
+}
+
+PROXY_REMOVED_MESSAGES: dict[str, str] = {
+    "en": "🗑️ Proxy removed. Default system proxy restored.",
+    "bn": "🗑️ প্রক্সি রিমুভ করা হয়েছে। ডিফোল্ট সিস্টেম প্রক্সি রিসেট হয়েছে।",
+    "hi": "🗑️ प्रॉक्सी हटा दिया गया। डिफ़ॉल्ट सिस्टम प्रॉक्सी रीस्टोर किया गया।",
+    "ur": "🗑️ پروکسی ختم کر دیا گیا۔ ڈیفالٹ سسٹم پروکسی بحال کر دیا گیا۔",
+    "ar": "🗑️ تم إزالة البروكسي. تم استعادة البروكسي الافتراضي.",
+    "zh": "🗑️ 代理已删除。已恢复默认系统代理。",
+}
+
+PROXY_INVALID_MESSAGES: dict[str, str] = {
+    "en": "❌ Invalid proxy format. Please use format like <code>socks5://host:port</code> or <code>socks5://user:pass@host:port</code>",
+    "bn": "❌ প্রক্সি ফরম্যাট সঠিক নয়। অনুগ্রহ করে <code>socks5://host:port</code> ফরম্যাট ব্যবহার করুন",
+    "hi": "❌ अमान्य प्रॉक्सी प्रारूप। कृपया <code>socks5://host:port</code> प्रारूप का उपयोग करें",
+    "ur": "❌ غیر درست پروکسی فارمیٹ۔ براہ کرم <code>socks5://host:port</code> فارمیٹ استعمال کریں",
+    "ar": "❌ تنسيق البروكسي غير صالح. يرجى استخدام التنسيق <code>socks5://host:port</code>",
+    "zh": "❌ 代理格式无效。请使用如 <code>socks5://host:port</code> 的格式",
+}
+
+PROXY_TESTING_MESSAGES: dict[str, str] = {
+    "en": "🔄 Testing proxy connection to Telegram servers...",
+    "bn": "🔄 টেলিগ্রাম সার্ভারে প্রক্সি সংযোগ পরীক্ষা করা হচ্ছে...",
+    "hi": "🔄 टेलीग्राम सर्वर से प्रॉक्सी कनेक्शन का परीक्षण किया जा रहा है...",
+    "ur": "🔄 ٹیلی گرام سرورز پر پروکسی کنکشن کا ٹیسٹ جاری ہے...",
+    "ar": "🔄 جاري اختبار اتصال البروكسي بخوادم تليجرام...",
+    "zh": "🔄 正在测试到 Telegram 服务器的代理连接...",
+}
+
+PROXY_FAIL_MESSAGES: dict[str, str] = {
+    "en": "❌ Proxy connection failed ({detail}). Please enter a working proxy.",
+    "bn": "❌ প্রক্সি সংযোগ ব্যর্থ হয়েছে ({detail})। অনুগ্রহ করে একটি সচল প্রক্সি দিন।",
+    "hi": "❌ प्रॉक्सी कनेक्शन विफल ({detail})। कृपया एक कार्यशील प्रॉक्सी दर्ज करें।",
+    "ur": "❌ پروکسی کنکشن ناکام ہوگیا ({detail})۔ براہ کرم کام کرنے والا پروکسی درج کریں۔",
+    "ar": "❌ فشل اتصال البروكسي ({detail}). يرجى إدخال بروكسي يعمل.",
+    "zh": "❌ 代理连接失败（{detail}）。请输入有效的代理。",
 }
 
 MENU_LABELS = {
@@ -120,6 +434,7 @@ MENU_LABELS = {
         "Mass Message",
         "Kill Session",
         "Fresh Session",
+        "List Checker",
         "PRIVACY",
         "Privacy Settings",
         "VIP",
@@ -158,6 +473,7 @@ MENU_LABELS = {
         "গণ বার্তা",
         "সেশন বন্ধ",
         "নতুন সেশন",
+        "লিস্ট চেকার",
         "গোপনীয়তা",
         "গোপনীয়তা সেটিংস",
         "VIP",
@@ -196,6 +512,7 @@ MENU_LABELS = {
         "सामूहिक संदेश",
         "सेशन बंद करें",
         "नया सेशन",
+        "लिस्ट चेकर",
         "गोपनीयता",
         "गोपनीयता सेटिंग्स",
         "VIP",
@@ -234,6 +551,7 @@ MENU_LABELS = {
         "اجتماعی پیغام",
         "سیشن ختم",
         "نیا سیشن",
+        "لسٹ چیکر",
         "رازداری",
         "رازداری ترتیبات",
         "VIP",
@@ -272,6 +590,7 @@ MENU_LABELS = {
         "رسالة جماعية",
         "إنهاء الجلسة",
         "جلسة جديدة",
+        "فاحص القائمة",
         "الخصوصية",
         "إعدادات الخصوصية",
         "VIP",
@@ -310,6 +629,7 @@ MENU_LABELS = {
         "群发消息",
         "终止会话",
         "新会话",
+        "列表检查器",
         "隐私",
         "隐私设置",
         "VIP",
@@ -1211,7 +1531,381 @@ FRESH_SESSION_MESSAGES = {
     },
 }
 
+LIST_CHECKER_MESSAGES = {
+    "en": {
+        "file1_prompt": "📦 <b>List Checker — Step 1/2</b>\n\nSend the <b>first</b> ZIP archive:",
+        "file2_prompt": "📦 <b>List Checker — Step 2/2</b>\n\n✅ File 1 received: <code>{name}</code>\n\nNow send the <b>second</b> ZIP archive:",
+        "processing": "⚙️ Comparing archives... please wait.",
+        "no_match": "😕 <b>No common items found.</b>\n\nThe two archives share no matching Tdata folders, .session or .json files.",
+        "done": (
+            "✅ <b>Matched Result</b>\n\n"
+            "📁 Tdata folders : <b>{tdata}</b>\n"
+            "🔑 Session files : <b>{session}</b>\n"
+            "📄 JSON files    : <b>{json}</b>\n"
+            "━━━━━━━━━━━━━━\n"
+            "✅ Total         : <b>{total} common items</b>"
+        ),
+        "invalid_format": "❌ Only <b>.zip</b> archives are supported.",
+        "result_caption": "📦 matched_files.zip — {total} items",
+    },
+    "bn": {
+        "file1_prompt": "📦 <b>লিস্ট চেকার — ধাপ 1/2</b>\n\n<b>প্রথম</b> ZIP আর্কাইভ পাঠান:",
+        "file2_prompt": "📦 <b>লিস্ট চেকার — ধাপ 2/2</b>\n\n✅ ফাইল 1 পাওয়া গেছে: <code>{name}</code>\n\nএখন <b>দ্বিতীয়</b> ZIP আর্কাইভ পাঠান:",
+        "processing": "⚙️ আর্কাইভ তুলনা করা হচ্ছে... অপেক্ষা করুন।",
+        "no_match": "😕 <b>কোনো সাধারণ আইটেম পাওয়া যায়নি।</b>\n\nদুটি আর্কাইভে কোনো মিলের Tdata ফোল্ডার, .session বা .json ফাইল নেই।",
+        "done": (
+            "✅ <b>মিলের ফলাফল</b>\n\n"
+            "📁 Tdata ফোল্ডার : <b>{tdata}</b>\n"
+            "🔑 সেশন ফাইল   : <b>{session}</b>\n"
+            "📄 JSON ফাইল   : <b>{json}</b>\n"
+            "━━━━━━━━━━━━━━\n"
+            "✅ মোট          : <b>{total}টি সাধারণ আইটেম</b>"
+        ),
+        "invalid_format": "❌ শুধুমাত্র <b>.zip</b> আর্কাইভ সমর্থিত।",
+        "result_caption": "📦 matched_files.zip — {total}টি আইটেম",
+    },
+    "hi": {
+        "file1_prompt": "📦 <b>लिस्ट चेकर — चरण 1/2</b>\n\n<b>पहली</b> ZIP संग्रह भेजें:",
+        "file2_prompt": "📦 <b>लिस्ट चेकर — चरण 2/2</b>\n\n✅ फ़ाइल 1 प्राप्त: <code>{name}</code>\n\nअब <b>दूसरी</b> ZIP संग्रह भेजें:",
+        "processing": "⚙️ संग्रह की तुलना हो रही है... कृपया प्रतीक्षा करें।",
+        "no_match": "😕 <b>कोई समान आइटम नहीं मिला।</b>\n\nदोनों संग्रहों में कोई समान Tdata फ़ोल्डर, .session या .json फ़ाइल नहीं है।",
+        "done": (
+            "✅ <b>मिलान परिणाम</b>\n\n"
+            "📁 Tdata फ़ोल्डर : <b>{tdata}</b>\n"
+            "🔑 सेशन फ़ाइलें : <b>{session}</b>\n"
+            "📄 JSON फ़ाइलें : <b>{json}</b>\n"
+            "━━━━━━━━━━━━━━\n"
+            "✅ कुल           : <b>{total} समान आइटम</b>"
+        ),
+        "invalid_format": "❌ केवल <b>.zip</b> संग्रह समर्थित हैं।",
+        "result_caption": "📦 matched_files.zip — {total} आइटम",
+    },
+    "ur": {
+        "file1_prompt": "📦 <b>لسٹ چیکر — مرحلہ 1/2</b>\n\n<b>پہلی</b> ZIP فائل بھیجیں:",
+        "file2_prompt": "📦 <b>لسٹ چیکر — مرحلہ 2/2</b>\n\n✅ فائل 1 موصول: <code>{name}</code>\n\nاب <b>دوسری</b> ZIP فائل بھیجیں:",
+        "processing": "⚙️ آرکائیوز کا موازنہ ہو رہا ہے... انتظار کریں۔",
+        "no_match": "😕 <b>کوئی مشترکہ آئٹم نہیں ملا۔</b>\n\nدونوں آرکائیوز میں کوئی مشترکہ Tdata فولڈر، .session یا .json فائل نہیں ہے۔",
+        "done": (
+            "✅ <b>موافق نتیجہ</b>\n\n"
+            "📁 Tdata فولڈر : <b>{tdata}</b>\n"
+            "🔑 سیشن فائلیں : <b>{session}</b>\n"
+            "📄 JSON فائلیں : <b>{json}</b>\n"
+            "━━━━━━━━━━━━━━\n"
+            "✅ کل            : <b>{total} مشترکہ آئٹمز</b>"
+        ),
+        "invalid_format": "❌ صرف <b>.zip</b> آرکائیوز معاون ہیں۔",
+        "result_caption": "📦 matched_files.zip — {total} آئٹمز",
+    },
+    "ar": {
+        "file1_prompt": "📦 <b>فاحص القائمة — الخطوة 1/2</b>\n\nأرسل الأرشيف <b>الأول</b> ZIP:",
+        "file2_prompt": "📦 <b>فاحص القائمة — الخطوة 2/2</b>\n\n✅ تم استلام الملف 1: <code>{name}</code>\n\nأرسل الأرشيف <b>الثاني</b> ZIP الآن:",
+        "processing": "⚙️ جاري مقارنة الأرشيفات... يرجى الانتظار.",
+        "no_match": "😕 <b>لم يتم العثور على عناصر مشتركة.</b>\n\nلا توجد مجلدات Tdata أو ملفات .session أو .json مشتركة في الأرشيفين.",
+        "done": (
+            "✅ <b>نتيجة المطابقة</b>\n\n"
+            "📁 مجلدات Tdata : <b>{tdata}</b>\n"
+            "🔑 ملفات الجلسة : <b>{session}</b>\n"
+            "📄 ملفات JSON   : <b>{json}</b>\n"
+            "━━━━━━━━━━━━━━\n"
+            "✅ الإجمالي      : <b>{total} عنصر مشترك</b>"
+        ),
+        "invalid_format": "❌ يُدعم فقط أرشيف <b>.zip</b>.",
+        "result_caption": "📦 matched_files.zip — {total} عنصر",
+    },
+    "zh": {
+        "file1_prompt": "📦 <b>列表检查器 — 第 1/2 步</b>\n\n发送<b>第一个</b> ZIP 压缩包：",
+        "file2_prompt": "📦 <b>列表检查器 — 第 2/2 步</b>\n\n✅ 已收到文件 1：<code>{name}</code>\n\n现在发送<b>第二个</b> ZIP 压缩包：",
+        "processing": "⚙️ 正在比较压缩包... 请稍候。",
+        "no_match": "😕 <b>未找到共同项目。</b>\n\n两个压缩包中没有相同的 Tdata 文件夹、.session 或 .json 文件。",
+        "done": (
+            "✅ <b>匹配结果</b>\n\n"
+            "📁 Tdata 文件夹 : <b>{tdata}</b>\n"
+            "🔑 会话文件     : <b>{session}</b>\n"
+            "📄 JSON 文件    : <b>{json}</b>\n"
+            "━━━━━━━━━━━━━━\n"
+            "✅ 总计          : <b>{total} 个共同项目</b>"
+        ),
+        "invalid_format": "❌ 仅支持 <b>.zip</b> 压缩包。",
+        "result_caption": "📦 matched_files.zip — {total} 个项目",
+    },
+}
+
+
+PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
+    "en": {
+        "prompt_file": "🔐 <b>Privacy Settings Manager</b>\n\nPlease send a <b>.session</b> file or a <b>.zip</b> archive containing Telegram sessions:",
+        "prompt_2fa": "🔐 <b>2FA Password</b>\n\nPlease send your 2FA password now, or tap <b>Skip</b> if your accounts do not require 2FA:",
+        "prompt_mode": "🔐 <b>Privacy Mode</b>\n\nChoose how you want to configure privacy settings:\n\n• <b>Preset Mode</b>: Apply a pre-configured privacy level in 1-click.\n• <b>Custom Mode</b>: Configure rules individually.",
+        "prompt_preset": "🔐 <b>Select Privacy Preset</b>\n\nSelect a preset to apply automatically to all sessions:\n\n🔴 <b>Maximum Privacy</b>: Nobody for sensitive info; My Contacts for Photo & Invites.\n🟡 <b>Medium Privacy</b>: Contacts for sensitive info; Everybody for Photo & Voice.\n🟢 <b>Open / Public Privacy</b>: Everybody for all rules.",
+        "prompt_rule_key": "🔐 <b>Custom Privacy Configuration</b>\n\nTap a privacy rule to change its setting, then tap <b>Apply Custom Settings</b>:",
+        "prompt_rule_value": "🔐 <b>Configuring {rule_name}</b>\n\nWho can see / access this setting?",
+        "processing": "⚙️ Applying privacy settings to account(s)... please wait.",
+        "done": (
+            "🔐 <b>Privacy Settings Summary</b>\n\n"
+            "👥 Processed : <b>{total}</b>\n"
+            "✅ Success   : <b>{succeeded}</b>\n"
+            "❌ Failed    : <b>{failed}</b>\n\n"
+            "⚙️ Applied Rule : <b>{preset}</b>"
+            "{details}"
+        ),
+        "btn_preset": "⚡ Apply Preset",
+        "btn_custom": "⚙️ Configure Rules",
+        "btn_apply_custom": "✅ Apply Custom Settings",
+        "btn_total": "👥 Total",
+        "btn_ok": "✅ Succeeded",
+        "btn_failed": "❌ Failed",
+        "invalid_file": "❌ Invalid file format. Please send a .session or .zip file.",
+        "presets": {
+            "maximum": "🔴 Maximum Privacy",
+            "medium": "🟡 Medium Privacy",
+            "open": "🟢 Open / Public Privacy",
+            "custom": "⚙️ Custom Rules",
+        },
+        "rules": {
+            "last_seen": "👁 Last Seen",
+            "phone_number": "📞 Phone Number",
+            "profile_photo": "🖼 Profile Photo",
+            "forwarded_messages": "💬 Forwarded Messages",
+            "calls": "📞 Calls",
+            "p2p_calls": "🔗 P2P Calls",
+            "group_invites": "👥 Group Invites",
+            "voice_messages": "🎙 Voice Messages",
+        },
+        "values": {
+            "everybody": "🌍 Everybody",
+            "contacts": "👥 My Contacts",
+            "nobody": "🚫 Nobody",
+        },
+    },
+    "bn": {
+        "prompt_file": "🔐 <b>গোপনীয়তা সেটিংস ম্যানেজার</b>\n\nঅনুগ্রহ করে একটি <b>.session</b> ফাইল অথবা সেশনযুক্ত <b>.zip</b> আর্কাইভ পাঠান:",
+        "prompt_2fa": "🔐 <b>2FA পাসওয়ার্ড</b>\n\nআপনার 2FA পাসওয়ার্ড পাঠান অথবা 2FA প্রয়োজন না হলে <b>স্কিপ</b> চাপুন:",
+        "prompt_mode": "🔐 <b>গোপনীয়তা মোড</b>\n\nআপনি কিভাবে গোপনীয়তা সেটিংস করতে চান তা বেছে নিন:\n\n• <b>প্রিসেট মোড</b>: এক ক্লিকে প্রয়োগ করুন।\n• <b>কাস্টম মোড</b>: প্রতিটি নিয়ম আলাদাভাবে কনফিগার করুন।",
+        "prompt_preset": "🔐 <b>প্রিসেট নির্বাচন করুন</b>\n\nসমস্ত সেশনে স্বয়ংক্রিয়ভাবে প্রয়োগ করতে একটি প্রিসেট নির্বাচন করুন:",
+        "prompt_rule_key": "🔐 <b>কাস্টম গোপনীয়তা কনফিগারেশন</b>\n\nনিয়ম পরিবর্তন করতে ট্যাপ করুন, তারপর <b>কাস্টম প্রয়োগ করুন</b> চাপুন:",
+        "prompt_rule_value": "🔐 <b>{rule_name} কনফিগারেশন</b>\n\nকে এটি দেখতে / ব্যবহার করতে পারবে?",
+        "processing": "⚙️ গোপনীয়তা সেটিংস প্রয়োগ করা হচ্ছে... অপেক্ষা করুন।",
+        "done": (
+            "🔐 <b>গোপনীয়তা সেটিংস সারসংক্ষেপ</b>\n\n"
+            "👥 প্রক্রিয়াজাত : <b>{total}</b>\n"
+            "✅ সফল        : <b>{succeeded}</b>\n"
+            "❌ ব্যর্থ       : <b>{failed}</b>\n\n"
+            "⚙️ প্রয়োগকৃত নিয়ম : <b>{preset}</b>"
+            "{details}"
+        ),
+        "btn_preset": "⚡ প্রিসেট প্রয়োগ করুন",
+        "btn_custom": "⚙️ নিয়ম কনফিগার করুন",
+        "btn_apply_custom": "✅ কাস্টম প্রয়োগ করুন",
+        "btn_total": "👥 মোট",
+        "btn_ok": "✅ সফল",
+        "btn_failed": "❌ ব্যর্থ",
+        "invalid_file": "❌ অকার্যকর ফাইল। একটি .session বা .zip ফাইল পাঠান।",
+        "presets": {
+            "maximum": "🔴 সর্বোচ্চ গোপনীয়তা",
+            "medium": "🟡 মাঝারি গোপনীয়তা",
+            "open": "🟢 উন্মুক্ত / সর্বজনীন গোপনীয়তা",
+            "custom": "⚙️ কাস্টম নিয়ম",
+        },
+        "rules": {
+            "last_seen": "👁 শেষ দেখা সময়",
+            "phone_number": "📞 ফোন নম্বর",
+            "profile_photo": "🖼 প্রোফাইল ছবি",
+            "forwarded_messages": "💬 ফরোয়ার্ড বার্তা",
+            "calls": "📞 কলসমূহ",
+            "p2p_calls": "🔗 P2P কলসমূহ",
+            "group_invites": "👥 গ্রুপ আমন্ত্রণ",
+            "voice_messages": "🎙 ভয়েস বার্তা",
+        },
+        "values": {
+            "everybody": "🌍 সবাই",
+            "contacts": "👥 আমার কনট্যাক্টস",
+            "nobody": "🚫 কেউ না",
+        },
+    },
+    "hi": {
+        "prompt_file": "🔐 <b>गोपनीयता सेटिंग्स प्रबंधक</b>\n\nकृपया एक <b>.session</b> फ़ाइल या <b>.zip</b> संग्रह भेजें:",
+        "prompt_2fa": "🔐 <b>2FA पासवर्ड</b>\n\nअपना 2FA पासवर्ड भेजें या 2FA की आवश्यकता न होने पर <b>स्किप</b> दबाएँ:",
+        "prompt_mode": "🔐 <b>गोपनीयता मोड</b>\n\nचुनें कि आप गोपनीयता सेटिंग्स कैसे कॉन्फ़िगर करना चाहते हैं:\n\n• <b>प्रीसेट मोड</b>: 1-क्लिक में लागू करें।\n• <b>कस्टम मोड</b>: प्रत्येक नियम को व्यक्तिगत रूप से कॉन्फ़िगर करें।",
+        "prompt_preset": "🔐 <b>प्रीसेट चुनें</b>\n\nसभी सेशन पर लागू करने के लिए प्रीसेट चुनें:",
+        "prompt_rule_key": "🔐 <b>कस्टम गोपनीयता कॉन्फ़िगरेशन</b>\n\nनियम बदलने के लिए टैप करें, फिर <b>कस्टम लागू करें</b> दबाएँ:",
+        "prompt_rule_value": "🔐 <b>{rule_name} कॉन्फ़िगरेशन</b>\n\nयह सेटिंग कौन देख / उपयोग कर सकता है?",
+        "processing": "⚙️ गोपनीयता सेटिंग्स लागू की जा रही हैं... कृपया प्रतीक्षा करें।",
+        "done": (
+            "🔐 <b>गोपनीयता सेटिंग्स सारांश</b>\n\n"
+            "👥 संसाधित : <b>{total}</b>\n"
+            "✅ सफल     : <b>{succeeded}</b>\n"
+            "❌ विफल    : <b>{failed}</b>\n\n"
+            "⚙️ लागू नियम : <b>{preset}</b>"
+            "{details}"
+        ),
+        "btn_preset": "⚡ प्रीसेट लागू करें",
+        "btn_custom": "⚙️ नियम कॉन्फ़िगर करें",
+        "btn_apply_custom": "✅ कस्टम लागू करें",
+        "btn_total": "👥 कुल",
+        "btn_ok": "✅ सफल",
+        "btn_failed": "❌ विफल",
+        "invalid_file": "❌ अमान्य फ़ाइल प्रारूप। .session या .zip फ़ाइल भेजें।",
+        "presets": {
+            "maximum": "🔴 अधिकतम गोपनीयता",
+            "medium": "🟡 मध्यम गोपनीयता",
+            "open": "🟢 खुली / सार्वजनिक गोपनीयता",
+            "custom": "⚙️ कस्टम नियम",
+        },
+        "rules": {
+            "last_seen": "👁 अंतिम बार देखा गया",
+            "phone_number": "📞 फ़ोन नंबर",
+            "profile_photo": "🖼 प्रोफ़ाइल फ़ोटो",
+            "forwarded_messages": "💬 फ़ॉरवर्ड किए गए संदेश",
+            "calls": "📞 कॉल्स",
+            "p2p_calls": "🔗 P2P कॉल्स",
+            "group_invites": "👥 समूह आमंत्रण",
+            "voice_messages": "🎙 वॉयस संदेश",
+        },
+        "values": {
+            "everybody": "🌍 सभी",
+            "contacts": "👥 मेरे संपर्क",
+            "nobody": "🚫 कोई नहीं",
+        },
+    },
+    "ur": {
+        "prompt_file": "🔐 <b>رازداری ترتیبات مینیجر</b>\n\nبرائے مہربانی <b>.session</b> یا <b>.zip</b> فائل بھیجیں:",
+        "prompt_2fa": "🔐 <b>2FA پاسورڈ</b>\n\nاپنا 2FA پاسورڈ بھیجیں یا <b>اسکپ</b> کریں:",
+        "prompt_mode": "🔐 <b>رازداری موڈ</b>\n\nانتخاب کریں:\n\n• <b>پری سیٹ موڈ</b>: ایک کلک میں لاگو کریں۔\n• <b>کسٹم موڈ</b>: انفرادی ترتیبات۔",
+        "prompt_preset": "🔐 <b>پری سیٹ منتخب کریں</b>\n\nسب سیشنز پر لاگو کرنے کے لیے پری سیٹ منتخب کریں:",
+        "prompt_rule_key": "🔐 <b>کسٹم رازداری ترتیبات</b>\n\nترمیم کے لیے ٹیپ کریں، پھر <b>لاگو کریں</b> دبائیں:",
+        "prompt_rule_value": "🔐 <b>{rule_name} ترتیبات</b>\n\nکون اسے دیکھ سکتا ہے؟",
+        "processing": "⚙️ رازداری ترتیبات لاگو ہو رہی ہیں... انتظار کریں۔",
+        "done": (
+            "🔐 <b>رازداری ترتیبات خلاصہ</b>\n\n"
+            "👥 پروسیسڈ : <b>{total}</b>\n"
+            "✅ کامیاب    : <b>{succeeded}</b>\n"
+            "❌ ناکام     : <b>{failed}</b>\n\n"
+            "⚙️ لاگو شدہ  : <b>{preset}</b>"
+            "{details}"
+        ),
+        "btn_preset": "⚡ پری سیٹ لاگو کریں",
+        "btn_custom": "⚙️ قواعد سیٹ کریں",
+        "btn_apply_custom": "✅ کسٹم لاگو کریں",
+        "btn_total": "👥 کل",
+        "btn_ok": "✅ کامیاب",
+        "btn_failed": "❌ ناکام",
+        "invalid_file": "❌ غیر موزوں فائل۔ .session یا .zip بھیجیں۔",
+        "presets": {
+            "maximum": "🔴 زیادہ سے زیادہ رازداری",
+            "medium": "🟡 درمیانی رازداری",
+            "open": "🟢 کھلی / عوامی رازداری",
+            "custom": "⚙️ کسٹم قواعد",
+        },
+        "rules": {
+            "last_seen": "👁 آخری بار دیکھا گیا",
+            "phone_number": "📞 فون نمبر",
+            "profile_photo": "🖼 پروفائل تصویر",
+            "forwarded_messages": "💬 فارورڈ شدہ پیغامات",
+            "calls": "📞 کالز",
+            "p2p_calls": "🔗 P2P کالز",
+            "group_invites": "👥 گروپ دعوت نامے",
+            "voice_messages": "🎙 وائس پیغامات",
+        },
+        "values": {
+            "everybody": "🌍 سبھی",
+            "contacts": "👥 میرے رابطے",
+            "nobody": "🚫 کوئی نہیں",
+        },
+    },
+    "ar": {
+        "prompt_file": "🔐 <b>مدير إعدادات الخصوصية</b>\n\nيرجى إرسال ملف <b>.session</b> أو أرشيف <b>.zip</b> يحتوي على جلسات:",
+        "prompt_2fa": "🔐 <b>كلمة مرور 2FA</b>\n\nأدخل كلمة مرور 2FA أو اضغط <b>تخطي</b>:",
+        "prompt_mode": "🔐 <b>وضع الخصوصية</b>\n\nاختر طريقة ضبط الخصوصية:\n\n• <b>وضع القوالب</b>: تطبيق بنقرة واحدة.\n• <b>الوضع المخصص</b>: ضبط كل قاعدة على حدة.",
+        "prompt_preset": "🔐 <b>اختر قالب الخصوصية</b>\n\nاختر قالباً لتطبيقه تلقائياً على جميع الجلسات:",
+        "prompt_rule_key": "🔐 <b>إعدادات الخصوصية المخصصة</b>\n\nاضغط على قاعدة للتعديل، ثم اضغط <b>تطبيق المخصص</b>:",
+        "prompt_rule_value": "🔐 <b>إعداد {rule_name}</b>\n\nمن يمكنه رؤية / استخدام هذا الإعداد؟",
+        "processing": "⚙️ جاري تطبيق إعدادات الخصوصية... يرجى الانتظار.",
+        "done": (
+            "🔐 <b>ملخص إعدادات الخصوصية</b>\n\n"
+            "👥 المُعالجة  : <b>{total}</b>\n"
+            "✅ الناجحة    : <b>{succeeded}</b>\n"
+            "❌ الفاشلة   : <b>{failed}</b>\n\n"
+            "⚙️ القالب المطبق : <b>{preset}</b>"
+            "{details}"
+        ),
+        "btn_preset": "⚡ تطبيق القالب",
+        "btn_custom": "⚙️ ضبط القواعد",
+        "btn_apply_custom": "✅ تطبيق المخصص",
+        "btn_total": "👥 الإجمالي",
+        "btn_ok": "✅ ناجح",
+        "btn_failed": "❌ فاشل",
+        "invalid_file": "❌ صيغة ملف غير صالحة. أرسل ملف .session أو .zip.",
+        "presets": {
+            "maximum": "🔴 أقصى خصوصية",
+            "medium": "🟡 خصوصية متوسطة",
+            "open": "🟢 الخصوصية المفتوحة / العامة",
+            "custom": "⚙️ قواعد مخصصة",
+        },
+        "rules": {
+            "last_seen": "👁 آخر ظهور",
+            "phone_number": "📞 رقم الهاتف",
+            "profile_photo": "🖼 صورة الملف الشخصي",
+            "forwarded_messages": "💬 الرسائل المعاد توجيهها",
+            "calls": "📞 المكالمات",
+            "p2p_calls": "🔗 مكالمات P2P",
+            "group_invites": "👥 دعوات المجموعات",
+            "voice_messages": "🎙 الرسائل الصوتية",
+        },
+        "values": {
+            "everybody": "🌍 الجميع",
+            "contacts": "👥 جهات اتصالي",
+            "nobody": "🚫 لا أحد",
+        },
+    },
+    "zh": {
+        "prompt_file": "🔐 <b>隐私设置管理器</b>\n\n请发送 <b>.session</b> 文件或包含会话的 <b>.zip</b> 压缩包：",
+        "prompt_2fa": "🔐 <b>2FA 密码</b>\n\n发送您的 2FA 密码，若无 2FA 请点击 <b>跳过</b>：",
+        "prompt_mode": "🔐 <b>隐私模式</b>\n\n选择配置方式：\n\n• <b>预设模式</b>：一键应用预设安全级别。\n• <b>自定义模式</b>：逐项单独配置。",
+        "prompt_preset": "🔐 <b>选择隐私预设</b>\n\n选择要自动应用到所有会话的预设：",
+        "prompt_rule_key": "🔐 <b>自定义隐私配置</b>\n\n点击规则进行修改，然后点击 <b>应用自定义设置</b>：",
+        "prompt_rule_value": "🔐 <b>配置 {rule_name}</b>\n\n谁可以看到 / 使用此设置？",
+        "processing": "⚙️ 正在应用隐私设置... 请稍候。",
+        "done": (
+            "🔐 <b>隐私设置摘要</b>\n\n"
+            "👥 已处理   : <b>{total}</b>\n"
+            "✅ 成功     : <b>{succeeded}</b>\n"
+            "❌ 失败     : <b>{failed}</b>\n\n"
+            "⚙️ 应用设置 : <b>{preset}</b>"
+            "{details}"
+        ),
+        "btn_preset": "⚡ 应用预设",
+        "btn_custom": "⚙️ 配置规则",
+        "btn_apply_custom": "✅ 应用自定义设置",
+        "btn_total": "👥 总计",
+        "btn_ok": "✅ 成功",
+        "btn_failed": "❌ 失败",
+        "invalid_file": "❌ 无效的文件格式。请发送 .session 或 .zip 文件。",
+        "presets": {
+            "maximum": "🔴 最高隐私",
+            "medium": "🟡 中等隐私",
+            "open": "🟢 公开 / 开放隐私",
+            "custom": "⚙️ 自定义规则",
+        },
+        "rules": {
+            "last_seen": "👁 上线时间",
+            "phone_number": "📞 手机号码",
+            "profile_photo": "🖼 个人头像",
+            "forwarded_messages": "💬 转发消息",
+            "calls": "📞 通话",
+            "p2p_calls": "🔗 P2P 通话",
+            "group_invites": "👥 群组邀请",
+            "voice_messages": "🎙 语音消息",
+        },
+        "values": {
+            "everybody": "🌍 所有人",
+            "contacts": "👥 我的联系人",
+            "nobody": "🚫 不允许任何人",
+        },
+    },
+}
+
 ENTER_CLEAN_CHAT_PROMPT = {
+
     "en": "📂 Please send your Telegram session file (.session) or ZIP archive to clean chat history:",
     "bn": "📂 চ্যাট ইতিহাস পরিষ্কার করতে দয়া করে আপনার টেলিগ্রাম সেশন ফাইল (.session) বা ZIP আর্কাইভ পাঠান:",
     "hi": "📂 चैट इतिहास साफ़ करने के लिए कृपया अपनी टेलीग्राम सेशन फ़ाइल (.session) या ZIP संग्रह भेजें:",

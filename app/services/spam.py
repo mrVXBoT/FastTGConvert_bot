@@ -89,24 +89,10 @@ async def check_spam_via_spambot(
     session_path: Path,
     credentials: list[tuple[int, str]],
     timeout: int = 15,
+    proxy: tuple | None = None,
 ) -> SpamStatus:
     """
     Connect with *session_path* and query @SpamBot for the account's spam status.
-
-    Parameters
-    ----------
-    session_path:
-        Path to the ``.session`` file (must already be a structural-check pass).
-    credentials:
-        Ordered list of ``(api_id, api_hash)`` pairs.  Rotation only happens
-        when Telegram reports that a specific api_id is invalid.
-    timeout:
-        Seconds to wait for @SpamBot's reply.
-
-    Returns
-    -------
-    One of ``"active"``, ``"frozen"``, ``"banned"``, ``"invalid"``,
-    or ``"inconclusive"``.
     """
     if not credentials:
         LOGGER.warning("No API credentials configured; cannot run live spam check")
@@ -140,6 +126,7 @@ async def check_spam_via_spambot(
                 api_id=api_id,
                 api_hash=api_hash,
                 timeout=timeout,
+                proxy=proxy,
                 TelegramClient=TelegramClient,
                 ApiIdInvalidError=ApiIdInvalidError,
                 AuthKeyDuplicatedError=AuthKeyDuplicatedError,
@@ -168,6 +155,7 @@ async def _try_one_credential(
     api_hash: str,
     timeout: int,
     *,
+    proxy: tuple | None = None,
     TelegramClient: Any,
     ApiIdInvalidError: type[BaseException],
     AuthKeyDuplicatedError: type[BaseException],
@@ -181,11 +169,10 @@ async def _try_one_credential(
 ) -> SpamStatus | str:
     """
     Attempt the spam check with one ``(api_id, api_hash)`` pair.
-
-    Returns a ``SpamStatus`` string on a definitive outcome, or the sentinel
-    ``"_try_next"`` to indicate that the next credential should be tried.
     """
-    client = TelegramClient(session_str, api_id, api_hash, receive_updates=False)
+    client = TelegramClient(
+        session_str, api_id, api_hash, receive_updates=False, proxy=proxy
+    )
     network_attempts = 0
 
     while True:  # retry loop for OSError

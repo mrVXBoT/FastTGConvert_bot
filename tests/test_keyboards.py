@@ -70,3 +70,25 @@ async def test_contacts_stat_noop_callback_handler_answers_query() -> None:
 
     await handle_contacts_stat_noop(cb)
     cb.answer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_setup_bot_commands_registers_required_commands() -> None:
+    from unittest.mock import MagicMock
+
+    from app.__main__ import setup_bot_commands
+
+    mock_bot = MagicMock()
+    mock_bot.set_my_commands = AsyncMock()
+
+    await setup_bot_commands(mock_bot)
+
+    mock_bot.set_my_commands.assert_called_once()
+    cmds = mock_bot.set_my_commands.call_args.kwargs["commands"]
+    cmd_dict = {c.command: c.description for c in cmds}
+    assert cmd_dict == {
+        "start": "restart 🚀",
+        "referral": "your referral link 🔗",
+        "proxy": "Set your proxy 🎯",
+        "language": "Change your language 🌍",
+    }

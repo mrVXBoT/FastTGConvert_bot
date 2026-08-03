@@ -69,6 +69,7 @@ def test_generate_mass_message_report(tmp_path: Path):
 
 def test_parse_recipients_from_zip(tmp_path: Path):
     import zipfile
+
     from app.services.mass_message import parse_recipients_from_file
 
     zip_path = tmp_path / "recipients.zip"
@@ -537,12 +538,12 @@ def test_format_mass_message_summary_paused_and_stopped():
 
 @pytest.mark.asyncio
 async def test_request_mass_message_with_paused_job():
-    from app.handlers.files import request_mass_message
-    from app.states import MassMessage
     from aiogram.fsm.context import FSMContext
     from aiogram.fsm.storage.memory import MemoryStorage
-    from sqlalchemy.pool import StaticPool
     from aiogram.types import Message
+    from sqlalchemy.pool import StaticPool
+
+    from app.handlers.files import request_mass_message
 
     engine = create_engine(
         "sqlite:///:memory:",
@@ -594,12 +595,13 @@ async def test_request_mass_message_with_paused_job():
 
 @pytest.mark.asyncio
 async def test_start_new_job_callback():
-    from app.handlers.files import start_new_job_callback
-    from app.states import MassMessage
     from aiogram.fsm.context import FSMContext
     from aiogram.fsm.storage.memory import MemoryStorage
-    from sqlalchemy.pool import StaticPool
     from aiogram.types import Message
+    from sqlalchemy.pool import StaticPool
+
+    from app.handlers.files import start_new_job_callback
+    from app.states import MassMessage
 
     engine = create_engine(
         "sqlite:///:memory:",
@@ -651,13 +653,15 @@ async def test_start_new_job_callback():
 
 @pytest.mark.asyncio
 async def test_process_quick_action_mass_message(tmp_path: Path):
-    from app.handlers.files import process_quick_action
-    from app.states import MassMessage, DirectFile
+    import sqlite3
+
     from aiogram.fsm.context import FSMContext
     from aiogram.fsm.storage.memory import MemoryStorage
-    from sqlalchemy.pool import StaticPool
     from aiogram.types import Message
-    import sqlite3
+    from sqlalchemy.pool import StaticPool
+
+    from app.handlers.files import process_quick_action
+    from app.states import DirectFile, MassMessage
 
     # Create a dummy sqlite DB file that simulates a valid session
     dummy_session = tmp_path / "123456.session"

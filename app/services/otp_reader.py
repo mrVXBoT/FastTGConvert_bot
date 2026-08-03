@@ -36,6 +36,7 @@ async def read_account_otps(
     credentials: list[tuple[int, str]],
     max_age_hours: int = 2,
     since_dt: datetime | None = None,
+    proxy: tuple | None = None,
 ) -> tuple[dict[str, str], list[OTPCode]]:
     """
     Connect to Telegram with session_path and read recent OTP messages from Telegram (peer 777000).
@@ -58,7 +59,7 @@ async def read_account_otps(
 
         for api_id, api_hash in credentials:
             client = TelegramClient(
-                session_str, api_id, api_hash, receive_updates=False
+                session_str, api_id, api_hash, receive_updates=False, proxy=proxy
             )
             try:
                 await client.connect()
@@ -117,6 +118,7 @@ async def read_account_otps(
 async def logout_account_session(
     session_path: Path,
     credentials: list[tuple[int, str]],
+    proxy: tuple | None = None,
 ) -> bool:
     """
     Connect with session_path and execute client.log_out() to revoke session on Telegram servers.
@@ -131,7 +133,11 @@ async def logout_account_session(
 
     for api_id, api_hash in credentials:
         client = TelegramClient(
-            str(session_path.with_suffix("")), api_id, api_hash, receive_updates=False
+            str(session_path.with_suffix("")),
+            api_id,
+            api_hash,
+            receive_updates=False,
+            proxy=proxy,
         )
         try:
             await client.connect()

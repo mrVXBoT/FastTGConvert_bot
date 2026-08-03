@@ -12,12 +12,10 @@ def migrate_to_v1(cursor: Any) -> None:
     - Makes input_file_id column nullable.
     - Preserves legacy job records by generating fallback legacy display IDs.
     """
-    # 1. Check if table 'jobs' exists first (if not, metadata.create_all handles it)
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
     if not cursor.fetchone():
         return
 
-    # 2. Check if we already migrated (check if display_id exists in jobs table)
     cursor.execute("PRAGMA table_info(jobs)")
     columns = [row[1] for row in cursor.fetchall()]
 
@@ -26,7 +24,6 @@ def migrate_to_v1(cursor: Any) -> None:
 
     LOGGER.info("Applying migration v1: upgrading jobs schema...")
 
-    # Create the new schema table
     cursor.execute("""
         CREATE TABLE jobs_new (
             id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -48,7 +45,6 @@ def migrate_to_v1(cursor: Any) -> None:
         )
     """)
 
-    # Copy existing data
     cursor.execute("""
         INSERT INTO jobs_new (
             id, user_id, operation, input_file_id, output_file_id,
@@ -62,7 +58,6 @@ def migrate_to_v1(cursor: Any) -> None:
         FROM jobs
     """)
 
-    # Populate display_id for legacy jobs with unique fallback values
     cursor.execute("SELECT id FROM jobs_new WHERE display_id IS NULL")
     rows = cursor.fetchall()
     for idx, row in enumerate(rows):
@@ -73,22 +68,312 @@ def migrate_to_v1(cursor: Any) -> None:
             (legacy_id, job_uuid),
         )
 
-    # Recreate indexes
     cursor.execute("CREATE INDEX IF NOT EXISTS ix_jobs_user_id ON jobs_new(user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS ix_jobs_status ON jobs_new(status)")
 
-    # Disable foreign keys temporarily, drop old table, rename new table
     cursor.execute("PRAGMA foreign_keys=OFF")
     cursor.execute("DROP TABLE jobs")
     cursor.execute("ALTER TABLE jobs_new RENAME TO jobs")
     cursor.execute("PRAGMA foreign_keys=ON")
 
 
+def migrate_to_v2(cursor: Any) -> None:
+    """Migration v2:
+    - Adds proxy column to users table if missing.
+    """
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    if not cursor.fetchone():
+        return
+
+    cursor.execute("PRAGMA table_info(users)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "proxy" not in columns:
+        LOGGER.info("Applying migration v2: adding proxy column to users table...")
+        cursor.execute("ALTER TABLE users ADD COLUMN proxy TEXT")
+
+
+def migrate_to_v3(cursor: Any) -> None:
+    """Migration v3:
+    - Adds structured proxy columns to users table.
+    """
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    if not cursor.fetchone():
+        return
+
+    cursor.execute("PRAGMA table_info(users)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    new_cols = {
+        "proxy_type": "VARCHAR(10)",
+        "proxy_host": "VARCHAR(255)",
+        "proxy_port": "INTEGER",
+        "proxy_username": "VARCHAR(255)",
+        "proxy_password_encrypted": "TEXT",
+    }
+
+    for col_name, col_type in new_cols.items():
+        if col_name not in columns:
+            LOGGER.info(
+                "Applying migration v3: adding %s column to users table...",
+                col_name,
+            )
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+
+
+def migrate_to_v4(cursor: Any) -> None:
+    """Migration v4:
+    - Adds is_vip & vip_expires_at to users table.
+    - Creates admin_users, statistic_events, force_join_channels, feature_gates, vip_plans, payment_settings tables.
+    - Seeds default feature gates and initial VIP plans.
+    """
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "is_vip" not in columns:
+            LOGGER.info("Applying migration v4: adding is_vip column to users...")
+            cursor.execute("ALTER TABLE users ADD COLUMN is_vip BOOLEAN DEFAULT 0")
+        if "vip_expires_at" not in columns:
+            LOGGER.info("Applying migration v4: adding vip_expires_at column to users...")
+            cursor.execute("ALTER TABLE users ADD COLUMN vip_expires_at DATETIME")
+
+    # 1. Create admin_users
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id BIGINT UNIQUE NOT NULL,
+            role VARCHAR(16) NOT NULL DEFAULT 'ADMIN',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_admin_users_telegram_id ON admin_users(telegram_id)")
+
+    # 2. Create statistic_events
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS statistic_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            event_type VARCHAR(32) NOT NULL,
+            metadata_json TEXT DEFAULT '{}',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_statistic_events_event_type ON statistic_events(event_type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_statistic_events_created_at ON statistic_events(created_at)")
+
+    # 3. Create force_join_channels
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS force_join_channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id VARCHAR(64) UNIQUE NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            username VARCHAR(64),
+            invite_link TEXT,
+            channel_type VARCHAR(16) NOT NULL DEFAULT 'public',
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 4. Create feature_gates
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feature_gates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            feature_key VARCHAR(32) UNIQUE NOT NULL,
+            title VARCHAR(64) NOT NULL,
+            access_level VARCHAR(16) NOT NULL DEFAULT 'FREE',
+            is_enabled BOOLEAN NOT NULL DEFAULT 1
+        )
+    """)
+
+    # Seed all bot features — INSERT OR IGNORE preserves existing VIP_ONLY settings
+    all_features = [
+        # Session & Account Tools
+        ("session_check",     "✅ Session Checker",               "FREE", 1),
+        ("spam_check",        "🚫 Spam & Restriction Checker",    "FREE", 1),
+        ("check_contacts",    "📋 Contact Checker",               "FREE", 1),
+        ("account_age",       "🎂 Account Age Checker",           "FREE", 1),
+        ("account_to_txt",    "📄 Account to TXT Export",         "FREE", 1),
+        ("analyze",           "🔍 Session Analyzer",              "FREE", 1),
+        # Conversion Tools
+        ("session_to_tdata",  "🔄 Session → TData Converter",    "FREE", 1),
+        ("tdata_to_session",  "🔄 TData → Session Converter",    "FREE", 1),
+        ("session_to_json",   "📦 Session → JSON Export",        "FREE", 1),
+        ("file_merge",        "🗂️ File Merge",                    "FREE", 1),
+        ("split",             "✂️ Session Split",                 "FREE", 1),
+        # Security Tools
+        ("change_2fa",        "🔐 Change 2FA Password",          "FREE", 1),
+        ("disable_2fa",       "🔓 Disable 2FA",                  "FREE", 1),
+        ("reset_2fa",         "♻️ Reset 2FA",                    "FREE", 1),
+        # Messaging & Channel Tools
+        ("mass_message",      "📢 Mass Message Sender",           "FREE", 1),
+        ("clean_chat",        "🧹 Chat Cleaner",                  "FREE", 1),
+        ("channel_join",      "📌 Channel Join",                  "FREE", 1),
+        ("leave_channel",     "🚪 Channel Leave",                 "FREE", 1),
+        ("kill_sessions",     "💀 Kill Active Sessions",          "FREE", 1),
+        # Contact Tools
+        ("delete_contact",    "🗑️ Delete Contact",               "FREE", 1),
+        ("clear_contact",     "🧽 Clear All Contacts",            "FREE", 1),
+        ("list_checker",      "📝 List Checker",                  "FREE", 1),
+        # Profile & Settings Tools
+        ("privacy_settings",  "🔒 Privacy Settings Manager",     "FREE", 1),
+        ("privacy_check",     "🛡️ Privacy Check",                "FREE", 1),
+        ("profile_setup",     "👤 Profile Setup",                 "FREE", 1),
+        # OTP Tool
+        ("read_otp",          "📱 OTP Reader",                    "FREE", 1),
+        # Generation Tools
+        ("fresh_session",     "🆕 Fresh Session Generator",      "FREE", 1),
+    ]
+    cursor.executemany(
+        "INSERT OR IGNORE INTO feature_gates (feature_key, title, access_level, is_enabled) VALUES (?, ?, ?, ?)",
+        all_features,
+    )
+
+    # 5. Create vip_plans
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vip_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(64) NOT NULL,
+            months INTEGER NOT NULL DEFAULT 1,
+            price FLOAT NOT NULL DEFAULT 10.0,
+            currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Seed initial default VIP plans
+    cursor.execute("SELECT COUNT(*) FROM vip_plans")
+    if cursor.fetchone()[0] == 0:
+        default_plans = [
+            ("1 Month VIP", 1, 10.0, "USD", 1),
+            ("3 Months VIP", 3, 25.0, "USD", 1),
+            ("6 Months VIP", 6, 50.0, "USD", 1),
+            ("12 Months VIP", 12, 80.0, "USD", 1),
+        ]
+        cursor.executemany(
+            "INSERT INTO vip_plans (name, months, price, currency, is_active, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            default_plans,
+        )
+
+    # 6. Create payment_settings
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payment_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            manual_enabled BOOLEAN NOT NULL DEFAULT 1,
+            binance_id VARCHAR(128),
+            trc20_address VARCHAR(255),
+            bep20_address VARCHAR(255),
+            auto_enabled BOOLEAN NOT NULL DEFAULT 0,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM payment_settings")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO payment_settings (manual_enabled, auto_enabled, updated_at) VALUES (1, 0, CURRENT_TIMESTAMP)")
+
+
+def migrate_to_v5(cursor: Any) -> None:
+    """Migration v5:
+    - Creates payments table.
+    - Creates user_vip_subscriptions table.
+    - Creates indexes for payments, user_vip_subscriptions, and statistic_events.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            plan_id INTEGER NOT NULL,
+            amount FLOAT NOT NULL,
+            currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+            payment_method VARCHAR(32) NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'pending',
+            transaction_id VARCHAR(128),
+            receipt_file_id VARCHAR(255),
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at DATETIME,
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(plan_id) REFERENCES vip_plans(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_payments_user_id ON payments(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_payments_status ON payments(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_payments_created_at ON payments(created_at)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_vip_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            plan_id INTEGER,
+            payment_id INTEGER,
+            started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(plan_id) REFERENCES vip_plans(id),
+            FOREIGN KEY(payment_id) REFERENCES payments(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_user_vip_subscriptions_user_id ON user_vip_subscriptions(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_user_vip_subscriptions_expires_at ON user_vip_subscriptions(expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_user_vip_subscriptions_status ON user_vip_subscriptions(status)")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_statistic_events_type_created ON statistic_events(event_type, created_at)")
+
+
+def migrate_to_v6(cursor: Any) -> None:
+    """Migration v6:
+    - Creates broadcast_jobs table for persistent Queue/Worker execution across bot restarts.
+    - Creates system_settings table for dynamic system configurations (e.g. support_contact).
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS broadcast_jobs (
+            id VARCHAR(36) PRIMARY KEY,
+            message_type VARCHAR(16) NOT NULL DEFAULT 'custom',
+            from_chat_id BIGINT,
+            message_id INTEGER,
+            text TEXT,
+            photo VARCHAR(255),
+            video VARCHAR(255),
+            document VARCHAR(255),
+            status VARCHAR(16) NOT NULL DEFAULT 'pending',
+            total_users INTEGER NOT NULL DEFAULT 0,
+            sent_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            current_index INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_broadcast_jobs_status ON broadcast_jobs(status)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key VARCHAR(64) PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("SELECT COUNT(*) FROM system_settings WHERE key='support_contact'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(
+            "INSERT INTO system_settings (key, value, updated_at) VALUES ('support_contact', '@support', CURRENT_TIMESTAMP)"
+        )
+
+
 # Registry of migrations mapped to target version numbers
 MIGRATIONS = {
     1: migrate_to_v1,
+    2: migrate_to_v2,
+    3: migrate_to_v3,
+    4: migrate_to_v4,
+    5: migrate_to_v5,
+    6: migrate_to_v6,
 }
-LATEST_VERSION = 1
+LATEST_VERSION = 6
 
 
 def run_migrations(engine: Engine) -> None:
@@ -97,13 +382,18 @@ def run_migrations(engine: Engine) -> None:
     try:
         cursor = connection.cursor()
 
-        # Check database schema version first
         cursor.execute("PRAGMA user_version")
         row = cursor.fetchone()
         db_version = row[0] if row else 0
 
-        # Execute migrations sequentially if database version is behind LATEST_VERSION
         if db_version < LATEST_VERSION:
+            try:
+                from app.db.backup import perform_database_backup
+                db_file_str = str(engine.url.database) if engine.url and engine.url.database else "data/bot.db"
+                perform_database_backup(db_path=db_file_str)
+            except Exception as backup_err:  # noqa: BLE001
+                LOGGER.warning("Pre-migration backup skipped: %s", backup_err)
+
             for version in range(db_version + 1, LATEST_VERSION + 1):
                 cursor.execute("BEGIN TRANSACTION")
                 try:

@@ -279,6 +279,7 @@ def _is_valid_session(path: Path) -> bool:
 async def fetch_single_account_age(
     session_path: Path,
     credentials: list[tuple[int, str]],
+    proxy: tuple | None = None,
 ) -> AccountAgeInfo | None:
     if not _is_valid_session(session_path):
         return None
@@ -298,6 +299,7 @@ async def fetch_single_account_age(
                 api_id,
                 api_hash,
                 receive_updates=False,
+                proxy=proxy,
             )
             try:
                 await client.connect()
@@ -366,6 +368,7 @@ async def process_account_age_check(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    proxy: tuple | None = None,
 ) -> AccountAgeResult:
     """Extract sessions and fetch account age information for all accounts."""
     with tempfile.TemporaryDirectory(prefix="ftgc_age_work_") as work_dir:
@@ -386,7 +389,7 @@ async def process_account_age_check(
         failed = 0
 
         for session_file in sessions:
-            info = await fetch_single_account_age(session_file, credentials)
+            info = await fetch_single_account_age(session_file, credentials, proxy=proxy)
             if info is not None:
                 accounts.append(info)
             else:

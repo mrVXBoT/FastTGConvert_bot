@@ -209,6 +209,7 @@ async def _live_status(
     session_path: Path,
     credentials: list[tuple[int, str]],
     timeout: int,
+    proxy: tuple | None = None,
 ) -> _FinalStatus:
     """
     Run the live @SpamBot check for one ``.session`` file.
@@ -216,7 +217,7 @@ async def _live_status(
     """
     from app.services.spam import check_spam_via_spambot
 
-    return await check_spam_via_spambot(session_path, credentials, timeout)
+    return await check_spam_via_spambot(session_path, credentials, timeout, proxy=proxy)
 
 
 async def _resolve_final_status(
@@ -225,6 +226,7 @@ async def _resolve_final_status(
     *,
     credentials: list[tuple[int, str]],
     timeout: int,
+    proxy: tuple | None = None,
 ) -> _FinalStatus:
     """
     Combine the offline result with the (optional) live spam check.
@@ -244,7 +246,7 @@ async def _resolve_final_status(
 
     # Run live check.
     try:
-        return await _live_status(session_path, credentials, timeout)
+        return await _live_status(session_path, credentials, timeout, proxy=proxy)
     except Exception:
         LOGGER.exception("Live spam check failed; falling back to structural result")
         return "active"
@@ -275,6 +277,7 @@ async def _check_zip(
     *,
     credentials: list[tuple[int, str]],
     timeout: int,
+    proxy: tuple | None = None,
 ) -> list[_FinalStatus]:
     """
     Handle a ZIP archive: extract each .session, run both phases, return results.
@@ -319,6 +322,7 @@ async def _check_zip(
                             offline,
                             credentials=credentials,
                             timeout=timeout,
+                            proxy=proxy,
                         )
                         results.append(final)
                     except Exception:  # noqa: BLE001
@@ -346,6 +350,7 @@ async def check_sessions(
     *,
     credentials: list[tuple[int, str]] | None = None,
     timeout: int = 15,
+    proxy: tuple | None = None,
 ) -> SessionCheckResult:
     """
     Classify all session files found at *path*.
@@ -378,12 +383,12 @@ async def check_sessions(
         return _summarize(["invalid"])
 
     if suffix == ".zip":
-        statuses = await _check_zip(path, credentials=creds, timeout=timeout)
+        statuses = await _check_zip(path, credentials=creds, timeout=timeout, proxy=proxy)
         return _summarize(statuses)
 
     # Single .session file.
     offline = _classify_session_file(path)
     final = await _resolve_final_status(
-        path, offline, credentials=creds, timeout=timeout
+        path, offline, credentials=creds, timeout=timeout, proxy=proxy
     )
     return _summarize([final])

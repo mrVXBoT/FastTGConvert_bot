@@ -1,20 +1,28 @@
 import shutil
+import urllib.parse
 from pathlib import Path
 
 from aiogram import Bot, F, Router, html
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
-from app.db.repositories import get_user_language, set_user_language, upsert_user
+from app.db.repositories import (
+    get_user_language,
+    get_user_proxy,
+    set_user_language,
+    set_user_proxy,
+    upsert_user,
+)
 from app.keyboards import (
     cancel_menu,
     help_support_menu,
     language_menu,
     main_menu,
     membership_menu,
+    proxy_menu,
     resolve_support_contact,
 )
 from app.locales import (
@@ -26,12 +34,20 @@ from app.locales import (
     LANGUAGES,
     PLAN_MESSAGES,
     PRIVACY_MESSAGES,
+    PROXY_FAIL_MESSAGES,
+    PROXY_INVALID_MESSAGES,
+    PROXY_MESSAGES,
+    PROXY_REMOVED_MESSAGES,
+    PROXY_SUCCESS_MESSAGES,
+    PROXY_TESTING_MESSAGES,
+    REFERRAL_MESSAGES,
     SUPPORT_UNAVAILABLE,
     action_message,
     get_locale,
+    proxy_status_text,
 )
 from app.services.membership import missing_memberships
-from app.states import AccountAge
+from app.states import AccountAge, ProxyState
 
 router = Router(name="start")
 
@@ -97,6 +113,177 @@ async def command_start(
         f"{locale.welcome}\n\n{locale.choose_option}",
         reply_markup=main_menu(language),
     )
+
+
+@router.message(Command("language"))
+async def command_language(
+    message: Message,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if message.from_user is None:
+        return
+    with session_factory() as session:
+        language = get_user_language(session, message.from_user.id)
+    prompt = LANGUAGE_PROMPTS.get(language, LANGUAGE_PROMPT)
+    await message.answer(prompt, reply_markup=language_menu(language))
+
+
+@router.message(Command("referral"))
+async def command_referral(
+    message: Message,
+    bot: Bot,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if message.from_user is None:
+        return
+    with session_factory() as session:
+        language = get_user_language(session, message.from_user.id)
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "FastTGConvert_bot"
+    ref_link = f"https://t.me/{bot_username}?start=ref_{message.from_user.id}"
+    template = REFERRAL_MESSAGES.get(language, REFERRAL_MESSAGES["en"])
+    msg = template.format(
+        ref_link=ref_link,
+        user_id=message.from_user.id,
+        referred=0,
+        earned_days=0,
+    )
+    await message.answer(msg, disable_web_page_preview=True)
+
+
+def validate_proxy_url(proxy_str: str) -> str | None:
+    if not proxy_str:
+        return None
+    try:
+        parsed = urllib.parse.urlparse(proxy_str)
+        if parsed.scheme.lower() not in ("socks5", "socks4", "http", "https"):
+            return None
+        if not parsed.hostname or not parsed.port:
+            return None
+        if not (1 <= parsed.port <= 65535):
+            return None
+        return proxy_str
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+@router.message(Command("proxy"))
+async def command_proxy(
+    message: Message,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if message.from_user is None:
+        return
+    with session_factory() as session:
+        language = get_user_language(session, message.from_user.id)
+        current_proxy = get_user_proxy(session, message.from_user.id)
+    text = proxy_status_text(current_proxy, language)
+    kb = proxy_menu(has_proxy=bool(current_proxy), language=language)
+    await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "proxy:set")
+async def callback_proxy_set(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message):
+        return
+    await callback.answer()
+    language = user_language(session_factory, callback.from_user.id)
+    await state.set_state(ProxyState.waiting_for_proxy)
+    prompt = PROXY_MESSAGES.get(language, PROXY_MESSAGES["en"])
+    await callback.message.edit_text(prompt, reply_markup=cancel_menu(language))
+
+
+@router.callback_query(F.data == "proxy:view")
+async def callback_proxy_view(
+    callback: CallbackQuery,
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        current_proxy = get_user_proxy(session, callback.from_user.id)
+    if current_proxy:
+        await callback.answer(f"📡 Current Proxy:\n{current_proxy}", show_alert=True)
+    else:
+        await callback.answer(
+            "❌ No custom proxy set. System default proxy will be used.", show_alert=True
+        )
+
+
+@router.callback_query(F.data == "proxy:remove")
+async def callback_proxy_remove(
+    callback: CallbackQuery,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message):
+        return
+    with session_factory() as session:
+        set_user_proxy(session, callback.from_user.id, None)
+        language = get_user_language(session, callback.from_user.id)
+    await callback.answer(
+        PROXY_REMOVED_MESSAGES.get(language, PROXY_REMOVED_MESSAGES["en"])
+    )
+    text = proxy_status_text(None, language)
+    kb = proxy_menu(has_proxy=False, language=language)
+    await callback.message.edit_text(text, reply_markup=kb)
+
+
+@router.message(ProxyState.waiting_for_proxy)
+async def process_proxy_input(
+    message: Message,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if message.from_user is None:
+        return
+    with session_factory() as session:
+        language = get_user_language(session, message.from_user.id)
+    raw_proxy = (message.text or "").strip()
+    valid_proxy = validate_proxy_url(raw_proxy)
+    if valid_proxy is None:
+        msg = PROXY_INVALID_MESSAGES.get(language, PROXY_INVALID_MESSAGES["en"])
+        await message.answer(msg, reply_markup=cancel_menu(language))
+        return
+
+    from app.services.proxy import parse_telethon_proxy, test_proxy_connection
+
+    testing_template = PROXY_TESTING_MESSAGES.get(
+        language, PROXY_TESTING_MESSAGES["en"]
+    )
+    testing_msg = await message.answer(testing_template)
+
+    parsed_tuple = parse_telethon_proxy(valid_proxy)
+    is_ok, detail = await test_proxy_connection(parsed_tuple, timeout=5.0)
+
+    if not is_ok:
+        fail_template = PROXY_FAIL_MESSAGES.get(
+            language, PROXY_FAIL_MESSAGES["en"]
+        )
+        fail_msg = fail_template.format(detail=detail)
+        if isinstance(testing_msg, Message):
+            await testing_msg.edit_text(fail_msg, reply_markup=cancel_menu(language))
+        else:
+            await message.answer(fail_msg, reply_markup=cancel_menu(language))
+        return
+
+    with session_factory() as session:
+        set_user_proxy(session, message.from_user.id, valid_proxy)
+    await state.clear()
+    success_template = PROXY_SUCCESS_MESSAGES.get(
+        language, PROXY_SUCCESS_MESSAGES["en"]
+    )
+    if isinstance(testing_msg, Message):
+        await testing_msg.edit_text(
+            success_template.format(proxy=valid_proxy),
+            reply_markup=proxy_menu(has_proxy=True, language=language),
+        )
+    else:
+        await message.answer(
+            success_template.format(proxy=valid_proxy),
+            reply_markup=proxy_menu(has_proxy=True, language=language),
+        )
 
 
 @router.callback_query(F.data.startswith("language:"))
