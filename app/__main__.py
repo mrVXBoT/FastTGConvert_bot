@@ -45,6 +45,17 @@ async def main() -> None:
             len(recovered_jobs),
         )
 
+    # Auto-register the system owner (ADMIN_ID from .env) with SUPER_ADMIN role if not already present
+    if settings.admin_id:
+        from app.db.repositories import add_admin_user, get_admin_role
+
+        logger = logging.getLogger(__name__)
+        with session_factory() as session:
+            existing_role = get_admin_role(session, settings.admin_id)
+            if not existing_role or existing_role not in ("OWNER", "SUPER_ADMIN"):
+                add_admin_user(session, settings.admin_id, role="SUPER_ADMIN")
+                logger.info("System owner %d registered with SUPER_ADMIN role.", settings.admin_id)
+
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
