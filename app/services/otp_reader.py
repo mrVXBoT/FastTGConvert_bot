@@ -9,7 +9,9 @@ import re
 import shutil
 import tempfile
 from contextlib import suppress
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc  # noqa: UP017
 from pathlib import Path
 
 from app.otp_results import OTPCode

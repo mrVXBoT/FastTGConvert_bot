@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc  # noqa: UP017
 from pathlib import Path
 
 LOGGER = logging.getLogger(__name__)

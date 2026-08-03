@@ -17,7 +17,7 @@ EMOJI_DEFAULTS: dict[str, str] = dict(CUSTOM_EMOJI_MAP)
 class EmojiRegistry:
     """Registry managing fallback unicode icons and optional Telegram Custom Emoji IDs."""
 
-    _custom_emoji_ids: ClassVar[dict[str, str]] = {}
+    _custom_emoji_ids: ClassVar[dict[str, str]] = {"VIP": "5260398020549197682"}
 
     @classmethod
     def set_custom_emoji(cls, key: str, custom_emoji_id: str | None) -> None:

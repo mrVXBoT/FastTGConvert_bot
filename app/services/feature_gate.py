@@ -29,3 +29,11 @@ def is_feature_accessible(session: Session, telegram_id: int, feature_key: str) 
             return False, "feature_vip_only"
 
     return True, "ok"
+
+
+def get_vip_feature_keys(session: Session) -> set[str]:
+    """Query FeatureGate repository for all features configured as VIP_ONLY."""
+    from app.db.repositories import list_feature_gates
+
+    fgs = list_feature_gates(session)
+    return {fg.feature_key for fg in fgs if fg.access_level == "VIP_ONLY"}

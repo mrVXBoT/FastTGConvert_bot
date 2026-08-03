@@ -34,7 +34,9 @@ async def test_logout_account_session_empty_credentials() -> None:
 
 
 def test_format_time_ago_seconds() -> None:
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta, timezone
+
+    UTC = timezone.utc  # noqa: UP017
 
     from app.services.otp_reader import format_time_ago
 

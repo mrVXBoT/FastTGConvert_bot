@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from telethon.errors import (
+from telethon.errors import (  # type: ignore[import-untyped]
     AuthKeyUnregisteredError,
     PasswordHashInvalidError,
     PrivacyKeyInvalidError,

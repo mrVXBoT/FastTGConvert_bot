@@ -1,4 +1,6 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc  # noqa: UP017
 from pathlib import Path
 from uuid import uuid4
 

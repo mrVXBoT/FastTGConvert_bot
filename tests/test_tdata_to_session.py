@@ -57,7 +57,9 @@ def dummy_session(tmp_path: Path) -> Path:
 
 @pytest.mark.asyncio
 async def test_telethon_sqlite_session_full_schema(dummy_session: Path, tmp_path: Path):
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
+
+    UTC = timezone.utc  # noqa: UP017
 
     from telethon.tl.types import InputDocument  # type: ignore[import-untyped]
     from telethon.tl.types.updates import State  # type: ignore[import-untyped]

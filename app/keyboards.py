@@ -3,6 +3,7 @@ from collections.abc import Collection
 from urllib.parse import urlparse
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy.orm import Session
 
 from app.locales import (
     ACCOUNT_AGE_MESSAGES,
@@ -35,13 +36,26 @@ def button(
     action: str = "feature:restricted",
     style: ButtonStyle | str | None = None,
     emoji_key: str | None = None,
+    is_vip: bool = False,
 ) -> InlineKeyboardButton:
-    return Button.create(text=text, callback_data=action, style=style, emoji_key=emoji_key)
+    btn_text = f"💎 {text}" if is_vip else text
+    return Button.create(
+        text=btn_text,
+        callback_data=action,
+        style=style,
+        emoji_key=emoji_key,
+        custom_emoji_id="5260398020549197682" if is_vip else None,
+    )
 
 
-def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
+def _main_menu(
+    language: str, *, direct_file: bool, vip_features: set[str] | None = None
+) -> InlineKeyboardMarkup:
     def file_action(tool_action: str, quick_action: str) -> str:
         return quick_action if direct_file else tool_action
+
+    def is_vip(feature_key: str) -> bool:
+        return bool(vip_features and feature_key in vip_features)
 
     label = iter(menu_labels(language))
     return InlineKeyboardMarkup(
@@ -53,12 +67,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:session_check", "quick:session_check"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SEARCH",
+                    is_vip=is_vip("session_check"),
                 ),
                 button(
                     next(label),
                     file_action("tool:spam_check", "quick:spam_check"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SPAM",
+                    is_vip=is_vip("spam_check"),
                 ),
             ],
             [
@@ -67,12 +83,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:read_otp", "quick:read_otp"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="OTP",
+                    is_vip=is_vip("read_otp"),
                 ),
                 button(
                     next(label),
                     file_action("tool:check_contacts", "quick:check_contacts"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="CONTACTS",
+                    is_vip=is_vip("check_contacts"),
                 ),
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="CONVERT")],
@@ -82,12 +100,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:session_to_tdata", "quick:session_to_tdata"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="CONVERT",
+                    is_vip=is_vip("session_to_tdata"),
                 ),
                 button(
                     next(label),
                     file_action("tool:tdata_to_session", "quick:tdata_to_session"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="CONVERT",
+                    is_vip=is_vip("tdata_to_session"),
                 ),
             ],
             [
@@ -96,12 +116,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:session_to_json", "quick:session_to_json"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="EXPORT",
+                    is_vip=is_vip("session_to_json"),
                 ),
                 button(
                     next(label),
                     file_action("tool:account_to_txt", "quick:account_to_txt"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="EXPORT",
+                    is_vip=is_vip("account_to_txt"),
                 ),
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SPLIT")],
@@ -111,12 +133,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:split", "quick:file_split"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SPLIT",
+                    is_vip=is_vip("split"),
                 ),
                 button(
                     next(label),
                     file_action("tool:file_merge", "quick:file_merge"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="MERGE",
+                    is_vip=is_vip("file_merge"),
                 ),
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SECURITY")],
@@ -126,12 +150,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:change_2fa", "quick:change_2fa"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SECURITY",
+                    is_vip=is_vip("change_2fa"),
                 ),
                 button(
                     next(label),
                     file_action("tool:disable_2fa", "quick:disable_2fa"),
                     style=ButtonStyle.DANGER,
                     emoji_key="UNLOCK",
+                    is_vip=is_vip("disable_2fa"),
                 ),
             ],
             [
@@ -140,6 +166,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:reset_2fa", "quick:reset_2fa"),
                     style=ButtonStyle.DANGER,
                     emoji_key="RESET",
+                    is_vip=is_vip("reset_2fa"),
                 )
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="BROADCAST")],
@@ -149,12 +176,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:channel_join", "quick:channel_join"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="FORCE_JOIN",
+                    is_vip=is_vip("channel_join"),
                 ),
                 button(
                     next(label),
                     file_action("tool:leave_channel", "quick:leave_channel"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="BACK",
+                    is_vip=is_vip("leave_channel"),
                 ),
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="USERS")],
@@ -164,12 +193,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:clean_chat", "quick:clean_chat"),
                     style=ButtonStyle.DANGER,
                     emoji_key="DELETE",
+                    is_vip=is_vip("clean_chat"),
                 ),
                 button(
                     next(label),
                     file_action("tool:clear_contact", "quick:clear_contact"),
                     style=ButtonStyle.DANGER,
                     emoji_key="DELETE",
+                    is_vip=is_vip("clear_contact"),
                 ),
             ],
             [
@@ -178,6 +209,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:delete_contact", "quick:delete_contact"),
                     style=ButtonStyle.DANGER,
                     emoji_key="DELETE",
+                    is_vip=is_vip("delete_contact"),
                 )
             ],
             [
@@ -186,6 +218,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:profile_setup", "quick:profile_setup"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SETTINGS",
+                    is_vip=is_vip("profile_setup"),
                 )
             ],
             [
@@ -194,6 +227,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:account_age", "quick:account_age"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="STATS",
+                    is_vip=is_vip("account_age"),
                 )
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="STATS")],
@@ -203,6 +237,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:mass_message", "quick:mass_message"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="BROADCAST",
+                    is_vip=is_vip("mass_message"),
                 )
             ],
             [
@@ -211,12 +246,14 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:kill_sessions", "quick:kill_sessions"),
                     style=ButtonStyle.DANGER,
                     emoji_key="RESET",
+                    is_vip=is_vip("kill_sessions"),
                 ),
                 button(
                     next(label),
                     file_action("tool:fresh_session", "quick:fresh_session"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="REFRESH",
+                    is_vip=is_vip("fresh_session"),
                 ),
             ],
             [
@@ -225,6 +262,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:list_checker", "quick:list_checker"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SEARCH",
+                    is_vip=is_vip("list_checker"),
                 )
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SECURITY")],
@@ -234,6 +272,7 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
                     file_action("tool:privacy_settings", "quick:privacy_settings"),
                     style=ButtonStyle.PRIMARY,
                     emoji_key="SECURITY",
+                    is_vip=is_vip("privacy_settings"),
                 )
             ],
             [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.SUCCESS, emoji_key="VIP")],
@@ -254,8 +293,57 @@ def _main_menu(language: str, *, direct_file: bool) -> InlineKeyboardMarkup:
     )
 
 
-def main_menu(language: str = "en") -> InlineKeyboardMarkup:
-    return _main_menu(language, direct_file=False)
+def resolve_vip_features(
+    vip_features: set[str] | None = None,
+    session: Session | None = None,
+    session_factory: object | None = None,
+) -> set[str]:
+    """Query FeatureGateService to determine which features have access_level == VIP_ONLY."""
+    if vip_features is not None:
+        return vip_features
+    if session is not None:
+        from app.services.feature_gate import get_vip_feature_keys
+
+        return get_vip_feature_keys(session)
+    if session_factory is not None and callable(session_factory):
+        from app.services.feature_gate import get_vip_feature_keys
+
+        with session_factory() as db_sess:  # type: ignore[operator]
+            return get_vip_feature_keys(db_sess)
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.db.session import get_default_session_factory
+
+    default_sf = get_default_session_factory()
+    if default_sf is not None:
+        try:
+            from app.services.feature_gate import get_vip_feature_keys
+
+            with default_sf() as db_sess:
+                return get_vip_feature_keys(db_sess)
+        except SQLAlchemyError:
+            return set()
+    return set()
+
+
+def main_menu(
+    language: str = "en",
+    vip_features: set[str] | None = None,
+    session: Session | None = None,
+    session_factory: object | None = None,
+) -> InlineKeyboardMarkup:
+    resolved_vip = resolve_vip_features(vip_features, session, session_factory)
+    return _main_menu(language, direct_file=False, vip_features=resolved_vip)
+
+
+def direct_main_menu(
+    language: str = "en",
+    vip_features: set[str] | None = None,
+    session: Session | None = None,
+    session_factory: object | None = None,
+) -> InlineKeyboardMarkup:
+    resolved_vip = resolve_vip_features(vip_features, session, session_factory)
+    return _main_menu(language, direct_file=True, vip_features=resolved_vip)
 
 
 def resolve_support_contact(support_id: str) -> tuple[str, str] | None:
@@ -341,8 +429,14 @@ def file_split_choice_menu(language: str = "en") -> InlineKeyboardMarkup:
     )
 
 
-def quick_action_menu(language: str = "en") -> InlineKeyboardMarkup:
-    return _main_menu(language, direct_file=True)
+def quick_action_menu(
+    language: str = "en",
+    vip_features: set[str] | None = None,
+    session: Session | None = None,
+    session_factory: object | None = None,
+) -> InlineKeyboardMarkup:
+    resolved_vip = resolve_vip_features(vip_features, session, session_factory)
+    return _main_menu(language, direct_file=True, vip_features=resolved_vip)
 
 
 def file_split_result_menu(
@@ -1509,6 +1603,30 @@ def user_vip_plans_menu(plans: list, language: str = "en") -> InlineKeyboardMark
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def vip_checkout_menu(language: str = "en") -> InlineKeyboardMarkup:
+    """Generate inline keyboard for VIP checkout page with Back & Cancel buttons."""
+    back_lbl = BACK_LABELS.get(language, BACK_LABELS["en"])
+    cancel_lbl = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                Button.create(
+                    text=back_lbl,
+                    callback_data="menu:plan",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BACK",
+                ),
+                Button.create(
+                    text=cancel_lbl,
+                    callback_data="action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                ),
+            ]
+        ]
+    )
 
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc  # noqa: UP017
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -354,6 +356,12 @@ def toggle_feature_access_level(session: Session, feature_key: str) -> FeatureGa
     session.commit()
     session.refresh(fg)
     return fg
+
+
+def get_vip_feature_keys(session: Session) -> set[str]:
+    """Return set of feature_keys that are currently VIP_ONLY."""
+    stmt = select(FeatureGate.feature_key).where(FeatureGate.access_level == "VIP_ONLY")
+    return set(session.scalars(stmt).all())
 
 
 # ==========================================

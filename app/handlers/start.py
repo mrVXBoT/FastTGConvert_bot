@@ -32,7 +32,6 @@ from app.locales import (
     LANGUAGE_PROMPT,
     LANGUAGE_PROMPTS,
     LANGUAGES,
-    PLAN_MESSAGES,
     PRIVACY_MESSAGES,
     PROXY_FAIL_MESSAGES,
     PROXY_INVALID_MESSAGES,
@@ -486,12 +485,27 @@ async def account_age_menu(
 @router.callback_query(F.data == "menu:plan")
 async def plan_menu(
     callback: CallbackQuery,
-    settings: Settings,
     session_factory: sessionmaker[Session],
 ) -> None:
     await callback.answer()
     if isinstance(callback.message, Message):
-        language = user_language(session_factory, callback.from_user.id)
-        template = PLAN_MESSAGES.get(language, PLAN_MESSAGES["en"])
-        msg = template.format(max_mb=settings.max_upload_mb)
-        await callback.message.edit_text(msg, reply_markup=main_menu(language))
+        with session_factory() as session:
+            from app.db.repositories import get_user_by_telegram_id, list_vip_plans
+            from app.keyboards import user_vip_plans_menu
+
+            user = callback.from_user
+            plans = list_vip_plans(session, active_only=True)
+            user_db = get_user_by_telegram_id(session, user.id) if user else None
+            language = user_language(session_factory, user.id) if user else "en"
+
+            from app.locales import VIP_CENTER_MESSAGES, VIP_STATUS_LABELS
+
+            status_labels = VIP_STATUS_LABELS.get(language, VIP_STATUS_LABELS["en"])
+            vip_status_str = status_labels["vip"] if (user_db and user_db.is_vip) else status_labels["free"]
+            center_template = VIP_CENTER_MESSAGES.get(language, VIP_CENTER_MESSAGES["en"])
+            text = center_template.format(status=vip_status_str)
+            await callback.message.edit_text(
+                text,
+                reply_markup=user_vip_plans_menu(plans, language=language),
+                parse_mode="HTML",
+            )

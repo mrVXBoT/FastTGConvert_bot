@@ -3779,3 +3779,202 @@ def action_message(lang: str, idx: int) -> str:
     if 0 <= idx < len(msgs):
         return msgs[idx]
     return msgs[0]
+
+
+VIP_RESTRICTED_MESSAGES = {
+    "en": (
+        "🔒 <b>VIP Access Required</b>\n\n"
+        "This feature is restricted to VIP members.\n"
+        "Please select a subscription plan below to upgrade your account:"
+    ),
+    "bn": (
+        "🔒 <b>VIP অ্যাক্সেস প্রয়োজন</b>\n\n"
+        "এই সুবিধাটি শুধুমাত্র VIP সদস্যদের জন্য সংরক্ষিত।\n"
+        "আপনার অ্যাকাউন্ট আপগ্রেড করতে নিচে একটি প্ল্যান নির্বাচন করুন:"
+    ),
+    "hi": (
+        "🔒 <b>VIP एक्सेस आवश्यक</b>\n\n"
+        "यह सुविधा केवल VIP सदस्यों के लिए सीमित है।\n"
+        "अपने खाते को अपग्रेड करने के लिए नीचे दिए गए प्लान का चयन करें:"
+    ),
+    "ur": (
+        "🔒 <b>VIP رسائی درکار ہے</b>\n\n"
+        "یہ خصوصیت صرف VIP اراکین کے لیے مخصوص ہے۔\n"
+        "اپنے اکاؤنٹ کو اپ گریڈ کرنے کے لیے نیچے دیے گئے پلان کو منتخب کریں:"
+    ),
+    "ar": (
+        "🔒 <b>مطلوب اشتراك VIP</b>\n\n"
+        "هذه الميزة مقتصرة على أعضاء VIP.\n"
+        "يرجى اختيار إحدى الخطط أدناه لترقية حسابك:"
+    ),
+    "zh": (
+        "🔒 <b>需要 VIP 权限</b>\n\n"
+        "此功能仅限 VIP 会员使用。\n"
+        "请在下方选择一个方案以升级您的账户："
+    ),
+}
+
+FEATURE_DISABLED_MESSAGES = {
+    "en": "⚠️ <b>Feature Disabled</b>\n\nThis tool is currently disabled by administrator.",
+    "bn": "⚠️ <b>ফিচারটি নিষ্ক্রিয়</b>\n\nএই টুলটি বর্তমানে এডমিন দ্বারা নিষ্ক্রিয় করা হয়েছে।",
+    "hi": "⚠️ <b>सुविधा निष्क्रिय</b>\n\nयह टूल वर्तमान में एडमिन द्वारा निष्क्रिय किया गया है।",
+    "ur": "⚠️ <b>خصوصیت غیر فعال ہے</b>\n\nیہ ٹول فی الحال ایڈمن کی طرف سے غیر فعال کر دیا گیا ہے۔",
+    "ar": "⚠️ <b>الميزة معطلة</b>\n\nهذه الأداة معطلة حالياً من قبل المشرف。",
+    "zh": "⚠️ <b>功能已禁用</b>\n\n该工具目前已被管理员禁用。",
+}
+
+VIP_STATUS_LABELS = {
+    "en": {"vip": "💎 Active VIP Member", "free": "⚪ Free Plan"},
+    "bn": {"vip": "💎 সক্রিয় VIP সদস্য", "free": "⚪ ফ্রি প্ল্যান"},
+    "hi": {"vip": "💎 सक्रिय VIP सदस्य", "free": "⚪ मुफ़्त प्लान"},
+    "ur": {"vip": "💎 فعال VIP ممبر", "free": "⚪ مفت پلان"},
+    "ar": {"vip": "💎 عضو VIP نشط", "free": "⚪ خطة مجانية"},
+    "zh": {"vip": "💎 VIP 尊享会员", "free": "⚪ 免费版"},
+}
+
+VIP_CENTER_MESSAGES = {
+    "en": (
+        "💎 <b>VIP Subscription Center</b>\n\n"
+        "Current Status: <b>{status}</b>\n\n"
+        "<b>VIP Benefits:</b>\n"
+        "• Unlimited Fast File Conversions\n"
+        "• High Priority Server Queue\n"
+        "• Advanced Telethon Features\n\n"
+        "Select a subscription plan below to upgrade:"
+    ),
+    "bn": (
+        "💎 <b>VIP সাবস্ক্রিপশন সেন্টার</b>\n\n"
+        "বর্তমান স্ট্যাটাস: <b>{status}</b>\n\n"
+        "<b>VIP সুবিধাসমূহ:</b>\n"
+        "• আনলিমিটেড দ্রুত ফাইল কনভার্সন\n"
+        "• হাই প্রায়োরিটি সার্ভার কিউ\n"
+        "• অ্যাডভান্সড Telethon ফিচারস\n\n"
+        "আপগ্রেড করতে নিচে একটি সাবস্ক্রিপশন প্ল্যান নির্বাচন করুন:"
+    ),
+    "hi": (
+        "💎 <b>VIP सब्सक्रिप्शन सेंटर</b>\n\n"
+        "वर्तमान स्थिति: <b>{status}</b>\n\n"
+        "<b>VIP लाभ:</b>\n"
+        "• असीमित तेज़ फ़ाइल रूपांतरण\n"
+        "• उच्च प्राथमिकता सर्वर कतार\n"
+        "• उन्नत Telethon सुविधाएँ\n\n"
+        "अपग्रेड करने के लिए नीचे एक सदस्यता योजना चुनें:"
+    ),
+    "ur": (
+        "💎 <b>VIP سبسکرپشن سینٹر</b>\n\n"
+        "موجودہ حیثیت: <b>{status}</b>\n\n"
+        "<b>VIP فوائد:</b>\n"
+        "• لامحدود تیز فائل کی تبدیلیاں\n"
+        "• اعلی ترجیحی سرور قطار\n"
+        "• اعلی درجے کی Telethon خصوصیات\n\n"
+        "اپ گریڈ کرنے کے لیے نیچے دیے گئے پلان کا انتخاب کریں:"
+    ),
+    "ar": (
+        "💎 <b>مركز اشتراك VIP</b>\n\n"
+        "الحالة الحالية: <b>{status}</b>\n\n"
+        "<b>مزايا VIP:</b>\n"
+        "• تحويلات ملفات سريعة غير محدودة\n"
+        "• قائمة انتظار سيرفر ذات أولوية عالية\n"
+        "• ميزات Telethon متقدمة\n\n"
+        "اختر خطة الاشتراك أدناه للترقية:"
+    ),
+    "zh": (
+        "💎 <b>VIP 订阅中心</b>\n\n"
+        "当前状态：<b>{status}</b>\n\n"
+        "<b>VIP 权益：</b>\n"
+        "• 无限快速文件转换\n"
+        "• 高优先级服务器队列\n"
+        "• 高级 Telethon 功能\n\n"
+        "请在下方选择订阅方案以升级："
+    ),
+}
+
+VIP_CHECKOUT_MESSAGES = {
+    "en": (
+        "💳 <b>Checkout — {name}</b>\n\n"
+        "<b>Amount:</b> <code>{price} {currency}</code>\n"
+        "<b>Duration:</b> <code>{months} Month(s)</code>\n\n"
+        "<b>Available Payment Methods:</b>\n"
+        "• <b>TRC20 USDT:</b> <code>{trc20}</code>\n"
+        "• <b>BEP20 USDT:</b> <code>{bep20}</code>\n"
+        "• <b>Binance Pay ID:</b> <code>{binance}</code>\n\n"
+        "📥 <b>Next Step:</b> Transfer exact amount to any address above, then send your <b>Transaction Hash / Photo Receipt</b> here:"
+    ),
+    "bn": (
+        "💳 <b>চেকআউট — {name}</b>\n\n"
+        "<b>পরিমাণ:</b> <code>{price} {currency}</code>\n"
+        "<b>মেয়াদ:</b> <code>{months} মাস</code>\n\n"
+        "<b>উপলব্ধ পেমেন্ট পদ্ধতি:</b>\n"
+        "• <b>TRC20 USDT:</b> <code>{trc20}</code>\n"
+        "• <b>BEP20 USDT:</b> <code>{bep20}</code>\n"
+        "• <b>Binance Pay ID:</b> <code>{binance}</code>\n\n"
+        "📥 <b>পরবর্তী পদক্ষেপ:</b> উপরের যেকোনো ঠিকানায় সঠিক পরিমাণ অর্থ পাঠান, তারপর আপনার <b>ট্রানজিশন হ্যাশ / ফটো রসিদ</b> এখানে পাঠান:"
+    ),
+    "hi": (
+        "💳 <b>चेकआउट — {name}</b>\n\n"
+        "<b>राशि:</b> <code>{price} {currency}</code>\n"
+        "<b>अवधि:</b> <code>{months} महीने</code>\n\n"
+        "<b>उपलब्ध भुगतान विधियाँ:</b>\n"
+        "• <b>TRC20 USDT:</b> <code>{trc20}</code>\n"
+        "• <b>BEP20 USDT:</b> <code>{bep20}</code>\n"
+        "• <b>Binance Pay ID:</b> <code>{binance}</code>\n\n"
+        "📥 <b>अगला कदम:</b> ऊपर दिए गए किसी भी पते पर सटीक राशि स्थानांतरित करें, फिर अपना <b>लेनदेन हैश / रसीद की फोटो</b> यहाँ भेजें:"
+    ),
+    "ur": (
+        "💳 <b>چیک آؤٹ — {name}</b>\n\n"
+        "<b>رقم:</b> <code>{price} {currency}</code>\n"
+        "<b>مدت:</b> <code>{months} ماہ</code>\n\n"
+        "<b>دستیاب ادائیگی کے طریقے:</b>\n"
+        "• <b>TRC20 USDT:</b> <code>{trc20}</code>\n"
+        "• <b>BEP20 USDT:</b> <code>{bep20}</code>\n"
+        "• <b>Binance Pay ID:</b> <code>{binance}</code>\n\n"
+        "📥 <b>اگلا قدم:</b> اوپر دیے گئے کسی بھی پتے پر دقیق رقم منتقل کریں، پھر اپنی <b>رست کی تصویر / ٹرانزیکشن ہیش</b> یہاں بھیجیں:"
+    ),
+    "ar": (
+        "💳 <b>الدفع — {name}</b>\n\n"
+        "<b>المبلغ:</b> <code>{price} {currency}</code>\n"
+        "<b>المدة:</b> <code>{months} شهر</code>\n\n"
+        "<b>طرق الدفع المتاحة:</b>\n"
+        "• <b>TRC20 USDT:</b> <code>{trc20}</code>\n"
+        "• <b>BEP20 USDT:</b> <code>{bep20}</code>\n"
+        "• <b>Binance Pay ID:</b> <code>{binance}</code>\n\n"
+        "📥 <b>الخطوة التالية:</b> قم بتحويل المبلغ المحدد إلى أي عنوان أعلاه، ثم أرسل <b>رمز المعاملة (TX Hash) / صورة الإيصال</b> هنا:"
+    ),
+    "zh": (
+        "💳 <b>结账 — {name}</b>\n\n"
+        "<b>金额：</b> <code>{price} {currency}</code>\n"
+        "<b>时长：</b> <code>{months} 个月</code>\n\n"
+        "<b>可选支付方式：</b>\n"
+        "• <b>TRC20 USDT：</b> <code>{trc20}</code>\n"
+        "• <b>BEP20 USDT：</b> <code>{bep20}</code>\n"
+        "• <b>Binance Pay ID：</b> <code>{binance}</code>\n\n"
+        "📥 <b>下一步：</b> 转账准确金额至上述任意地址，然后在此发送您的<b>交易哈希 / 转账截图</b>："
+    ),
+}
+
+VIP_PAYMENT_SUBMITTED_MESSAGES = {
+    "en": (
+        "✅ <b>Payment Order #{id} Submitted!</b>\n\n"
+        "Our administrative team is reviewing your transaction. You will be notified immediately upon approval."
+    ),
+    "bn": (
+        "✅ <b>পেমেন্ট অর্ডার #{id} জমাদান সম্পন্ন হয়েছে!</b>\n\n"
+        "আমাদের অ্যাডমিন টিম আপনার ট্রানজিশন পর্যালোচনা করছে। অনুমোদিত হওয়া মাত্র আপনাকে জানানো হবে।"
+    ),
+    "hi": (
+        "✅ <b>भुगतान आदेश #{id} प्रस्तुत किया गया!</b>\n\n"
+        "हमारी प्रशासनिक टीम आपके लेन-देन की समीक्षा कर रही है। स्वीकृति मिलने पर आपको तुरंत सूचित किया जाएगा।"
+    ),
+    "ur": (
+        "✅ <b>ادائیگی کا آرڈر #{id} جمع کر دیا گیا!</b>\n\n"
+        "ہماری انتظامی ٹیم آپ کی ٹرانزیکشن کا جائزہ لے رہی ہے۔ منظوری کے فوراً بعد آپ کو مطلع کر دیا جائے گا۔"
+    ),
+    "ar": (
+        "✅ <b>تم تقديم طلب الدفع رقم #{id} بنجاح!</b>\n\n"
+        "فريق الإدارة يقوم بمراجعة معاملتك حالياً。سيتم إخطارك فور الموافقة عليها。"
+    ),
+    "zh": (
+        "✅ <b>支付订单 #{id} 已提交！</b>\n\n"
+        "我们的管理团队正在审核您的交易。一旦批准，您将立即收到通知。"
+    ),
+}

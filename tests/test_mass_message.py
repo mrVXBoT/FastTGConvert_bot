@@ -292,7 +292,9 @@ async def test_global_rate_limiter():
     assert (t1 - t0) >= 0.04
 
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc  # noqa: UP017
 
 
 def test_job_foreign_key_integrity_and_recovery():

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc  # noqa: UP017
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest

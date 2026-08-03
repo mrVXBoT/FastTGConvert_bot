@@ -61,10 +61,22 @@ async def main() -> None:
     with session_factory() as session:
         EmojiRegistry.load_from_db(session)
 
-    bot = Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    import os
+    proxy_url = settings.bot_proxy or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY") or os.getenv("all_proxy")
+    if proxy_url:
+        from aiogram.client.session.aiohttp import AiohttpSession
+
+        bot_session = AiohttpSession(proxy=proxy_url)
+        bot = Bot(
+            token=settings.bot_token,
+            session=bot_session,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+    else:
+        bot = Bot(
+            token=settings.bot_token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
 
     from aiogram.methods import (
         EditMessageCaption,

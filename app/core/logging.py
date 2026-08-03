@@ -6,7 +6,9 @@ import json
 import logging
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc  # noqa: UP017
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any

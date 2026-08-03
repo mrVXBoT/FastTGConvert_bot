@@ -92,3 +92,32 @@ async def test_setup_bot_commands_registers_required_commands() -> None:
         "proxy": "Set your proxy 🎯",
         "language": "Change your language 🌍",
     }
+
+
+def test_main_menu_vip_badge_rendering() -> None:
+    free_menu = main_menu("en", vip_features=set())
+    session_btn = free_menu.inline_keyboard[1][0]
+    assert "💎" not in session_btn.text
+    assert session_btn.icon_custom_emoji_id is None
+
+    vip_menu = main_menu("en", vip_features={"session_check", "read_otp"})
+    vip_session_btn = vip_menu.inline_keyboard[1][0]
+    assert "💎" in vip_session_btn.text
+    assert vip_session_btn.icon_custom_emoji_id == "5260398020549197682"
+
+    vip_otp_btn = vip_menu.inline_keyboard[2][0]
+    assert "💎" in vip_otp_btn.text
+    assert vip_otp_btn.icon_custom_emoji_id == "5260398020549197682"
+
+    spam_btn = vip_menu.inline_keyboard[1][1]
+    assert "💎" not in spam_btn.text
+    assert spam_btn.icon_custom_emoji_id is None
+
+
+def test_vip_checkout_menu_has_back_and_cancel_buttons() -> None:
+    from app.keyboards import vip_checkout_menu
+
+    kb = vip_checkout_menu("en")
+    assert len(kb.inline_keyboard[0]) == 2
+    assert kb.inline_keyboard[0][0].callback_data == "menu:plan"
+    assert kb.inline_keyboard[0][1].callback_data == "action:cancel"

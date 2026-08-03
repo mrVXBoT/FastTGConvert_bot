@@ -28,8 +28,18 @@ def build_engine(database_url: str) -> Engine:
     return engine
 
 
+_DEFAULT_SESSION_FACTORY: sessionmaker[Session] | None = None
+
+
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
-    return sessionmaker(engine, expire_on_commit=False)
+    global _DEFAULT_SESSION_FACTORY
+    factory = sessionmaker(engine, expire_on_commit=False)
+    _DEFAULT_SESSION_FACTORY = factory
+    return factory
+
+
+def get_default_session_factory() -> sessionmaker[Session] | None:
+    return _DEFAULT_SESSION_FACTORY
 
 
 def create_schema(engine: Engine) -> None:

@@ -21,7 +21,9 @@ async def test_kill_single_session_invalid_sqlite(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_kill_single_session_fresh_forbidden(tmp_path: Path):
-    from telethon.errors import FreshResetAuthorisationForbiddenError
+    from telethon.errors import (  # type: ignore[import-untyped]
+        FreshResetAuthorisationForbiddenError,
+    )
 
     fake_sess = tmp_path / "valid.session"
 

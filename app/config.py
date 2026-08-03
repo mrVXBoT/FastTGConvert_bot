@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     spambot_timeout: int = Field(default=15, ge=5, le=60)
     # Optional 32-byte url-safe base64 key for encrypting user proxy passwords
     proxy_encryption_key: str = ""
+    # Optional proxy URL for Bot connection (e.g., http://127.0.0.1:10809 or socks5://...)
+    bot_proxy: str = ""
     # Custom Telegram Emoji IDs for Telegram Premium themes
     custom_emoji_vip: str = ""
     custom_emoji_users: str = ""

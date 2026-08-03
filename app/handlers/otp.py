@@ -4,7 +4,9 @@ import logging
 import shutil
 import zipfile
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc  # noqa: UP017
 from pathlib import Path
 
 from aiogram import Bot, F, Router, html
