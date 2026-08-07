@@ -1914,6 +1914,21 @@ async def confirm_clean_chat_selection(
     if isinstance(callback.message, Message):
         status_msg = await callback.message.edit_text(msgs_clean["processing"])
 
+    last_progress_edit = 0.0
+
+    async def _report_clean_progress(done: int) -> None:
+        nonlocal last_progress_edit
+        if not isinstance(status_msg, Message):
+            return
+        now = time.monotonic()
+        if now - last_progress_edit < 2.0:
+            return
+        last_progress_edit = now
+        with suppress(Exception):
+            await status_msg.edit_text(
+                msgs_clean["processing_progress"].format(done=done)
+            )
+
     out_res: Path | None = None
     try:
         user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
@@ -1926,6 +1941,8 @@ async def confirm_clean_chat_selection(
             proxy=user_proxy,
             concurrency=settings.clean_chat_concurrency,
             flood_ceiling=settings.clean_chat_flood_ceiling,
+            delete_concurrency=settings.clean_chat_delete_concurrency,
+            on_progress=_report_clean_progress,
         )
         out_res = res_cln.output_path
         if res_cln.cleaned == 0:

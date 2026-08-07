@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # honour per dialog before skipping it.
     clean_chat_concurrency: int = Field(default=5, ge=1, le=20)
     clean_chat_flood_ceiling: int = Field(default=30, ge=0, le=300)
+    # How many chats are deleted concurrently within one session. Sequential
+    # per-chat deletion is very slow for accounts with many dialogs; a small
+    # concurrent batch overlaps the network RPC latency.
+    clean_chat_delete_concurrency: int = Field(default=5, ge=1, le=20)
     # Optional 32-byte url-safe base64 key for encrypting user proxy passwords
     proxy_encryption_key: str = ""
     # Optional proxy URL for Bot connection (e.g., http://127.0.0.1:10809 or socks5://...)

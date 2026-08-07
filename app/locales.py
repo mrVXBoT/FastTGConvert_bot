@@ -2118,6 +2118,7 @@ CLEAN_CHAT_SELECTION_ACTIONS = {
 
 CLEAN_CHAT_MESSAGES = {
     "en": {
+        "processing_progress": "⏳ Cleaning chats from sessions...\n✅ Deleted: {done}",
         "processing": "⏳ Cleaning chats from sessions...",
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
@@ -2128,6 +2129,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "Failed",
     },
     "bn": {
+        "processing_progress": "⏳ সেশন থেকে চ্যাট পরিষ্কার করা হচ্ছে...\n✅ মুছে ফেলা হয়েছে: {done}",
         "processing": "⏳ সেশন থেকে চ্যাট পরিষ্কার করা হচ্ছে...",
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
@@ -2138,6 +2140,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "ব্যর্থ",
     },
     "hi": {
+        "processing_progress": "⏳ सेशन से चैट साफ़ किए जा रहे हैं...\n✅ हटाए गए: {done}",
         "processing": "⏳ सेशन से चैट साफ़ किए जा रहे हैं...",
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
@@ -2148,6 +2151,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "विफल",
     },
     "ur": {
+        "processing_progress": "⏳ سیشنز سے چیٹس صاف کی جا رہی ہیں...\n✅ حذف شدہ: {done}",
         "processing": "⏳ سیشنز سے چیٹس صاف کی جا رہی ہیں...",
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
@@ -2158,6 +2162,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "ناکام",
     },
     "ar": {
+        "processing_progress": "⏳ جاري مسح المحادثات من الجلسات...\n✅ تم حذف: {done}",
         "processing": "⏳ جاري مسح المحادثات من الجلسات...",
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
@@ -2168,6 +2173,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "الفاشلة",
     },
     "zh": {
+        "processing_progress": "⏳ 正在从会话中清理聊天...\n✅ 已删除: {done}",
         "processing": "⏳ 正在从会话中清理聊天...",
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",

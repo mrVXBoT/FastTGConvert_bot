@@ -258,6 +258,48 @@ async def test_clean_session_chats_rejects_invalid_mode(dummy_session: Path):
 
 
 @pytest.mark.asyncio
+async def test_clean_session_chats_batches_concurrently_and_reports_progress(
+    dummy_session: Path,
+):
+    """Deletes must be issued in concurrent batches (not one-by-one) and the
+    progress callback must be awaited after every batch."""
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+
+    class DummyUserDialog:
+        is_user = True
+        is_group = False
+        is_channel = False
+
+        def __init__(self, name: str) -> None:
+            self.entity = name
+            self.input_entity = name
+
+    async def mock_iter_dialogs():
+        for name in ("d1", "d2", "d3", "d4", "d5"):
+            yield DummyUserDialog(name)
+
+    mock_client.iter_dialogs = mock_iter_dialogs
+    progress_calls: list[int] = []
+
+    async def on_progress(done: int) -> None:
+        progress_calls.append(done)
+
+    with patch("telethon.TelegramClient", return_value=mock_client):
+        res = await clean_session_chats(
+            dummy_session,
+            [(123, "hash")],
+            mode="dms",
+            delete_concurrency=2,
+            on_progress=on_progress,
+        )
+
+    assert res is True
+    assert mock_client.delete_dialog.await_count == 5
+    assert sorted(progress_calls) == [2, 4, 5]
+
+
+@pytest.mark.asyncio
 async def test_process_clean_chat_single(dummy_session: Path, tmp_path: Path):
     mock_client = AsyncMock()
     mock_client.is_user_authorized.return_value = True
