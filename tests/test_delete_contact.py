@@ -315,4 +315,4 @@ def test_delete_contact_locales_and_keyboards():
 
     res_kb = delete_contact_result_menu(12, 3, 0, "en")
     assert res_kb is not None
-    assert len(res_kb.inline_keyboard) == 3
+    assert len(res_kb.inline_keyboard) == 4

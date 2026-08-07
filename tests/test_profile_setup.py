@@ -170,4 +170,4 @@ def test_profile_setup_locales_and_keyboards():
 
     kb_res = profile_setup_result_menu(5, 3, 1, 1, "en")
     assert kb_res is not None
-    assert len(kb_res.inline_keyboard) == 4
+    assert len(kb_res.inline_keyboard) == 5

@@ -16,6 +16,26 @@ from app.db.repositories import get_admin_role
 LOGGER = logging.getLogger(__name__)
 
 
+# ─── Section-level RBAC for AdminNav callbacks ─────────────────
+PREFIX_MIN_ROLE: dict[str, str] = {
+    "adm_vip": "ADMIN",
+    "adm_feat": "ADMIN",
+    "adm_plan": "ADMIN",
+    "adm_pay": "ADMIN",
+    "adm_stats": "SUPPORT",
+    "adm_usr": "SUPPORT",
+    "adm_usr_act": "SUPPORT",
+    "adm_lang": "SUPPORT",
+}
+
+
+async def _deny(event: TelegramObject, message: str) -> None:
+    if isinstance(event, CallbackQuery):
+        await event.answer(message, show_alert=True)
+    elif isinstance(event, Message):
+        await event.reply(message)
+
+
 class AdminPermissionMiddleware(BaseMiddleware):
     """Verify admin/owner authorization AND enforce section-level RBAC.
 
@@ -44,10 +64,9 @@ class AdminPermissionMiddleware(BaseMiddleware):
             role = get_admin_role(session, user_id, owner_id=owner_id)
 
             if not role:
-                if isinstance(event, CallbackQuery):
-                    await event.answer("🚫 Access Denied! Admin Privileges Required.", show_alert=True)
-                elif isinstance(event, Message):
-                    await event.reply("🚫 Access Denied! Admin Privileges Required.")
+                await _deny(
+                    event, "🚫 Access Denied! Admin Privileges Required."
+                )
                 return None
 
             # ─── Section-level RBAC for AdminNav callbacks ─────────────────
@@ -57,9 +76,9 @@ class AdminPermissionMiddleware(BaseMiddleware):
                     try:
                         nav_action = event.data.split(":")[1]
                         if not check_nav_permission(role, nav_action):
-                            await event.answer(
+                            await _deny(
+                                event,
                                 f"🚫 Your role ({role}) does not have access to this section.",
-                                show_alert=True,
                             )
                             return None
                     except IndexError:
@@ -67,19 +86,30 @@ class AdminPermissionMiddleware(BaseMiddleware):
 
                 # Block admin management for non-SUPER_ADMIN
                 elif event.data.startswith("adm_mgmt:") and not has_permission(role, "SUPER_ADMIN"):
-                    await event.answer(
+                    await _deny(
+                        event,
                         "🚫 Admin Management requires SUPER_ADMIN or OWNER role.",
-                        show_alert=True,
                     )
                     return None
 
                 # Block Force Join management for non-SUPER_ADMIN
                 elif event.data.startswith("adm_fj:") and not has_permission(role, "SUPER_ADMIN"):
-                    await event.answer(
+                    await _deny(
+                        event,
                         "🚫 Force Join Management requires SUPER_ADMIN or OWNER role.",
-                        show_alert=True,
                     )
                     return None
+
+                # Generic gate for remaining admin prefixes
+                for prefix, min_role in PREFIX_MIN_ROLE.items():
+                    if event.data.startswith(f"{prefix}:"):
+                        if not has_permission(role, min_role):
+                            await _deny(
+                                event,
+                                f"🚫 Your role ({role}) does not have access to this section.",
+                            )
+                            return None
+                        break
 
             data["admin_role"] = role
             data["session"] = session

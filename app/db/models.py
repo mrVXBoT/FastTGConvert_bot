@@ -40,6 +40,7 @@ class User(Base):
     proxy_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     is_vip: Mapped[bool] = mapped_column(Boolean, default=False)
     vip_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    referred_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
@@ -156,6 +157,8 @@ class PaymentSetting(Base):
     binance_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     trc20_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bep20_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    auto_trc20_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    auto_bep20_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     auto_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -172,6 +175,11 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending, paid, rejected, refunded, cancelled
     transaction_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     receipt_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    order_code: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    network: Mapped[str | None] = mapped_column(String(16), nullable=True)  # trc20, bep20 — NULL for manual payments
+    wallet_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expected_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -214,4 +222,33 @@ class SystemSetting(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Referral(Base):
+    __tablename__ = "referrals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    referrer_telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    referred_telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReferralTier(Base):
+    __tablename__ = "referral_tiers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    refs_required: Mapped[int] = mapped_column(Integer, unique=True)
+    reward_days: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReferralReward(Base):
+    __tablename__ = "referral_rewards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    referrer_telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    tier_id: Mapped[int] = mapped_column(ForeignKey("referral_tiers.id"), nullable=True)
+    days: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

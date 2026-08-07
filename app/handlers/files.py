@@ -1,10 +1,12 @@
 import asyncio
+import contextlib
 import json
 import logging
 import random
 import shutil
 import tempfile
 import time
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal
@@ -25,6 +27,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
+from app.contacts_results import (
+    contacts_report_caption,
+    contacts_result_menu,
+    contacts_status_zip_caption,
+    render_contacts_result,
+)
 from app.db.models import Job, User, utcnow
 from app.db.repositories import (
     generate_unique_display_id,
@@ -39,7 +47,6 @@ from app.keyboards import (
     clean_chat_choice_menu,
     clean_chat_result_menu,
     clear_contacts_result_menu,
-    contacts_result_menu,
     delete_contact_result_menu,
     delete_contact_selection_menu,
     file_merge_choice_menu,
@@ -68,6 +75,9 @@ from app.keyboards import (
     profile_setup_result_menu,
     quick_action_menu,
     session_json_result_menu,
+    session_to_tdata_result_menu,
+    tdata_to_session_result_menu,
+    two_factor_cancel_menu,
     two_factor_result_menu,
 )
 from app.locales import (
@@ -77,6 +87,7 @@ from app.locales import (
     ANALYSIS_MESSAGES,
     ANALYZE_PROMPTS,
     ARCHIVE_ERRORS,
+    CANCEL_LABELS,
     CHANGE_2FA_PROMPTS,
     CHANNEL_JOIN_PROMPTS,
     CHANNEL_LEAVE_PROMPTS,
@@ -137,6 +148,7 @@ from app.locales import (
     TWO_FACTOR_ACCOUNT_NEW_PROMPT,
     TWO_FACTOR_ERRORS,
     TWO_FACTOR_MESSAGES,
+    action_message,
 )
 from app.services.account_age import (
     AccountAgeInfo,
@@ -152,6 +164,8 @@ from app.services.channel import (
 from app.services.clean_chat import CLEAN_CHAT_CATEGORIES, process_clean_chat
 from app.services.clear_contacts import process_clear_contacts
 from app.services.contacts_checker import (
+    ContactsCheckCancelled,
+    ContactsProgress,
     extract_zip_sessions_safe,
     process_contacts_check,
 )
@@ -171,6 +185,7 @@ from app.services.files import (
     safe_filename,
 )
 from app.services.fresh_session import process_fresh_sessions
+from app.services.jobs import JobCancelled, JobProgress
 from app.services.kill_sessions import process_kill_sessions
 from app.services.list_checker import compare_archive_files
 from app.services.mass_message import (
@@ -197,7 +212,10 @@ from app.services.session_split import (
     process_session_split,
 )
 from app.services.session_to_json import process_session_to_json
-from app.services.session_to_tdata import process_session_to_tdata_conversion
+from app.services.session_to_tdata import (
+    live_failure_label,
+    process_session_to_tdata_conversion,
+)
 from app.services.tdata_to_session import process_tdata_to_session_conversion
 from app.services.two_factor import (
     TwoFactorResult,
@@ -206,11 +224,17 @@ from app.services.two_factor import (
     process_reset_2fa,
     stage_two_factor_sessions,
 )
-from app.session_checker import check_sessions
+from app.session_checker import (
+    SessionCheckEntry,
+    SessionProgress,
+    build_status_zips,
+    check_sessions_detailed,
+)
 from app.session_results import (
     render_session_result,
     render_spam_result,
     session_result_menu,
+    status_zip_caption,
 )
 from app.states import (
     AccountAge,
@@ -238,11 +262,25 @@ from app.states import (
     Reset2FA,
     SplitFile,
 )
+from app.ui import EmojiRegistry
+from app.ui.styles import ButtonStyle
 
 router = Router(name="files")
 LOGGER = logging.getLogger(__name__)
 _DIRECT_FILE_TIMEOUT_SECONDS = 15
 ACTIVE_MASS_MESSAGE_JOBS: dict[int, dict[str, Any]] = {}
+
+# Global cap on how many mass-message jobs may run at once. Prevents a flood
+# of concurrent mass campaigns saturating the Telegram API credentials pool.
+MASS_MESSAGE_MAX_CONCURRENT_JOBS = 3
+MASS_MESSAGE_SEMAPHORE = asyncio.Semaphore(MASS_MESSAGE_MAX_CONCURRENT_JOBS)
+
+# Cancel events for running contacts checks, keyed by user id.
+ACTIVE_CONTACTS_JOBS: dict[int, asyncio.Event] = {}
+
+# Cancel events + progress for running conversions, keyed by (user_id, tool).
+ACTIVE_CONVERSION_JOBS: dict[tuple[int, str], tuple[asyncio.Event, JobProgress]] = {}
+ACTIVE_2FA_JOBS: dict[tuple[int, str], asyncio.Event] = {}
 
 
 def user_language(session_factory: sessionmaker[Session], user_id: int) -> str:
@@ -260,25 +298,20 @@ def human_size(size: int) -> str:
 
 
 async def update_progress_bar(message: Message, base_text: str) -> None:
-    bars = [
-        "██▒▒▒▒▒▒▒▒",
-        "████▒▒▒▒▒▒",
-        "██████▒▒▒▒",
-        "████████▒▒",
-        "██████████",
-        "▒▒████████",
-        "▒▒▒▒██████",
-        "▒▒▒▒▒▒████",
-        "▒▒▒▒▒▒▒▒██",
-    ]
+    # Indeterminate spinner: this operation has no real progress to report,
+    # so show an honest "working" animation instead of a fake percentage bar.
+    frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    divider = EmojiRegistry.divider_line()
     try:
+        i = 0
         while True:
-            for b in bars:
-                try:
-                    await message.edit_text(f"{base_text}\n\n{b}")
-                except Exception as exc:  # noqa: BLE001
-                    LOGGER.debug("Progress message update skipped: %s", exc)
-                await asyncio.sleep(1.5)
+            frame = frames[i % len(frames)]
+            try:
+                await message.edit_text(f"{base_text}\n{divider}\n<code>{frame}</code>")
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("Progress message update skipped: %s", exc)
+            i += 1
+            await asyncio.sleep(0.4)
     except asyncio.CancelledError:
         pass
 
@@ -290,6 +323,214 @@ async def _stop_progress(task: asyncio.Task[None]) -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def update_contacts_progress(
+    message: Message,
+    progress: ContactsProgress,
+    base_text: str,
+    language: str = "en",
+) -> None:
+    """Live progress loop for contacts checks: ``✅ done / total`` + cancel."""
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    cancel_markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"❌ {cancel_label}",
+                    callback_data="contacts_stat:cancel",
+                    style=ButtonStyle.DANGER.value,
+                )
+            ]
+        ]
+    )
+    divider = EmojiRegistry.divider_line()
+    try:
+        while True:
+            total = progress.total
+            done = progress.done
+            if total:
+                pct = round(done * 100 / total)
+                width = 12
+                filled = round(width * pct / 100)
+                bar = "▓" * filled + "░" * (width - filled)
+                body = (
+                    f"{base_text}\n{divider}\n"
+                    f"✅ {done} / {total}\n<code>{bar}</code>  {pct:3d}%"
+                )
+            else:
+                body = f"{base_text}\n{divider}\n⏳"
+            try:
+                await message.edit_text(body, reply_markup=cancel_markup)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("Contacts progress update skipped: %s", exc)
+            if total and done >= total:
+                break
+            await asyncio.sleep(1.2)
+    except asyncio.CancelledError:
+        pass
+
+
+async def update_session_progress(
+    message: Message,
+    progress: SessionProgress,
+    base_text: str,
+) -> None:
+    """Live progress loop for session checks: ``✅ done / total`` + progress bar."""
+    divider = EmojiRegistry.divider_line()
+    try:
+        while True:
+            total = progress.total
+            done = progress.done
+            if total:
+                pct = round(done * 100 / total)
+                width = 12
+                filled = round(width * pct / 100)
+                bar = "▓" * filled + "░" * (width - filled)
+                body = (
+                    f"{base_text}\n{divider}\n"
+                    f"✅ {done} / {total}\n<code>{bar}</code>  {pct:3d}%"
+                )
+            else:
+                body = f"{base_text}\n{divider}\n⏳"
+            try:
+                await message.edit_text(body)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("Session progress update skipped: %s", exc)
+            if total and done >= total:
+                break
+            await asyncio.sleep(1.2)
+    except asyncio.CancelledError:
+        pass
+
+
+async def update_conversion_progress(
+    message: Message,
+    progress: JobProgress,
+    base_text: str,
+    tool: str,
+    language: str = "en",
+) -> None:
+    """Live progress loop for conversion jobs: ``✅ done / total`` + cancel."""
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    cancel_markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"❌ {cancel_label}",
+                    callback_data=f"conv:cancel:{tool}",
+                    style=ButtonStyle.DANGER.value,
+                )
+            ]
+        ]
+    )
+    divider = EmojiRegistry.divider_line()
+    try:
+        while True:
+            total = progress.total
+            done = progress.done
+            if total:
+                pct = round(done * 100 / total)
+                width = 12
+                filled = round(width * pct / 100)
+                bar = "▓" * filled + "░" * (width - filled)
+                body = (
+                    f"{base_text}\n{divider}\n"
+                    f"✅ {done} / {total}\n<code>{bar}</code>  {pct:3d}%"
+                )
+            else:
+                body = f"{base_text}\n{divider}\n⏳"
+            try:
+                await message.edit_text(body, reply_markup=cancel_markup)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("Conversion progress update skipped: %s", exc)
+            if total and done >= total:
+                break
+            await asyncio.sleep(1.2)
+    except asyncio.CancelledError:
+        pass
+
+
+def _truncate_detail_lines(lines: list[str], budget: int = 3800) -> tuple[str, int]:
+    """Join *lines* into a string staying under *budget* chars; return (text, skipped)."""
+    skipped = 0
+    kept: list[str] = []
+    total_len = 0
+    for line in lines:
+        if total_len + len(line) + 1 > budget:
+            skipped += 1
+            continue
+        kept.append(line)
+        total_len += len(line) + 1
+    return "\n".join(kept), skipped
+
+
+def _format_duration(seconds: float) -> str:
+    """Format an elapsed duration like the reference bot: ``37s (0.6min)``."""
+    if seconds < 0:
+        seconds = 0.0
+    return f"{seconds:.0f}s ({seconds / 60:.1f}min)"
+
+
+def _conversion_stats_report(
+    lang_msgs: Mapping[str, str],
+    total: int,
+    converted: int,
+    failed: int,
+    elapsed: float,
+    *,
+    live_verified: bool = True,
+) -> str:
+    """Render the ``🎊 Conversion complete`` stats card with duration & speed.
+
+    When *live_verified* is False (no API credentials configured) an explicit
+    warning is appended so offline-only results are never mistaken for live.
+    """
+    rate = total / elapsed if elapsed > 0 else 0.0
+    pct_ok = converted * 100 / total if total else 0.0
+    pct_failed = failed * 100 / total if total else 0.0
+    text = lang_msgs["stats"].format(
+        total=total,
+        converted=converted,
+        failed=failed,
+        duration=_format_duration(elapsed),
+        speed=f"{rate:.1f}",
+        pct_converted=f"{pct_ok:.1f}",
+        pct_failed=f"{pct_failed:.1f}",
+    )
+    if not live_verified:
+        text += lang_msgs.get("stats_unverified", "")
+    return text
+
+
+async def _send_status_zips(
+    message: Message,
+    path: Path,
+    entries: list[SessionCheckEntry],
+    language: str = "en",
+) -> None:
+    """
+    Regroup the checked sessions into per-status ZIP files and send them as
+    documents, like the reference bot ("📦 No Restriction - 9 accounts").
+    """
+    try:
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="ftgc_status_zips_") as tmp:
+            archives = await asyncio.to_thread(
+                build_status_zips, path, entries, Path(tmp)
+            )
+            for zip_path, status, count in archives:
+                caption = status_zip_caption(status, count, language)
+                await message.answer_document(
+                    FSInputFile(zip_path, filename=zip_path.name),
+                    caption=caption,
+                )
+    except Exception:
+        LOGGER.exception(
+            "Failed to send status ZIPs for user %s",
+            message.from_user.id if message.from_user else "?",
+        )
 
 
 async def download_document(
@@ -477,51 +718,87 @@ async def analyze_document(
             state_data = await state.get_data()
             user_proxy = resolve_user_proxy(session_factory, message.from_user.id)
             if state_data.get("check_contacts"):
-                contacts_res = await process_contacts_check(
-                    path,
-                    output_dir=settings.storage_dir / "outbox",
-                    credentials=settings.api_credential_list,
-                    proxy=user_proxy,
+                cnt_msgs = CHECK_CONTACTS_MESSAGES.get(
+                    language, CHECK_CONTACTS_MESSAGES["en"]
                 )
+                user_id = message.from_user.id
+                cancel_event = asyncio.Event()
+                ACTIVE_CONTACTS_JOBS[user_id] = cancel_event
+                progress = ContactsProgress()
+                progress_task = asyncio.create_task(
+                    update_contacts_progress(
+                        status, progress, cnt_msgs["checking"], language
+                    )
+                )
+                try:
+                    contacts_res = await process_contacts_check(
+                        path,
+                        output_dir=settings.storage_dir / "outbox",
+                        credentials=settings.api_credential_list,
+                        proxy=user_proxy,
+                        concurrency=settings.contacts_check_concurrency,
+                        per_session_timeout=settings.contacts_check_timeout,
+                        flood_wait_ceiling=settings.contacts_flood_ceiling,
+                        progress=progress,
+                        cancel_event=cancel_event,
+                    )
+                except ContactsCheckCancelled:
+                    await _stop_progress(progress_task)
+                    await status.edit_text(
+                        EmojiRegistry.enrich_text(
+                            f"❌ {html.quote(cnt_msgs['cancelled'])}"
+                        ),
+                        reply_markup=main_menu(language),
+                    )
+                    await state.clear()
+                    return
+                finally:
+                    ACTIVE_CONTACTS_JOBS.pop(user_id, None)
                 await _stop_progress(progress_task)
                 try:
-                    cnt_msgs = CHECK_CONTACTS_MESSAGES.get(
-                        language, CHECK_CONTACTS_MESSAGES["en"]
-                    )
-                    summary = cnt_msgs["done"].format(
-                        checked=contacts_res.checked,
-                        ok=contacts_res.ok,
-                        error=contacts_res.error,
-                    )
                     await status.edit_text(
-                        summary,
-                        reply_markup=contacts_result_menu(
-                            contacts_res.checked,
-                            contacts_res.ok,
-                            contacts_res.error,
-                            language,
-                        ),
+                        render_contacts_result(contacts_res, language),
+                        reply_markup=contacts_result_menu(contacts_res, language),
                     )
-                    if contacts_res.ok_zip_path and contacts_res.ok_zip_path.exists():
-                        input_file = FSInputFile(
-                            contacts_res.ok_zip_path,
-                            filename=f"Ok_{contacts_res.ok}.zip",
+                    for zip_path, status_label, count in contacts_res.zip_paths:
+                        await message.answer_document(
+                            FSInputFile(zip_path, filename=zip_path.name),
+                            caption=contacts_status_zip_caption(
+                                status_label, count, language
+                            ),
                         )
-                        await message.answer_document(input_file)
+                    if contacts_res.report_path is not None:
+                        await message.answer_document(
+                            FSInputFile(
+                                contacts_res.report_path,
+                                filename=contacts_res.report_path.name,
+                            ),
+                            caption=contacts_report_caption(language),
+                        )
                 finally:
-                    if contacts_res.ok_zip_path and contacts_res.ok_zip_path.exists():
-                        contacts_res.ok_zip_path.unlink(missing_ok=True)
+                    for zip_path, _label, _count in contacts_res.zip_paths:
+                        zip_path.unlink(missing_ok=True)
+                    if contacts_res.report_path is not None:
+                        contacts_res.report_path.unlink(missing_ok=True)
                 await state.clear()
                 return
             if state_data.get("session_check"):
                 live_check = state_data.get("live_spam_check", False)
-                result = await check_sessions(
-                    path,
-                    credentials=settings.api_credential_list,
-                    timeout=settings.spambot_timeout,
-                    proxy=user_proxy,
-                )
+                sess_progress = SessionProgress()
                 await _stop_progress(progress_task)
+                progress_task = asyncio.create_task(
+                    update_session_progress(status, sess_progress, msgs["analyzing"])
+                )
+                try:
+                    result, entries = await check_sessions_detailed(
+                        path,
+                        credentials=settings.api_credential_list,
+                        timeout=settings.spambot_timeout,
+                        proxy=user_proxy,
+                        progress=sess_progress,
+                    )
+                finally:
+                    await _stop_progress(progress_task)
                 render_func = (
                     render_spam_result if live_check else render_session_result
                 )
@@ -531,6 +808,7 @@ async def analyze_document(
                         result, language, spam_mode=live_check
                     ),
                 )
+                await _send_status_zips(message, path, entries, language)
                 await state.clear()
                 return
             analysis = await asyncio.to_thread(analyze_file, path, name)
@@ -558,7 +836,7 @@ async def analyze_document(
                 )
             await _stop_progress(progress_task)
             await status.edit_text(
-                f"{msgs['completed']}\n\n"
+                f"{msgs['completed']}\n{EmojiRegistry.divider_line()}\n"
                 f"{msgs['name']}: <code>{html.quote(name)}</code>\n"
                 f"{msgs['type']}: <code>{html.quote(analysis.media_type)}</code>\n"
                 f"{msgs['size']}: <b>{human_size(analysis.size_bytes)}</b>\n"
@@ -603,9 +881,210 @@ async def analyze_document(
         await state.clear()
 
 
-@router.callback_query(F.data.startswith("contacts_stat:"))
+@router.callback_query(F.data == "contacts_stat:noop")
 async def handle_contacts_stat_noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+@router.callback_query(F.data == "contacts_stat:cancel")
+async def contacts_stat_cancel(callback: CallbackQuery) -> None:
+    if callback.from_user is not None:
+        event = ACTIVE_CONTACTS_JOBS.pop(callback.from_user.id, None)
+        if event is not None:
+            event.set()
+    await callback.answer()
+
+
+@router.callback_query(F.data == "contacts_stat:retry")
+async def contacts_stat_retry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if callback.from_user is None:
+        return
+    language = user_language(session_factory, callback.from_user.id)
+    await state.set_state(AnalyzeFile.waiting_for_file)
+    await state.update_data(
+        session_check=False, live_spam_check=False, check_contacts=True
+    )
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            CHECK_CONTACTS_PROMPTS.get(language, CHECK_CONTACTS_PROMPTS["en"]),
+            reply_markup=cancel_menu(language),
+        )
+
+
+@router.callback_query(F.data == "contacts_stat:home")
+async def contacts_stat_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if callback.from_user is None:
+        return
+    from app.handlers.start import clear_state_and_file
+
+    await clear_state_and_file(state)
+    language = user_language(session_factory, callback.from_user.id)
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            action_message(language, 3), reply_markup=main_menu(language)
+        )
+
+
+@router.callback_query(F.data.startswith("conv:cancel:"))
+async def conversion_job_cancel(callback: CallbackQuery) -> None:
+    if callback.from_user is not None:
+        tool = callback.data.removeprefix("conv:cancel:")
+        item = ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
+        if item is not None:
+            item[0].set()
+    await callback.answer()
+
+
+async def _conversion_retry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+    target_state: Any,
+    prompt: str,
+) -> None:
+    if callback.from_user is None:
+        return
+    language = user_language(session_factory, callback.from_user.id)
+    await state.set_state(target_state)
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(prompt, reply_markup=cancel_menu(language))
+
+
+async def _conversion_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if callback.from_user is None:
+        return
+    from app.handlers.start import clear_state_and_file
+
+    await clear_state_and_file(state)
+    language = user_language(session_factory, callback.from_user.id)
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            action_message(language, 3), reply_markup=main_menu(language)
+        )
+
+
+@router.callback_query(F.data == "session_tdata:retry")
+async def session_tdata_retry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_retry(
+        callback,
+        state,
+        session_factory,
+        ConvertSessionToTdata.waiting_for_file,
+        SESSION_TO_TDATA_PROMPTS.get(
+            user_language(session_factory, callback.from_user.id),
+            SESSION_TO_TDATA_PROMPTS["en"],
+        ),
+    )
+
+
+@router.callback_query(F.data == "session_tdata:home")
+async def session_tdata_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_home(callback, state, session_factory)
+
+
+@router.callback_query(F.data == "tdata_session:retry")
+async def tdata_session_retry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_retry(
+        callback,
+        state,
+        session_factory,
+        ConvertTdataToSession.waiting_for_file,
+        TDATA_TO_SESSION_PROMPTS.get(
+            user_language(session_factory, callback.from_user.id),
+            TDATA_TO_SESSION_PROMPTS["en"],
+        ),
+    )
+
+
+@router.callback_query(F.data == "tdata_session:home")
+async def tdata_session_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_home(callback, state, session_factory)
+
+
+@router.callback_query(F.data == "account_txt:retry")
+async def account_txt_retry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_retry(
+        callback,
+        state,
+        session_factory,
+        AccountToTxt.waiting_for_file,
+        ACCOUNT_TO_TXT_PROMPTS.get(
+            user_language(session_factory, callback.from_user.id),
+            ACCOUNT_TO_TXT_PROMPTS["en"],
+        ),
+    )
+
+
+@router.callback_query(F.data == "account_txt:home")
+async def account_txt_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_home(callback, state, session_factory)
+
+
+@router.callback_query(F.data == "session_json:retry")
+async def session_json_retry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_retry(
+        callback,
+        state,
+        session_factory,
+        ConvertSessionToJson.waiting_for_file,
+        SESSION_TO_JSON_PROMPTS.get(
+            user_language(session_factory, callback.from_user.id),
+            SESSION_TO_JSON_PROMPTS["en"],
+        ),
+    )
+
+
+@router.callback_query(F.data == "session_json:home")
+async def session_json_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    await _conversion_home(callback, state, session_factory)
 
 
 @router.message(AnalyzeFile.waiting_for_file)
@@ -640,7 +1119,9 @@ async def request_change_2fa(
     if isinstance(callback.message, Message):
         await state.set_data({"flow_message_id": callback.message.message_id})
         await callback.message.edit_text(
-            CHANGE_2FA_PROMPTS.get(language, CHANGE_2FA_PROMPTS["en"]),
+            EmojiRegistry.enrich(
+                CHANGE_2FA_PROMPTS.get(language, CHANGE_2FA_PROMPTS["en"])
+            ),
             reply_markup=cancel_menu(language),
         )
 
@@ -657,7 +1138,9 @@ async def request_disable_2fa(
     if isinstance(callback.message, Message):
         await state.set_data({"flow_message_id": callback.message.message_id})
         await callback.message.edit_text(
-            DISABLE_2FA_PROMPTS.get(language, DISABLE_2FA_PROMPTS["en"]),
+            EmojiRegistry.enrich(
+                DISABLE_2FA_PROMPTS.get(language, DISABLE_2FA_PROMPTS["en"])
+            ),
             reply_markup=cancel_menu(language),
         )
 
@@ -674,7 +1157,9 @@ async def request_reset_2fa(
     if isinstance(callback.message, Message):
         await state.set_data({"flow_message_id": callback.message.message_id})
         await callback.message.edit_text(
-            RESET_2FA_PROMPTS.get(language, RESET_2FA_PROMPTS["en"]),
+            EmojiRegistry.enrich(
+                RESET_2FA_PROMPTS.get(language, RESET_2FA_PROMPTS["en"])
+            ),
             reply_markup=cancel_menu(language),
         )
 
@@ -705,7 +1190,48 @@ async def _edit_two_factor_flow(
                 return edited
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("Could not edit 2FA flow message: %s", exc)
-    return await message.answer(text, reply_markup=reply_markup)
+    answered = await message.answer(text, reply_markup=reply_markup)
+    if isinstance(answered, Message):
+        await state.update_data(flow_message_id=answered.message_id)
+    return answered
+
+
+async def _clear_two_factor_state(state: FSMContext) -> None:
+    """Remove staged 2FA session files/dirs and clear the flow state."""
+    data = await state.get_data()
+    batch_dir = data.get("two_factor_batch_dir")
+    if batch_dir:
+        shutil.rmtree(str(batch_dir), ignore_errors=True)
+    for stored in data.get("two_factor_session_files", []):
+        Path(str(stored)).unlink(missing_ok=True)
+    for key in ("source_path", "temp_file_path"):
+        stored_path = data.get(key)
+        if stored_path:
+            Path(str(stored_path)).unlink(missing_ok=True)
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("two_factor:cancel:"))
+async def cancel_two_factor_job(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if callback.from_user is None or callback.data is None:
+        return
+    tool = callback.data.rsplit(":", 1)[-1]
+    event = ACTIVE_2FA_JOBS.pop((callback.from_user.id, tool), None)
+    if event is not None:
+        event.set()
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        language = user_language(session_factory, callback.from_user.id)
+        msgs_2fa = TWO_FACTOR_MESSAGES.get(language, TWO_FACTOR_MESSAGES["en"])
+        await callback.message.edit_text(
+            EmojiRegistry.enrich(msgs_2fa["cancelled"]),
+            reply_markup=main_menu(language),
+        )
+    await _clear_two_factor_state(state)
 
 
 def _two_factor_failure_details(result: TwoFactorResult, language: str) -> str:
@@ -717,6 +1243,12 @@ def _two_factor_failure_details(result: TwoFactorResult, language: str) -> str:
         for reason in result.failure_reasons
     ]
     return "\n\n" + "\n".join(f"⚠️ {html.quote(detail)}" for detail in details)
+
+
+def _two_factor_error_text(error: str, language: str) -> str:
+    errors = TWO_FACTOR_ERRORS.get(language, TWO_FACTOR_ERRORS["en"])
+    archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
+    return errors.get(error, archive_errors.get(error, error))
 
 
 def _two_factor_account_prompt(
@@ -767,6 +1299,8 @@ async def _begin_two_factor_batch(
             two_factor_successful_indexes=[],
             two_factor_operation=operation,
             two_factor_force_zip=Path(original_name).suffix.lower() == ".zip",
+            two_factor_busy=False,
+            session_count=len(sessions),
             old_password=None,
         )
         if operation == "changed":
@@ -778,7 +1312,7 @@ async def _begin_two_factor_batch(
             message,
             bot,
             state,
-            _two_factor_account_prompt(data, language),
+            EmojiRegistry.enrich(_two_factor_account_prompt(data, language)),
             cancel_menu(language),
         )
     except Exception:
@@ -814,8 +1348,10 @@ async def _finish_two_factor_batch(
             force_zip=bool(data.get("two_factor_force_zip", False)),
         )
         output_path = result.output_path
-        report = msgs["done_change_disable"].format(
-            success=result.success, failed=result.failed
+        report = EmojiRegistry.enrich(
+            msgs["done_change_disable"].format(
+                success=result.success, failed=result.failed
+            )
         )
         status = await _edit_two_factor_flow(
             message,
@@ -835,7 +1371,7 @@ async def _finish_two_factor_batch(
             output_path.unlink(missing_ok=True)
         if str(batch_dir):
             shutil.rmtree(batch_dir, ignore_errors=True)
-        await state.clear()
+        await _clear_two_factor_state(state)
 
 
 async def _advance_two_factor_batch(
@@ -864,6 +1400,7 @@ async def _advance_two_factor_batch(
         return
 
     operation = data.get("two_factor_operation")
+    cancel_tool = "change" if operation == "changed" else "disable"
     if operation == "disabled":
         await state.set_state(Disable2FA.waiting_for_password)
     else:
@@ -873,8 +1410,8 @@ async def _advance_two_factor_batch(
         message,
         bot,
         state,
-        _two_factor_account_prompt(updated, language),
-        cancel_menu(language),
+        EmojiRegistry.enrich(_two_factor_account_prompt(updated, language)),
+        two_factor_cancel_menu(language, cancel_tool),
     )
 
 
@@ -896,9 +1433,10 @@ async def receive_change_2fa_file(
         sessions = await inspect_mergeable_sessions(path)
         if not sessions:
             path.unlink(missing_ok=True)
-            await state.clear()
+            await _clear_two_factor_state(state)
             await message.answer(
-                msgs_2fa["no_sessions"], reply_markup=main_menu(language)
+                EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+                reply_markup=main_menu(language),
             )
             return
         await _begin_two_factor_batch(
@@ -908,10 +1446,10 @@ async def receive_change_2fa_file(
     except Exception as exc:  # noqa: BLE001
         if path is not None:
             path.unlink(missing_ok=True)
-        archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
-        error = archive_errors.get(str(exc), str(exc))
+        error = _two_factor_error_text(str(exc), language)
         await message.answer(
-            f"❌ {html.quote(error)}", reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(f"❌ {html.quote(error)}"),
+            reply_markup=cancel_menu(language),
         )
 
 
@@ -931,7 +1469,8 @@ async def receive_change_2fa_old_password(
         await message.delete()
     if not old_password:
         await message.answer(
-            msgs_2fa["password_required"], reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(msgs_2fa["password_required"]),
+            reply_markup=cancel_menu(language),
         )
         return
     await state.update_data(old_password=old_password)
@@ -941,7 +1480,7 @@ async def receive_change_2fa_old_password(
         message,
         bot,
         state,
-        _two_factor_account_prompt(data, language, new_password=True),
+        EmojiRegistry.enrich(_two_factor_account_prompt(data, language, new_password=True)),
         cancel_menu(language),
     )
 
@@ -963,32 +1502,43 @@ async def receive_change_2fa_new_password(
         await message.delete()
     if not new_password:
         await message.answer(
-            msgs_2fa["password_required"], reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(msgs_2fa["password_required"]),
+            reply_markup=cancel_menu(language),
         )
         return
     data = await state.get_data()
+    if data.get("two_factor_busy"):
+        return
     old_password = data.get("old_password")
-    await state.update_data(old_password=None)
+    await state.update_data(old_password=None, two_factor_busy=True)
     files = [Path(str(item)) for item in data.get("two_factor_session_files", [])]
     index = int(data.get("two_factor_index", 0))
     if index >= len(files) or not isinstance(old_password, str) or not old_password:
-        await state.clear()
-        await message.answer(msgs_2fa["no_sessions"], reply_markup=main_menu(language))
+        await _clear_two_factor_state(state)
+        await message.answer(
+            EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+            reply_markup=main_menu(language),
+        )
         return
     await _edit_two_factor_flow(
         message,
         bot,
         state,
-        msgs_2fa["processing"],
-        cancel_menu(language),
+        EmojiRegistry.enrich(msgs_2fa["processing"]),
+        two_factor_cancel_menu(language, "change"),
     )
+    cancel_event = asyncio.Event()
+    ACTIVE_2FA_JOBS[(message.from_user.id, "change")] = cancel_event
     try:
         succeeded = await edit_two_factor_session(
             files[index],
             settings.api_credential_list,
             current_password=old_password,
             new_password=new_password,
+            cancel_event=cancel_event,
         )
+        if cancel_event.is_set():
+            return
         await _advance_two_factor_batch(
             message,
             bot,
@@ -1003,9 +1553,11 @@ async def receive_change_2fa_new_password(
             message,
             bot,
             state,
-            msgs_2fa["request_failed"],
+            EmojiRegistry.enrich(msgs_2fa["request_failed"]),
             reply_markup=main_menu(language),
         )
+    finally:
+        ACTIVE_2FA_JOBS.pop((message.from_user.id, "change"), None)
 
 
 @router.message(Disable2FA.waiting_for_file, F.document)
@@ -1026,9 +1578,10 @@ async def receive_disable_2fa_file(
         sessions = await inspect_mergeable_sessions(path)
         if not sessions:
             path.unlink(missing_ok=True)
-            await state.clear()
+            await _clear_two_factor_state(state)
             await message.answer(
-                msgs_2fa["no_sessions"], reply_markup=main_menu(language)
+                EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+                reply_markup=main_menu(language),
             )
             return
         await _begin_two_factor_batch(
@@ -1038,10 +1591,10 @@ async def receive_disable_2fa_file(
     except Exception as exc:  # noqa: BLE001
         if path is not None:
             path.unlink(missing_ok=True)
-        archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
-        error = archive_errors.get(str(exc), str(exc))
+        error = _two_factor_error_text(str(exc), language)
         await message.answer(
-            f"❌ {html.quote(error)}", reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(f"❌ {html.quote(error)}"),
+            reply_markup=cancel_menu(language),
         )
 
 
@@ -1062,29 +1615,41 @@ async def receive_disable_2fa_password(
         await message.delete()
     if not current_password:
         await message.answer(
-            msgs_2fa["password_required"], reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(msgs_2fa["password_required"]),
+            reply_markup=cancel_menu(language),
         )
         return
     data = await state.get_data()
+    if data.get("two_factor_busy"):
+        return
+    await state.update_data(two_factor_busy=True)
     files = [Path(str(item)) for item in data.get("two_factor_session_files", [])]
     index = int(data.get("two_factor_index", 0))
     if index >= len(files):
-        await state.clear()
-        await message.answer(msgs_2fa["no_sessions"], reply_markup=main_menu(language))
+        await _clear_two_factor_state(state)
+        await message.answer(
+            EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+            reply_markup=main_menu(language),
+        )
         return
     await _edit_two_factor_flow(
         message,
         bot,
         state,
-        msgs_2fa["processing"],
-        cancel_menu(language),
+        EmojiRegistry.enrich(msgs_2fa["processing"]),
+        two_factor_cancel_menu(language, "disable"),
     )
+    cancel_event = asyncio.Event()
+    ACTIVE_2FA_JOBS[(message.from_user.id, "disable")] = cancel_event
     try:
         succeeded = await edit_two_factor_session(
             files[index],
             settings.api_credential_list,
             current_password=current_password,
+            cancel_event=cancel_event,
         )
+        if cancel_event.is_set():
+            return
         await _advance_two_factor_batch(
             message,
             bot,
@@ -1099,9 +1664,11 @@ async def receive_disable_2fa_password(
             message,
             bot,
             state,
-            msgs_2fa["request_failed"],
+            EmojiRegistry.enrich(msgs_2fa["request_failed"]),
             reply_markup=main_menu(language),
         )
+    finally:
+        ACTIVE_2FA_JOBS.pop((message.from_user.id, "disable"), None)
 
 
 @router.message(Reset2FA.waiting_for_file, F.document)
@@ -1122,9 +1689,10 @@ async def receive_reset_2fa_file(
         sessions = await inspect_mergeable_sessions(path)
         if not sessions:
             path.unlink(missing_ok=True)
-            await state.clear()
+            await _clear_two_factor_state(state)
             await message.answer(
-                msgs_2fa["no_sessions"], reply_markup=main_menu(language)
+                EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+                reply_markup=main_menu(language),
             )
             return
 
@@ -1132,9 +1700,11 @@ async def receive_reset_2fa_file(
             message,
             bot,
             state,
-            msgs_2fa["processing"],
-            cancel_menu(language),
+            EmojiRegistry.enrich(msgs_2fa["processing"]),
+            two_factor_cancel_menu(language, "reset"),
         )
+        cancel_event = asyncio.Event()
+        ACTIVE_2FA_JOBS[(message.from_user.id, "reset")] = cancel_event
         out_res: Path | None = None
         try:
             res_2fa = await process_reset_2fa(
@@ -1142,12 +1712,17 @@ async def receive_reset_2fa_file(
                 output_dir=settings.storage_dir / "outbox",
                 credentials=settings.api_credential_list,
                 original_name=name,
+                cancel_event=cancel_event,
             )
+            if cancel_event.is_set():
+                return
             out_res = res_2fa.output_path
-            report = msgs_2fa["done_reset"].format(
-                success=res_2fa.success,
-                pending=res_2fa.pending,
-                failed=res_2fa.failed,
+            report = EmojiRegistry.enrich(
+                msgs_2fa["done_reset"].format(
+                    success=res_2fa.success,
+                    pending=res_2fa.pending,
+                    failed=res_2fa.failed,
+                )
             )
             report += _two_factor_failure_details(res_2fa, language)
             await status.edit_text(
@@ -1172,15 +1747,16 @@ async def receive_reset_2fa_file(
             if out_res and out_res.exists():
                 out_res.unlink(missing_ok=True)
     except Exception as exc:  # noqa: BLE001
-        archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
-        error = archive_errors.get(str(exc), str(exc))
+        error = _two_factor_error_text(str(exc), language)
         await message.answer(
-            f"❌ {html.quote(error)}", reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(f"❌ {html.quote(error)}"),
+            reply_markup=cancel_menu(language),
         )
     finally:
+        ACTIVE_2FA_JOBS.pop((message.from_user.id, "reset"), None)
         if path is not None:
             path.unlink(missing_ok=True)
-        await state.clear()
+        await _clear_two_factor_state(state)
 
 
 @router.callback_query(F.data == "tool:clean_chat")
@@ -1348,11 +1924,16 @@ async def confirm_clean_chat_selection(
             credentials=settings.api_credential_list,
             original_name=original_name,
             proxy=user_proxy,
+            concurrency=settings.clean_chat_concurrency,
+            flood_ceiling=settings.clean_chat_flood_ceiling,
         )
         out_res = res_cln.output_path
-        report = msgs_clean["done"].format(
-            success=res_cln.cleaned, failed=res_cln.failed
-        )
+        if res_cln.cleaned == 0:
+            report = msgs_clean["failed_report"].format(failed=res_cln.failed)
+        else:
+            report = msgs_clean["done"].format(
+                success=res_cln.cleaned, failed=res_cln.failed
+            )
         if isinstance(status_msg, Message):
             await status_msg.edit_text(
                 report,
@@ -1625,9 +2206,12 @@ async def action_delete_contact(
                 original_name=original_name,
             )
             out_res = res_del.output_path
-            report = msgs_del["done"].format(
-                success=res_del.deleted, failed=res_del.failed
-            )
+            if res_del.deleted == 0:
+                report = msgs_del["failed_report"].format(failed=res_del.failed)
+            else:
+                report = msgs_del["done"].format(
+                    success=res_del.deleted, failed=res_del.failed
+                )
             if isinstance(status_msg, Message):
                 await status_msg.edit_text(
                     report,
@@ -1696,9 +2280,12 @@ async def _render_profile_setup_current_account(
             failed_count,
             original_name=original_name,
         )
-        report = msgs_prof["done"].format(
-            modified=res.modified, skipped=res.skipped, failed=res.failed
-        )
+        if res.modified == 0 and res.skipped == 0:
+            report = msgs_prof["failed_report"].format(failed=res.failed)
+        else:
+            report = msgs_prof["done"].format(
+                modified=res.modified, skipped=res.skipped, failed=res.failed
+            )
         await target_msg.edit_text(
             report,
             reply_markup=profile_setup_result_menu(
@@ -2338,9 +2925,12 @@ async def receive_clear_contacts_file(
                 proxy=user_proxy,
             )
             out_res = res_clr.output_path
-            report = msgs_clear["done"].format(
-                success=res_clr.cleared, failed=res_clr.failed
-            )
+            if res_clr.cleared == 0:
+                report = msgs_clear["failed_report"].format(failed=res_clr.failed)
+            else:
+                report = msgs_clear["done"].format(
+                    success=res_clr.cleared, failed=res_clr.failed
+                )
             await status.edit_text(
                 report,
                 reply_markup=clear_contacts_result_menu(
@@ -2387,9 +2977,7 @@ async def request_kill_sessions(
     await callback.answer()
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            ENTER_KILL_SESSIONS_PROMPT.get(
-                language, ENTER_KILL_SESSIONS_PROMPT["en"]
-            ),
+            ENTER_KILL_SESSIONS_PROMPT.get(language, ENTER_KILL_SESSIONS_PROMPT["en"]),
             reply_markup=cancel_menu(language),
         )
 
@@ -2407,15 +2995,14 @@ async def receive_kill_sessions_file(
     language = user_language(session_factory, message.from_user.id)
     msgs = KILL_SESSIONS_MESSAGES.get(language, KILL_SESSIONS_MESSAGES["en"])
     path: Path | None = None
+    saved_file: Path | None = None
     try:
         path, name = await download_document(message, bot, settings, language)
         sessions = await inspect_mergeable_sessions(path)
         if not sessions:
             path.unlink(missing_ok=True)
             await state.clear()
-            await message.answer(
-                msgs["no_sessions"], reply_markup=main_menu(language)
-            )
+            await message.answer(msgs["no_sessions"], reply_markup=main_menu(language))
             return
 
         temp_storage = settings.storage_dir / "temp" / f"kill_{uuid4().hex}"
@@ -2437,6 +3024,8 @@ async def receive_kill_sessions_file(
             reply_markup=kill_sessions_confirm_menu(language),
         )
     except Exception as exc:  # noqa: BLE001
+        if saved_file is not None:
+            saved_file.unlink(missing_ok=True)
         archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
         error = archive_errors.get(str(exc), str(exc))
         await message.answer(
@@ -2448,7 +3037,9 @@ async def receive_kill_sessions_file(
             path.unlink(missing_ok=True)
 
 
-@router.callback_query(StateFilter(KillSessions.confirming), F.data == "kill_sess:confirm")
+@router.callback_query(
+    StateFilter(KillSessions.confirming), F.data == "kill_sess:confirm"
+)
 async def confirm_kill_sessions(
     callback: CallbackQuery,
     state: FSMContext,
@@ -2511,6 +3102,7 @@ async def kill_sessions_noop(callback: CallbackQuery) -> None:
 
 # ── Fresh Session handlers ────────────────────────────────────────────────────
 
+
 @router.callback_query(F.data == "tool:fresh_session")
 async def request_fresh_session(
     callback: CallbackQuery,
@@ -2540,6 +3132,7 @@ async def receive_fresh_session_file(
     language = user_language(session_factory, message.from_user.id)
     msgs = FRESH_SESSION_MESSAGES.get(language, FRESH_SESSION_MESSAGES["en"])
     path: Path | None = None
+    saved_file: Path | None = None
     try:
         path, name = await download_document(message, bot, settings, language)
         sessions = await inspect_mergeable_sessions(path)
@@ -2558,13 +3151,19 @@ async def receive_fresh_session_file(
         await state.set_state(FreshSession.waiting_for_2fa)
 
         await message.answer(
-            FRESH_SESSION_2FA_PROMPT.get(language, FRESH_SESSION_2FA_PROMPT["en"]),
+            EmojiRegistry.enrich(
+                FRESH_SESSION_2FA_PROMPT.get(language, FRESH_SESSION_2FA_PROMPT["en"])
+            ),
             reply_markup=fresh_session_2fa_menu(language),
         )
     except Exception as exc:  # noqa: BLE001
+        if saved_file is not None:
+            saved_file.unlink(missing_ok=True)
         archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
         error = archive_errors.get(str(exc), str(exc))
-        await message.answer(f"❌ {html.quote(error)}", reply_markup=cancel_menu(language))
+        await message.answer(
+            f"❌ {html.quote(error)}", reply_markup=cancel_menu(language)
+        )
         await state.clear()
     finally:
         if path is not None:
@@ -2581,15 +3180,21 @@ async def receive_fresh_session_2fa(
         return
     language = user_language(session_factory, message.from_user.id)
     password = message.text.strip()
+    with suppress(Exception):
+        await message.delete()
     await state.update_data(password_2fa=password)
     await state.set_state(FreshSession.confirming)
     await message.answer(
-        FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"]),
+        EmojiRegistry.enrich(
+            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+        ),
         reply_markup=fresh_session_confirm_menu(language),
     )
 
 
-@router.callback_query(StateFilter(FreshSession.waiting_for_2fa), F.data == "fresh_sess:skip_2fa")
+@router.callback_query(
+    StateFilter(FreshSession.waiting_for_2fa), F.data == "fresh_sess:skip_2fa"
+)
 async def skip_fresh_session_2fa(
     callback: CallbackQuery,
     state: FSMContext,
@@ -2602,12 +3207,16 @@ async def skip_fresh_session_2fa(
     await state.update_data(password_2fa=None)
     await state.set_state(FreshSession.confirming)
     await callback.message.edit_text(
-        FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"]),
+        EmojiRegistry.enrich(
+            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+        ),
         reply_markup=fresh_session_confirm_menu(language),
     )
 
 
-@router.callback_query(StateFilter(FreshSession.confirming), F.data == "fresh_sess:confirm")
+@router.callback_query(
+    StateFilter(FreshSession.confirming), F.data == "fresh_sess:confirm"
+)
 async def confirm_fresh_session(
     callback: CallbackQuery,
     state: FSMContext,
@@ -2627,7 +3236,9 @@ async def confirm_fresh_session(
     password_2fa = data.get("password_2fa")
 
     if not file_path_str:
-        await callback.message.edit_text(msgs["no_sessions"], reply_markup=main_menu(language))
+        await callback.message.edit_text(
+            msgs["no_sessions"], reply_markup=main_menu(language)
+        )
         await state.clear()
         return
 
@@ -2647,7 +3258,9 @@ async def confirm_fresh_session(
             caption = msgs["new_zip_caption"].format(succeeded=res.succeeded)
             await bot.send_document(
                 chat_id=callback.from_user.id,
-                document=FSInputFile(res.new_sessions_zip, filename="fresh_sessions.zip"),
+                document=FSInputFile(
+                    res.new_sessions_zip, filename="fresh_sessions.zip"
+                ),
                 caption=caption,
             )
             res.new_sessions_zip.unlink(missing_ok=True)
@@ -2668,7 +3281,9 @@ async def confirm_fresh_session(
             old_name = html.quote(d.session_name)
             if d.status == "ok":
                 new_name = html.quote(f"{d.phone}.session") if d.phone else old_name
-                detail_lines.append(f"✅ <code>{old_name}</code> → <code>{new_name}</code>")
+                detail_lines.append(
+                    f"✅ <code>{old_name}</code> → <code>{new_name}</code>"
+                )
             else:
                 reason = html.quote(d.message[:60])
                 detail_lines.append(f"❌ <code>{old_name}</code> — {reason}")
@@ -2680,11 +3295,15 @@ async def confirm_fresh_session(
         )
         await callback.message.edit_text(
             report,
-            reply_markup=fresh_session_result_menu(res.total, res.succeeded, res.failed, language),
+            reply_markup=fresh_session_result_menu(
+                res.total, res.succeeded, res.failed, language
+            ),
         )
     except Exception:
         LOGGER.exception("Fresh session error for user %s", callback.from_user.id)
-        await callback.message.edit_text(msgs["request_failed"], reply_markup=main_menu(language))
+        await callback.message.edit_text(
+            msgs["request_failed"], reply_markup=main_menu(language)
+        )
     finally:
         input_path.unlink(missing_ok=True)
         await state.clear()
@@ -2730,14 +3349,27 @@ async def receive_list_checker_file1(
         language = get_user_language(db_sess, message.from_user.id)
     msgs = LIST_CHECKER_MESSAGES.get(language, LIST_CHECKER_MESSAGES["en"])
 
-    filename = message.document.file_name or "file1.zip"
+    filename = Path(message.document.file_name or "file1.zip").name
     if not filename.lower().endswith(".zip"):
-        await message.reply(msgs["invalid_format"], reply_markup=list_checker_cancel_menu(language))
+        await message.reply(
+            msgs["invalid_format"], reply_markup=list_checker_cancel_menu(language)
+        )
         return
 
     temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_list_checker_"))
     file1_path = temp_dir / filename
-    await bot.download(message.document, destination=file1_path)
+    try:
+        await bot.download(message.document, destination=file1_path)
+    except Exception:
+        LOGGER.exception(
+            "List checker file1 download failed for user %s", message.from_user.id
+        )
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        await state.clear()
+        await message.reply(
+            msgs["download_failed"], reply_markup=main_menu(language)
+        )
+        return
 
     await state.update_data(
         temp_dir=str(temp_dir),
@@ -2762,9 +3394,11 @@ async def receive_list_checker_file2(
         language = get_user_language(db_sess, message.from_user.id)
     msgs = LIST_CHECKER_MESSAGES.get(language, LIST_CHECKER_MESSAGES["en"])
 
-    filename = message.document.file_name or "file2.zip"
+    filename = Path(message.document.file_name or "file2.zip").name
     if not filename.lower().endswith(".zip"):
-        await message.reply(msgs["invalid_format"], reply_markup=list_checker_cancel_menu(language))
+        await message.reply(
+            msgs["invalid_format"], reply_markup=list_checker_cancel_menu(language)
+        )
         return
 
     data = await state.get_data()
@@ -2772,7 +3406,9 @@ async def receive_list_checker_file2(
     file1_path_str = data.get("file1_path")
     if not temp_dir_str or not file1_path_str:
         await state.clear()
-        await message.reply(msgs["file1_prompt"], reply_markup=list_checker_cancel_menu(language))
+        await message.reply(
+            msgs["file1_prompt"], reply_markup=list_checker_cancel_menu(language)
+        )
         return
 
     temp_dir = Path(temp_dir_str)
@@ -2783,6 +3419,15 @@ async def receive_list_checker_file2(
 
     try:
         await bot.download(message.document, destination=file2_path)
+    except Exception:
+        LOGGER.exception(
+            "List checker file2 download failed for user %s", message.from_user.id
+        )
+        await proc_msg.edit_text(
+            msgs["download_failed"], reply_markup=main_menu(language)
+        )
+        return
+    try:
         res = await asyncio.to_thread(compare_archive_files, file1_path, file2_path)
 
         if res.total == 0:
@@ -2804,20 +3449,28 @@ async def receive_list_checker_file2(
             await proc_msg.edit_text(
                 report,
                 reply_markup=list_checker_result_menu(
-                    res.tdata_count, res.session_count, res.json_count, res.total, language
+                    res.tdata_count,
+                    res.session_count,
+                    res.json_count,
+                    res.total,
+                    language,
                 ),
             )
     except Exception as e:  # noqa: BLE001
         LOGGER.warning("List checker error: %s", e)
-        await proc_msg.edit_text(msgs["invalid_format"], reply_markup=main_menu(language))
+        await proc_msg.edit_text(
+            msgs["invalid_format"], reply_markup=main_menu(language)
+        )
     finally:
         if temp_dir_str:
             import shutil
+
             shutil.rmtree(temp_dir_str, ignore_errors=True)
         await state.clear()
 
 
 # ── Privacy Settings Handlers ────────────────────────────────────────────────
+
 
 @router.callback_query(F.data == "tool:privacy_settings")
 async def start_privacy_settings(
@@ -2832,7 +3485,7 @@ async def start_privacy_settings(
     msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
     await state.set_state(PrivacySettings.waiting_for_file)
     await callback.message.edit_text(
-        msgs["prompt_file"],
+        EmojiRegistry.enrich(msgs["prompt_file"]),
         reply_markup=cancel_menu(language),
     )
 
@@ -2869,10 +3522,15 @@ async def receive_privacy_settings_file(
         filename=filename,
     )
     await state.set_state(PrivacySettings.selecting_mode)
-    await message.reply(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+    await message.reply(
+        EmojiRegistry.enrich(msgs["prompt_mode"]),
+        reply_markup=privacy_mode_menu(language),
+    )
 
 
-@router.callback_query(StateFilter(PrivacySettings.waiting_for_2fa), F.data == "privacy:skip_2fa")
+@router.callback_query(
+    StateFilter(PrivacySettings.waiting_for_2fa), F.data == "privacy:skip_2fa"
+)
 async def privacy_skip_2fa_callback(
     callback: CallbackQuery,
     state: FSMContext,
@@ -2884,7 +3542,9 @@ async def privacy_skip_2fa_callback(
         language = get_user_language(db_sess, callback.from_user.id)
     msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
     await state.set_state(PrivacySettings.selecting_mode)
-    await callback.message.edit_text(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(msgs["prompt_mode"]), reply_markup=privacy_mode_menu(language)
+    )
 
 
 @router.callback_query(F.data == "privacy:skip_2fa")
@@ -2901,7 +3561,9 @@ async def skip_privacy_settings_2fa(
 
     await state.update_data(password=None)
     await state.set_state(PrivacySettings.selecting_mode)
-    await callback.message.edit_text(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(msgs["prompt_mode"]), reply_markup=privacy_mode_menu(language)
+    )
 
 
 @router.callback_query(F.data.startswith("privacy:mode:"))
@@ -2910,7 +3572,11 @@ async def select_privacy_mode(
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
-    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+    if (
+        not isinstance(callback.message, Message)
+        or not callback.from_user
+        or not callback.data
+    ):
         return
     with session_factory() as db_sess:
         language = get_user_language(db_sess, callback.from_user.id)
@@ -2919,7 +3585,10 @@ async def select_privacy_mode(
     mode = callback.data.split(":")[-1]
     if mode == "preset":
         await state.set_state(PrivacySettings.selecting_preset)
-        await callback.message.edit_text(msgs["prompt_preset"], reply_markup=privacy_presets_menu(language))
+        await callback.message.edit_text(
+            EmojiRegistry.enrich(msgs["prompt_preset"]),
+            reply_markup=privacy_presets_menu(language),
+        )
     elif mode == "custom":
         data = await state.get_data()
         current_rules = data.get("custom_rules") or {
@@ -2935,7 +3604,8 @@ async def select_privacy_mode(
         await state.update_data(custom_rules=current_rules)
         await state.set_state(PrivacySettings.selecting_rule_key)
         await callback.message.edit_text(
-            msgs["prompt_rule_key"], reply_markup=privacy_custom_menu(language, current_rules)
+            EmojiRegistry.enrich(msgs["prompt_rule_key"]),
+            reply_markup=privacy_custom_menu(language, current_rules),
         )
 
 
@@ -2951,7 +3621,9 @@ async def privacy_back_mode(
         language = get_user_language(db_sess, callback.from_user.id)
     msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
     await state.set_state(PrivacySettings.selecting_mode)
-    await callback.message.edit_text(msgs["prompt_mode"], reply_markup=privacy_mode_menu(language))
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(msgs["prompt_mode"]), reply_markup=privacy_mode_menu(language)
+    )
 
 
 @router.callback_query(F.data == "privacy:back_custom")
@@ -2969,7 +3641,8 @@ async def privacy_back_custom(
     current_rules = data.get("custom_rules") or {}
     await state.set_state(PrivacySettings.selecting_rule_key)
     await callback.message.edit_text(
-        msgs["prompt_rule_key"], reply_markup=privacy_custom_menu(language, current_rules)
+        EmojiRegistry.enrich(msgs["prompt_rule_key"]),
+        reply_markup=privacy_custom_menu(language, current_rules),
     )
 
 
@@ -2979,7 +3652,11 @@ async def apply_privacy_preset_handler(
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
-    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+    if (
+        not isinstance(callback.message, Message)
+        or not callback.from_user
+        or not callback.data
+    ):
         return
     with session_factory() as db_sess:
         language = get_user_language(db_sess, callback.from_user.id)
@@ -2993,10 +3670,12 @@ async def apply_privacy_preset_handler(
 
     if not file_path_str:
         await state.clear()
-        await callback.message.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+        await callback.message.edit_text(
+            EmojiRegistry.enrich(msgs["invalid_file"]), reply_markup=main_menu(language)
+        )
         return
 
-    proc_msg = await callback.message.edit_text(msgs["processing"])
+    proc_msg = await callback.message.edit_text(EmojiRegistry.enrich(msgs["processing"]))
     if not isinstance(proc_msg, Message):
         return
 
@@ -3014,26 +3693,39 @@ async def apply_privacy_preset_handler(
         details_text = ""
         failed_sessions = [d.session_name for d in res.details if d.status != "ok"]
         if failed_sessions:
-            details_text = "\n\n<b>Failed Sessions:</b>\n• " + "\n• ".join(failed_sessions[:10])
+            details_text = (
+                f"\n{EmojiRegistry.divider_line()}\n\n"
+                "<b>Failed Sessions:</b>\n• "
+                + "\n• ".join(failed_sessions[:10])
+            )
 
-        report = msgs["done"].format(
-            total=res.total,
-            succeeded=res.succeeded,
-            failed=res.failed,
-            preset=preset_label,
-            details=details_text,
+        report = EmojiRegistry.enrich(
+            msgs["done"].format(
+                total=res.total,
+                succeeded=res.succeeded,
+                failed=res.failed,
+                preset=preset_label,
+                details=details_text,
+            )
         )
 
         await proc_msg.edit_text(
             report,
-            reply_markup=privacy_result_menu(res.total, res.succeeded, res.failed, language),
+            reply_markup=privacy_result_menu(
+                res.total, res.succeeded, res.failed, language
+            ),
         )
     except Exception:
-        LOGGER.exception("Privacy settings processing error for user %s", callback.from_user.id)
-        await proc_msg.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+        LOGGER.exception(
+            "Privacy settings processing error for user %s", callback.from_user.id
+        )
+        await proc_msg.edit_text(
+            EmojiRegistry.enrich(msgs["invalid_file"]), reply_markup=main_menu(language)
+        )
     finally:
         if temp_dir_str:
             import shutil
+
             shutil.rmtree(temp_dir_str, ignore_errors=True)
         await state.clear()
 
@@ -3044,7 +3736,11 @@ async def select_privacy_rule_key(
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
-    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+    if (
+        not isinstance(callback.message, Message)
+        or not callback.from_user
+        or not callback.data
+    ):
         return
     with session_factory() as db_sess:
         language = get_user_language(db_sess, callback.from_user.id)
@@ -3056,7 +3752,9 @@ async def select_privacy_rule_key(
     await state.update_data(active_rule_key=rule_key)
     await state.set_state(PrivacySettings.selecting_rule_value)
     prompt = msgs["prompt_rule_value"].format(rule_name=rule_name)
-    await callback.message.edit_text(prompt, reply_markup=privacy_value_menu(language, rule_key))
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(prompt), reply_markup=privacy_value_menu(language, rule_key)
+    )
 
 
 @router.callback_query(F.data.startswith("privacy:val:"))
@@ -3065,7 +3763,11 @@ async def select_privacy_rule_value(
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
-    if not isinstance(callback.message, Message) or not callback.from_user or not callback.data:
+    if (
+        not isinstance(callback.message, Message)
+        or not callback.from_user
+        or not callback.data
+    ):
         return
     with session_factory() as db_sess:
         language = get_user_language(db_sess, callback.from_user.id)
@@ -3082,7 +3784,8 @@ async def select_privacy_rule_value(
     await state.update_data(custom_rules=custom_rules)
     await state.set_state(PrivacySettings.selecting_rule_key)
     await callback.message.edit_text(
-        msgs["prompt_rule_key"], reply_markup=privacy_custom_menu(language, custom_rules)
+        EmojiRegistry.enrich(msgs["prompt_rule_key"]),
+        reply_markup=privacy_custom_menu(language, custom_rules),
     )
 
 
@@ -3106,10 +3809,12 @@ async def apply_custom_privacy_handler(
 
     if not file_path_str:
         await state.clear()
-        await callback.message.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+        await callback.message.edit_text(
+            EmojiRegistry.enrich(msgs["invalid_file"]), reply_markup=main_menu(language)
+        )
         return
 
-    proc_msg = await callback.message.edit_text(msgs["processing"])
+    proc_msg = await callback.message.edit_text(EmojiRegistry.enrich(msgs["processing"]))
     if not isinstance(proc_msg, Message):
         return
 
@@ -3128,26 +3833,40 @@ async def apply_custom_privacy_handler(
         details_text = ""
         failed_sessions = [d.session_name for d in res.details if d.status != "ok"]
         if failed_sessions:
-            details_text = "\n\n<b>Failed Sessions:</b>\n• " + "\n• ".join(failed_sessions[:10])
+            details_text = (
+                f"\n{EmojiRegistry.divider_line()}\n\n"
+                "<b>Failed Sessions:</b>\n• "
+                + "\n• ".join(failed_sessions[:10])
+            )
 
-        report = msgs["done"].format(
-            total=res.total,
-            succeeded=res.succeeded,
-            failed=res.failed,
-            preset=preset_label,
-            details=details_text,
+        report = EmojiRegistry.enrich(
+            msgs["done"].format(
+                total=res.total,
+                succeeded=res.succeeded,
+                failed=res.failed,
+                preset=preset_label,
+                details=details_text,
+            )
         )
 
         await proc_msg.edit_text(
             report,
-            reply_markup=privacy_result_menu(res.total, res.succeeded, res.failed, language),
+            reply_markup=privacy_result_menu(
+                res.total, res.succeeded, res.failed, language
+            ),
         )
     except Exception:
-        LOGGER.exception("Custom privacy settings processing error for user %s", callback.from_user.id)
-        await proc_msg.edit_text(msgs["invalid_file"], reply_markup=main_menu(language))
+        LOGGER.exception(
+            "Custom privacy settings processing error for user %s",
+            callback.from_user.id,
+        )
+        await proc_msg.edit_text(
+            EmojiRegistry.enrich(msgs["invalid_file"]), reply_markup=main_menu(language)
+        )
     finally:
         if temp_dir_str:
             import shutil
+
             shutil.rmtree(temp_dir_str, ignore_errors=True)
         await state.clear()
 
@@ -3160,9 +3879,6 @@ async def privacy_noop_handler(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "list_check:noop")
 async def list_check_noop(callback: CallbackQuery) -> None:
     await callback.answer()
-
-
-
 
 
 @router.callback_query(F.data == "tool:channel_join")
@@ -3265,6 +3981,11 @@ async def receive_channel_join_target(
     file_path = Path(file_str)
     original_name = data.get("original_name")
     target = message.text.strip()
+    if not target or target.lower() in ("all", "*") or " " in target:
+        await message.answer(
+            msgs_chan["invalid_target"], reply_markup=cancel_menu(language)
+        )
+        return
     status = await message.answer(msgs_chan["processing"])
     out_res: Path | None = None
     try:
@@ -3277,9 +3998,12 @@ async def receive_channel_join_target(
                 original_name=original_name,
             )
             out_res = res_chan.output_path
-            report = msgs_chan["done"].format(
-                success=res_chan.success, failed=res_chan.failed
-            )
+            if res_chan.success == 0:
+                report = msgs_chan["failed_report"].format(failed=res_chan.failed)
+            else:
+                report = msgs_chan["done"].format(
+                    success=res_chan.success, failed=res_chan.failed
+                )
             await status.edit_text(
                 report,
                 reply_markup=channel_result_menu(
@@ -3367,6 +4091,11 @@ async def receive_channel_leave_target(
     file_path = Path(file_str)
     original_name = data.get("original_name")
     target = message.text.strip()
+    if not target or " " in target:
+        await message.answer(
+            msgs_chan["invalid_target"], reply_markup=cancel_menu(language)
+        )
+        return
     status = await message.answer(msgs_chan["processing"])
     out_res: Path | None = None
     try:
@@ -3379,9 +4108,12 @@ async def receive_channel_leave_target(
                 original_name=original_name,
             )
             out_res = res_chan.output_path
-            report = msgs_chan["done"].format(
-                success=res_chan.success, failed=res_chan.failed
-            )
+            if res_chan.success == 0:
+                report = msgs_chan["failed_report"].format(failed=res_chan.failed)
+            else:
+                report = msgs_chan["done"].format(
+                    success=res_chan.success, failed=res_chan.failed
+                )
             await status.edit_text(
                 report,
                 reply_markup=channel_result_menu(
@@ -3425,7 +4157,7 @@ async def two_factor_requires_document(
     }
     localized = prompts.get(current_state, CHANGE_2FA_PROMPTS)
     await message.answer(
-        localized.get(language, localized["en"]),
+        EmojiRegistry.enrich(localized.get(language, localized["en"])),
         reply_markup=cancel_menu(language),
     )
 
@@ -3443,7 +4175,10 @@ async def two_factor_requires_current_password(
     data = await state.get_data()
     count = int(data.get("session_count", 0))
     prompt = ENTER_CURRENT_2FA_PROMPT.get(language, ENTER_CURRENT_2FA_PROMPT["en"])
-    await message.answer(prompt.format(count=count), reply_markup=cancel_menu(language))
+    await message.answer(
+        EmojiRegistry.enrich(prompt.format(count=count)),
+        reply_markup=cancel_menu(language),
+    )
 
 
 @router.message(Change2FA.waiting_for_new_password)
@@ -3454,7 +4189,9 @@ async def two_factor_requires_new_password(
         return
     language = user_language(session_factory, message.from_user.id)
     prompt = ENTER_NEW_2FA_PROMPT.get(language, ENTER_NEW_2FA_PROMPT["en"])
-    await message.answer(prompt, reply_markup=cancel_menu(language))
+    await message.answer(
+        EmojiRegistry.enrich(prompt), reply_markup=cancel_menu(language)
+    )
 
 
 @router.callback_query(F.data == "tool:split")
@@ -3512,7 +4249,7 @@ async def receive_split_file(
     )
     await state.set_state(SplitFile.waiting_for_split_type)
     await message.answer(
-        messages["choose_type"].format(count=count),
+        EmojiRegistry.enrich(messages["choose_type"].format(count=count)),
         reply_markup=file_split_choice_menu(language),
     )
 
@@ -3540,7 +4277,9 @@ async def _deliver_split_result(
     messages = SPLIT_MESSAGES.get(language, SPLIT_MESSAGES["en"])
     completed_key = "country_completed" if mode == "country" else "quantity_completed"
     await status.edit_text(
-        messages[completed_key].format(total=result.total, groups=result.groups),
+        EmojiRegistry.enrich(
+            messages[completed_key].format(total=result.total, groups=result.groups)
+        ),
         reply_markup=file_split_result_menu(
             result.total, result.split, result.failed, language
         ),
@@ -3548,8 +4287,11 @@ async def _deliver_split_result(
     caption_key = "caption_country" if mode == "country" else "caption_part"
     for output in result.outputs:
         caption = messages[caption_key].format(
-            label=html.quote(output.label), count=output.sessions
+            flag=output.flag or "🌍",
+            label=html.quote(output.label),
+            count=output.sessions,
         )
+        caption = EmojiRegistry.enrich(EmojiRegistry.enrich_flags(caption))
         await message.answer_document(
             FSInputFile(output.path, filename=output.filename), caption=caption
         )
@@ -3578,7 +4320,8 @@ async def choose_split_type(
     if mode == "quantity":
         await state.set_state(SplitFile.waiting_for_quantity)
         await callback.message.edit_text(
-            messages["quantity_prompt"], reply_markup=cancel_menu(language)
+            EmojiRegistry.enrich(messages["quantity_prompt"]),
+            reply_markup=cancel_menu(language),
         )
         return
     if mode != "country":
@@ -3595,13 +4338,14 @@ async def choose_split_type(
 
     output_paths: list[Path] = []
     try:
-        await callback.message.edit_text(messages["splitting"])
+        await callback.message.edit_text(EmojiRegistry.enrich(messages["splitting"]))
         result = await process_session_split(
             source,
             "country",
             settings.storage_dir / "outbox",
             settings.api_credential_list,
             original_name=str(data.get("original_name", source.name)),
+            concurrency=settings.split_concurrency,
         )
         output_paths = [output.path for output in result.outputs]
         await _deliver_split_result(
@@ -3653,15 +4397,17 @@ async def split_by_quantity(
         await message.answer(messages["no_sessions"], reply_markup=main_menu(language))
         return
 
-    status = await message.answer(messages["splitting"])
+    status = await message.answer(EmojiRegistry.enrich(messages["splitting"]))
     output_paths: list[Path] = []
     try:
         result = await process_session_split(
             source,
             "quantity",
             settings.storage_dir / "outbox",
+            settings.api_credential_list,
             quantity=quantity,
             original_name=str(data.get("original_name", source.name)),
+            concurrency=settings.split_concurrency,
         )
         output_paths = [output.path for output in result.outputs]
         await _deliver_split_result(message, status, result, "quantity", language)
@@ -3718,33 +4464,78 @@ async def process_session_to_tdata_file(
         return
     language = user_language(session_factory, message.from_user.id)
     s2t_msgs = SESSION_TO_TDATA_MESSAGES.get(language, SESSION_TO_TDATA_MESSAGES["en"])
+    tool = "s2t"
+    user_id = message.from_user.id
 
     status = await message.answer(s2t_msgs["converting"])
+    cancel_event = asyncio.Event()
+    progress = JobProgress()
+    ACTIVE_CONVERSION_JOBS[(user_id, tool)] = (cancel_event, progress)
     progress_task = asyncio.create_task(
-        update_progress_bar(status, s2t_msgs["converting"])
+        update_conversion_progress(status, progress, s2t_msgs["converting"], tool, language)
     )
 
     path: Path | None = None
     output_zip: Path | None = None
     try:
         path, _name = await download_document(message, bot, settings, language)
+        started = time.monotonic()
         res = await process_session_to_tdata_conversion(
-            path, output_dir=settings.storage_dir / "outbox"
+            path,
+            output_dir=settings.storage_dir / "outbox",
+            progress=progress,
+            cancel_event=cancel_event,
+            credentials=settings.api_credential_list,
         )
+        elapsed = time.monotonic() - started
         output_zip = res.output_zip_path
         await _stop_progress(progress_task)
 
+        report = (
+            f"{s2t_msgs['title']}\n\n"
+            + EmojiRegistry.enrich_report(
+                _conversion_stats_report(
+                    s2t_msgs,
+                    res.total,
+                    res.converted,
+                    res.failed,
+                    elapsed,
+                    live_verified=bool(settings.api_credential_list),
+                )
+            )
+        )
         if res.converted == 0 or output_zip is None:
             await status.edit_text(
-                s2t_msgs["no_valid_sessions"],
+                f"{report}\n\n{s2t_msgs['no_valid_sessions']}",
                 reply_markup=main_menu(language),
             )
         else:
-            summary = s2t_msgs["done"].format(converted=res.converted, total=res.total)
-            await status.edit_text(summary, reply_markup=main_menu(language))
+            detail_lines = [
+                f"{'✅' if entry.ok else '❌'} {html.quote(entry.name)}"
+                + ("" if entry.ok else f" — {html.quote(live_failure_label(entry.reason))}")
+                for entry in res.entries
+            ]
+            details, skipped = _truncate_detail_lines(detail_lines)
+            if details:
+                report = f"{report}\n──────────────\n{details}"
+            if skipped:
+                report += s2t_msgs["more"].format(count=skipped)
+            await status.edit_text(
+                report,
+                reply_markup=session_to_tdata_result_menu(
+                    res.total, res.converted, res.failed, language
+                ),
+            )
             display_name = "tdata.zip" if res.converted == 1 else "converted_tdatas.zip"
             input_file = FSInputFile(output_zip, filename=display_name)
-            await message.answer_document(input_file)
+            await message.answer_document(
+                input_file, caption=s2t_msgs.get("caption")
+            )
+    except JobCancelled:
+        await _stop_progress(progress_task)
+        await status.edit_text(
+            s2t_msgs["cancelled"], reply_markup=main_menu(language)
+        )
     except (ValueError, UnsafeArchiveError) as exc:
         await _stop_progress(progress_task)
         err_code = str(exc)
@@ -3764,6 +4555,7 @@ async def process_session_to_tdata_file(
             reply_markup=main_menu(language),
         )
     finally:
+        ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
         if output_zip and output_zip.exists():
             output_zip.unlink(missing_ok=True)
         if path and path.exists():
@@ -3796,33 +4588,78 @@ async def process_tdata_to_session_file(
         return
     language = user_language(session_factory, message.from_user.id)
     t2s_msgs = TDATA_TO_SESSION_MESSAGES.get(language, TDATA_TO_SESSION_MESSAGES["en"])
+    tool = "t2s"
+    user_id = message.from_user.id
 
     status = await message.answer(t2s_msgs["converting"])
+    cancel_event = asyncio.Event()
+    progress = JobProgress()
+    ACTIVE_CONVERSION_JOBS[(user_id, tool)] = (cancel_event, progress)
     progress_task = asyncio.create_task(
-        update_progress_bar(status, t2s_msgs["converting"])
+        update_conversion_progress(status, progress, t2s_msgs["converting"], tool, language)
     )
 
     path: Path | None = None
     output_file: Path | None = None
     try:
         path, _name = await download_document(message, bot, settings, language)
+        started = time.monotonic()
         res = await process_tdata_to_session_conversion(
-            path, output_dir=settings.storage_dir / "outbox"
+            path,
+            output_dir=settings.storage_dir / "outbox",
+            progress=progress,
+            cancel_event=cancel_event,
+            credentials=settings.api_credential_list,
         )
+        elapsed = time.monotonic() - started
         output_file = res.output_path
         await _stop_progress(progress_task)
 
+        report = (
+            f"{t2s_msgs['title']}\n\n"
+            + EmojiRegistry.enrich_report(
+                _conversion_stats_report(
+                    t2s_msgs,
+                    res.total,
+                    res.converted,
+                    res.failed,
+                    elapsed,
+                    live_verified=bool(settings.api_credential_list),
+                )
+            )
+        )
         if res.converted == 0 or output_file is None:
             await status.edit_text(
-                t2s_msgs["no_valid_tdata"],
+                f"{report}\n\n{t2s_msgs['no_valid_tdata']}",
                 reply_markup=main_menu(language),
             )
         else:
-            summary = t2s_msgs["done"].format(converted=res.converted, total=res.total)
-            await status.edit_text(summary, reply_markup=main_menu(language))
+            detail_lines = [
+                f"{'✅' if entry.ok else '❌'} {html.quote(entry.name)}"
+                + ("" if entry.ok else f" — {html.quote(live_failure_label(entry.reason))}")
+                for entry in res.entries
+            ]
+            details, skipped = _truncate_detail_lines(detail_lines)
+            if details:
+                report = f"{report}\n──────────────\n{details}"
+            if skipped:
+                report += t2s_msgs["more"].format(count=skipped)
+            await status.edit_text(
+                report,
+                reply_markup=tdata_to_session_result_menu(
+                    res.total, res.converted, res.failed, language
+                ),
+            )
             display_name = "converted_sessions.zip" if res.is_zip else output_file.name
             input_file = FSInputFile(output_file, filename=display_name)
-            await message.answer_document(input_file)
+            await message.answer_document(
+                input_file, caption=t2s_msgs.get("caption")
+            )
+    except JobCancelled:
+        await _stop_progress(progress_task)
+        await status.edit_text(
+            t2s_msgs["cancelled"], reply_markup=main_menu(language)
+        )
     except (ValueError, UnsafeArchiveError) as exc:
         await _stop_progress(progress_task)
         err_code = str(exc)
@@ -3842,6 +4679,7 @@ async def process_tdata_to_session_file(
             reply_markup=main_menu(language),
         )
     finally:
+        ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
         if output_file and output_file.exists():
             output_file.unlink(missing_ok=True)
         if path and path.exists():
@@ -3879,8 +4717,15 @@ async def process_account_to_txt_file(
         return
     language = user_language(session_factory, message.from_user.id)
     msgs = ACCOUNT_TO_TXT_MESSAGES.get(language, ACCOUNT_TO_TXT_MESSAGES["en"])
+    tool = "txt"
+    user_id = message.from_user.id
     status = await message.answer(msgs["converting"])
-    progress_task = asyncio.create_task(update_progress_bar(status, msgs["converting"]))
+    cancel_event = asyncio.Event()
+    progress = JobProgress()
+    ACTIVE_CONVERSION_JOBS[(user_id, tool)] = (cancel_event, progress)
+    progress_task = asyncio.create_task(
+        update_conversion_progress(status, progress, msgs["converting"], tool, language)
+    )
 
     path: Path | None = None
     output_zip: Path | None = None
@@ -3891,15 +4736,30 @@ async def process_account_to_txt_file(
             settings.storage_dir / "outbox",
             settings.api_credential_list,
             original_name=original_name,
+            progress=progress,
+            cancel_event=cancel_event,
         )
         output_zip = result.output_zip_path
         await _stop_progress(progress_task)
 
         report = (
             f"{msgs['title']}\n\n"
-            f"{msgs['summary'].format(total=result.total, active=result.active, invalid=result.invalid_converted, failed=result.failed)}\n"
-            "──────────────"
+            + EmojiRegistry.enrich_report(
+                msgs['summary'].format(total=result.total, active=result.active, invalid=result.invalid_converted, failed=result.failed)
+            )
+            + "\n──────────────"
         )
+        detail_lines = [
+            f"{'✅' if entry.status == 'active' else ('⚠️' if entry.status == 'invalid' else '❌')} "
+            f"{html.quote(entry.name)}"
+            + ("" if entry.status == "active" else f" — {html.quote(entry.reason)}")
+            for entry in result.entries
+        ]
+        details, skipped = _truncate_detail_lines(detail_lines)
+        if details:
+            report = f"{report}\n{details}"
+        if skipped:
+            report += msgs["more"].format(count=skipped)
         if output_zip is None:
             await status.edit_text(
                 f"{report}\n\n{msgs['no_output']}",
@@ -3913,8 +4773,12 @@ async def process_account_to_txt_file(
                 ),
             )
             await message.answer_document(
-                FSInputFile(output_zip, filename="account_txt.zip")
+                FSInputFile(output_zip, filename="account_txt.zip"),
+                caption=msgs.get("caption"),
             )
+    except JobCancelled:
+        await _stop_progress(progress_task)
+        await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
     except (ValueError, UnsafeArchiveError) as exc:
         await _stop_progress(progress_task)
         archive_errs = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
@@ -3927,6 +4791,7 @@ async def process_account_to_txt_file(
         await _stop_progress(progress_task)
         await status.edit_text(msgs["no_output"], reply_markup=main_menu(language))
     finally:
+        ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
         if output_zip is not None:
             output_zip.unlink(missing_ok=True)
         if path is not None:
@@ -3964,8 +4829,15 @@ async def process_session_to_json_file(
         return
     language = user_language(session_factory, message.from_user.id)
     msgs = SESSION_TO_JSON_MESSAGES.get(language, SESSION_TO_JSON_MESSAGES["en"])
+    tool = "json"
+    user_id = message.from_user.id
     status = await message.answer(msgs["converting"])
-    progress_task = asyncio.create_task(update_progress_bar(status, msgs["converting"]))
+    cancel_event = asyncio.Event()
+    progress = JobProgress()
+    ACTIVE_CONVERSION_JOBS[(user_id, tool)] = (cancel_event, progress)
+    progress_task = asyncio.create_task(
+        update_conversion_progress(status, progress, msgs["converting"], tool, language)
+    )
 
     path: Path | None = None
     output_zip: Path | None = None
@@ -3976,22 +4848,30 @@ async def process_session_to_json_file(
             settings.storage_dir / "outbox",
             settings.api_credential_list,
             original_name=original_name,
+            progress=progress,
+            cancel_event=cancel_event,
         )
         output_zip = result.output_zip_path
         await _stop_progress(progress_task)
 
-        detail_lines = "\n".join(
+        detail_lines = [
             f"{entry.report_icon} {html.quote(entry.profile.identifier)} | "
             f"{html.quote(entry.profile.phone)} | {html.quote(entry.profile.username)}"
+            + ("" if entry.authorized else f" — {html.quote(entry.reason)}")
             for entry in result.entries
-        )
+        ]
         report = (
             f"{msgs['title']}\n\n"
-            f"{msgs['summary'].format(total=result.total, active=result.active, invalid=result.invalid_converted, failed=result.failed)}\n"
-            "──────────────"
+            + EmojiRegistry.enrich_report(
+                msgs['summary'].format(total=result.total, active=result.active, invalid=result.invalid_converted, failed=result.failed)
+            )
+            + "\n──────────────"
         )
-        if detail_lines:
-            report = f"{report}\n{detail_lines}"
+        details, skipped = _truncate_detail_lines(detail_lines)
+        if details:
+            report = f"{report}\n{details}"
+        if skipped:
+            report += msgs["more"].format(count=skipped)
 
         if output_zip is None:
             await status.edit_text(
@@ -4006,8 +4886,12 @@ async def process_session_to_json_file(
                 ),
             )
             await message.answer_document(
-                FSInputFile(output_zip, filename="session_json.zip")
+                FSInputFile(output_zip, filename="session_json.zip"),
+                caption=msgs.get("caption"),
             )
+    except JobCancelled:
+        await _stop_progress(progress_task)
+        await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
     except (ValueError, UnsafeArchiveError) as exc:
         await _stop_progress(progress_task)
         archive_errs = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
@@ -4020,6 +4904,7 @@ async def process_session_to_json_file(
         await _stop_progress(progress_task)
         await status.edit_text(msgs["no_output"], reply_markup=main_menu(language))
     finally:
+        ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
         if output_zip is not None:
             output_zip.unlink(missing_ok=True)
         if path is not None:
@@ -4094,7 +4979,7 @@ async def process_file_merge_file(
         )
         await state.set_state(FileMerge.waiting_for_merge_type)
 
-        choose_text = msgs["choose_type"].format(count=count)
+        choose_text = EmojiRegistry.enrich(msgs["choose_type"].format(count=count))
         await message.answer(
             choose_text,
             reply_markup=file_merge_choice_menu(language),
@@ -4164,7 +5049,7 @@ async def process_file_merge_choice(
 
     output_path: Path | None = None
     try:
-        await callback.message.edit_text(msgs["processing"])
+        await callback.message.edit_text(EmojiRegistry.enrich(msgs["processing"]))
 
         result = await process_file_merge(
             temp_path,
@@ -4182,7 +5067,9 @@ async def process_file_merge_choice(
             return
 
         if merge_type == "multi_type":
-            report_text = msgs["multi_type_done"].format(merged=result.merged)
+            report_text = EmojiRegistry.enrich(
+                msgs["multi_type_done"].format(merged=result.merged)
+            )
             await callback.message.edit_text(
                 report_text,
                 reply_markup=file_merge_result_menu(
@@ -4191,7 +5078,7 @@ async def process_file_merge_choice(
             )
             await callback.message.answer_document(
                 FSInputFile(output_path, filename="merged_all.zip"),
-                caption=msgs["caption_multi_type"],
+                caption=EmojiRegistry.enrich(msgs["caption_multi_type"]),
             )
 
         elif merge_type == "session_json_tdata":
@@ -4199,14 +5086,14 @@ async def process_file_merge_choice(
                 f"{'✅' if entry.success else '❌'} {html.quote(entry.identifier)}"
                 for entry in result.entries
             )
-            report_text = (
+            report_text = EmojiRegistry.enrich(
                 f"{msgs['session_json_tdata_done'].format(success=result.merged, failed=result.failed)}\n\n"
                 f"{account_lines}"
             )
             await callback.message.edit_text(report_text)
             await callback.message.answer_document(
                 FSInputFile(output_path, filename="merge_json_tdata.zip"),
-                caption=msgs["caption_session_json_tdata"],
+                caption=EmojiRegistry.enrich(msgs["caption_session_json_tdata"]),
             )
 
     except (ValueError, UnsafeArchiveError) as exc:
@@ -4391,13 +5278,26 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
+        progress_task = asyncio.create_task(
+            update_progress_bar(status_message, messages["analyzing"])
+        )
         try:
-            result_check = await check_sessions(
+            spam_mode = action == "spam_check"
+            sess_progress = SessionProgress()
+            await _stop_progress(progress_task)
+            progress_task = asyncio.create_task(
+                update_session_progress(
+                    status_message, sess_progress, messages["analyzing"]
+                )
+            )
+            result_check, entries_check = await check_sessions_detailed(
                 file_path,
                 credentials=settings.api_credential_list,
                 timeout=settings.spambot_timeout,
                 proxy=user_proxy,
+                progress=sess_progress,
             )
+            await _stop_progress(progress_task)
             spam_mode = action == "spam_check"
             renderer = render_spam_result if spam_mode else render_session_result
             await status_message.edit_text(
@@ -4406,7 +5306,9 @@ async def process_quick_action(
                     result_check, language, spam_mode=spam_mode
                 ),
             )
+            await _send_status_zips(status_message, file_path, entries_check, language)
         finally:
+            await _stop_progress(progress_task)
             file_path.unlink(missing_ok=True)
             await state.clear()
 
@@ -4415,39 +5317,86 @@ async def process_quick_action(
         contact_messages = CHECK_CONTACTS_MESSAGES.get(
             language, CHECK_CONTACTS_MESSAGES["en"]
         )
-        analysis_messages = ANALYSIS_MESSAGES.get(language, ANALYSIS_MESSAGES["en"])
-        await callback.message.edit_text(analysis_messages["analyzing"])
-        contacts_output: Path | None = None
+        status_message = await callback.message.edit_text(contact_messages["checking"])
+        if not isinstance(status_message, Message):
+            file_path.unlink(missing_ok=True)
+            await state.clear()
+            return
+        cancel_event = asyncio.Event()
+        user_id = callback.from_user.id if callback.from_user else 0
+        ACTIVE_CONTACTS_JOBS[user_id] = cancel_event
+        progress = ContactsProgress()
+        progress_task = asyncio.create_task(
+            update_contacts_progress(
+                status_message, progress, contact_messages["checking"], language
+            )
+        )
         try:
-            result_contacts = await process_contacts_check(
-                file_path,
-                settings.storage_dir / "outbox",
-                settings.api_credential_list,
-                proxy=user_proxy,
-            )
-            contacts_output = result_contacts.ok_zip_path
-            await callback.message.edit_text(
-                contact_messages["done"].format(
-                    checked=result_contacts.checked,
-                    ok=result_contacts.ok,
-                    error=result_contacts.error,
-                ),
-                reply_markup=contacts_result_menu(
-                    result_contacts.checked,
-                    result_contacts.ok,
-                    result_contacts.error,
-                    language,
-                ),
-            )
-            if contacts_output is not None:
-                await callback.message.answer_document(
-                    FSInputFile(
-                        contacts_output, filename=f"Ok_{result_contacts.ok}.zip"
-                    )
+            try:
+                result_contacts = await process_contacts_check(
+                    file_path,
+                    settings.storage_dir / "outbox",
+                    settings.api_credential_list,
+                    proxy=user_proxy,
+                    concurrency=settings.contacts_check_concurrency,
+                    per_session_timeout=settings.contacts_check_timeout,
+                    flood_wait_ceiling=settings.contacts_flood_ceiling,
+                    progress=progress,
+                    cancel_event=cancel_event,
                 )
+            except ContactsCheckCancelled:
+                await _stop_progress(progress_task)
+                await status_message.edit_text(
+                    EmojiRegistry.enrich_text(
+                        f"❌ {html.quote(contact_messages['cancelled'])}"
+                    ),
+                    reply_markup=main_menu(language),
+                )
+                await state.clear()
+                return
+            except (ValueError, UnsafeArchiveError) as exc:
+                await _stop_progress(progress_task)
+                err_code = str(exc)
+                archive_errs = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
+                err_msg = archive_errs.get(err_code, str(exc))
+                prompt = CHECK_CONTACTS_PROMPTS.get(
+                    language, CHECK_CONTACTS_PROMPTS["en"]
+                )
+                await status_message.edit_text(
+                    f"❌ {html.quote(err_msg)}\n\n{prompt}",
+                    reply_markup=cancel_menu(language),
+                )
+                await state.clear()
+                return
+            await _stop_progress(progress_task)
+            try:
+                await status_message.edit_text(
+                    render_contacts_result(result_contacts, language),
+                    reply_markup=contacts_result_menu(result_contacts, language),
+                )
+                for zip_path, status_label, count in result_contacts.zip_paths:
+                    await status_message.answer_document(
+                        FSInputFile(zip_path, filename=zip_path.name),
+                        caption=contacts_status_zip_caption(
+                            status_label, count, language
+                        ),
+                    )
+                if result_contacts.report_path is not None:
+                    await status_message.answer_document(
+                        FSInputFile(
+                            result_contacts.report_path,
+                            filename=result_contacts.report_path.name,
+                        ),
+                        caption=contacts_report_caption(language),
+                    )
+            finally:
+                for zip_path, _label, _count in result_contacts.zip_paths:
+                    zip_path.unlink(missing_ok=True)
+                if result_contacts.report_path is not None:
+                    result_contacts.report_path.unlink(missing_ok=True)
         finally:
-            if contacts_output is not None:
-                contacts_output.unlink(missing_ok=True)
+            await _stop_progress(progress_task)
+            ACTIVE_CONTACTS_JOBS.pop(user_id, None)
             file_path.unlink(missing_ok=True)
             await state.clear()
 
@@ -4503,7 +5452,7 @@ async def process_quick_action(
         )
         split_messages = SPLIT_MESSAGES.get(language, SPLIT_MESSAGES["en"])
         await callback.message.edit_text(
-            split_messages["choose_type"].format(count=count),
+            EmojiRegistry.enrich(split_messages["choose_type"].format(count=count)),
             reply_markup=file_split_choice_menu(language),
         )
 
@@ -4529,7 +5478,7 @@ async def process_quick_action(
         )
         msgs = FILE_MERGE_MESSAGES.get(language, FILE_MERGE_MESSAGES["en"])
         await callback.message.edit_text(
-            msgs["choose_type"].format(count=count),
+            EmojiRegistry.enrich(msgs["choose_type"].format(count=count)),
             reply_markup=file_merge_choice_menu(language),
         )
 
@@ -4541,39 +5490,81 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
+        tool = "s2t"
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
         progress_task = asyncio.create_task(
-            update_progress_bar(status, msgs["converting"])
+            update_conversion_progress(status, progress, msgs["converting"], tool, language)
         )
         tdata_zip: Path | None = None
         try:
+            started = time.monotonic()
             result_tdata = await process_session_to_tdata_conversion(
                 file_path,
                 settings.storage_dir / "outbox",
+                progress=progress,
+                cancel_event=cancel_event,
+                credentials=settings.api_credential_list,
             )
+            elapsed = time.monotonic() - started
             tdata_zip = result_tdata.output_zip_path
             await _stop_progress(progress_task)
-            report = msgs["done"].format(
-                converted=result_tdata.converted,
-                total=result_tdata.total,
+            report = (
+                f"{msgs['title']}\n\n"
+                + EmojiRegistry.enrich_report(
+                    _conversion_stats_report(
+                        msgs,
+                        result_tdata.total,
+                        result_tdata.converted,
+                        result_tdata.failed,
+                        elapsed,
+                        live_verified=bool(settings.api_credential_list),
+                    )
+                )
             )
+            detail_lines = [
+                f"{'✅' if entry.ok else '❌'} {html.quote(entry.name)}"
+                + ("" if entry.ok else f" — {html.quote(live_failure_label(entry.reason))}")
+                for entry in result_tdata.entries
+            ]
+            details, skipped = _truncate_detail_lines(detail_lines)
+            if details:
+                report = f"{report}\n──────────────\n{details}"
+            if skipped:
+                report += msgs["more"].format(count=skipped)
             if tdata_zip is None:
                 await status.edit_text(
-                    msgs["no_valid_sessions"], reply_markup=main_menu(language)
+                    f"{report}\n\n{msgs['no_valid_sessions']}", reply_markup=main_menu(language)
                 )
             else:
-                await status.edit_text(report)
-                await callback.message.answer_document(
-                    FSInputFile(tdata_zip, filename="tdata.zip")
+                await status.edit_text(
+                    report,
+                    reply_markup=session_to_tdata_result_menu(
+                        result_tdata.total,
+                        result_tdata.converted,
+                        result_tdata.failed,
+                        language,
+                    ),
                 )
+                await callback.message.answer_document(
+                    FSInputFile(tdata_zip, filename="tdata.zip"),
+                    caption=msgs.get("caption"),
+                )
+        except JobCancelled:
+            await _stop_progress(progress_task)
+            await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
         except Exception:
             LOGGER.exception(
                 "Direct session-to-tdata conversion failed for user %s",
                 callback.from_user.id,
             )
+            await _stop_progress(progress_task)
             await status.edit_text(
                 msgs["no_valid_sessions"], reply_markup=main_menu(language)
             )
         finally:
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
             with suppress(Exception):
                 await _stop_progress(progress_task)
             if tdata_zip is not None:
@@ -4589,42 +5580,84 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
+        tool = "t2s"
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
         progress_task = asyncio.create_task(
-            update_progress_bar(status, msgs["converting"])
+            update_conversion_progress(status, progress, msgs["converting"], tool, language)
         )
         session_zip: Path | None = None
         try:
+            started = time.monotonic()
             result_sess = await process_tdata_to_session_conversion(
                 file_path,
                 settings.storage_dir / "outbox",
+                progress=progress,
+                cancel_event=cancel_event,
+                credentials=settings.api_credential_list,
             )
+            elapsed = time.monotonic() - started
             session_zip = result_sess.output_path
             await _stop_progress(progress_task)
-            report = msgs["done"].format(
-                converted=result_sess.converted,
-                total=result_sess.total,
+            report = (
+                f"{msgs['title']}\n\n"
+                + EmojiRegistry.enrich_report(
+                    _conversion_stats_report(
+                        msgs,
+                        result_sess.total,
+                        result_sess.converted,
+                        result_sess.failed,
+                        elapsed,
+                        live_verified=bool(settings.api_credential_list),
+                    )
+                )
             )
+            detail_lines = [
+                f"{'✅' if entry.ok else '❌'} {html.quote(entry.name)}"
+                + ("" if entry.ok else f" — {html.quote(live_failure_label(entry.reason))}")
+                for entry in result_sess.entries
+            ]
+            details, skipped = _truncate_detail_lines(detail_lines)
+            if details:
+                report = f"{report}\n──────────────\n{details}"
+            if skipped:
+                report += msgs["more"].format(count=skipped)
             if session_zip is None:
                 await status.edit_text(
-                    msgs["no_valid_tdata"], reply_markup=main_menu(language)
+                    f"{report}\n\n{msgs['no_valid_tdata']}", reply_markup=main_menu(language)
                 )
             else:
-                await status.edit_text(report)
+                await status.edit_text(
+                    report,
+                    reply_markup=tdata_to_session_result_menu(
+                        result_sess.total,
+                        result_sess.converted,
+                        result_sess.failed,
+                        language,
+                    ),
+                )
                 display_name = (
                     "converted_sessions.zip" if result_sess.is_zip else session_zip.name
                 )
                 await callback.message.answer_document(
-                    FSInputFile(session_zip, filename=display_name)
+                    FSInputFile(session_zip, filename=display_name),
+                    caption=msgs.get("caption"),
                 )
+        except JobCancelled:
+            await _stop_progress(progress_task)
+            await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
         except Exception:
             LOGGER.exception(
                 "Direct tdata-to-session conversion failed for user %s",
                 callback.from_user.id,
             )
+            await _stop_progress(progress_task)
             await status.edit_text(
                 msgs["no_valid_tdata"], reply_markup=main_menu(language)
             )
         finally:
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
             with suppress(Exception):
                 await _stop_progress(progress_task)
             if session_zip is not None:
@@ -4640,8 +5673,12 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
+        tool = "json"
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
         progress_task = asyncio.create_task(
-            update_progress_bar(status, msgs["converting"])
+            update_conversion_progress(status, progress, msgs["converting"], tool, language)
         )
         json_zip: Path | None = None
         try:
@@ -4650,13 +5687,28 @@ async def process_quick_action(
                 settings.storage_dir / "outbox",
                 settings.api_credential_list,
                 original_name=original_name,
+                progress=progress,
+                cancel_event=cancel_event,
             )
             json_zip = result_json.output_zip_path
             await _stop_progress(progress_task)
             report = (
                 f"{msgs['title']}\n\n"
-                f"{msgs['summary'].format(total=result_json.total, active=result_json.active, invalid=result_json.invalid_converted, failed=result_json.failed)}"
+                + EmojiRegistry.enrich_report(
+                    msgs['summary'].format(total=result_json.total, active=result_json.active, invalid=result_json.invalid_converted, failed=result_json.failed)
+                )
             )
+            detail_lines = [
+                f"{entry.report_icon} {html.quote(entry.profile.identifier)} | "
+                f"{html.quote(entry.profile.phone)} | {html.quote(entry.profile.username)}"
+                + ("" if entry.authorized else f" — {html.quote(entry.reason)}")
+                for entry in result_json.entries
+            ]
+            details, skipped = _truncate_detail_lines(detail_lines)
+            if details:
+                report = f"{report}\n──────────────\n{details}"
+            if skipped:
+                report += msgs["more"].format(count=skipped)
             if json_zip is None:
                 await status.edit_text(
                     f"{report}\n\n{msgs['no_output']}", reply_markup=main_menu(language)
@@ -4672,15 +5724,21 @@ async def process_quick_action(
                     ),
                 )
                 await callback.message.answer_document(
-                    FSInputFile(json_zip, filename="session_json.zip")
+                    FSInputFile(json_zip, filename="session_json.zip"),
+                    caption=msgs.get("caption"),
                 )
+        except JobCancelled:
+            await _stop_progress(progress_task)
+            await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
         except Exception:
             LOGGER.exception(
                 "Direct session-to-json conversion failed for user %s",
                 callback.from_user.id,
             )
+            await _stop_progress(progress_task)
             await status.edit_text(msgs["no_output"], reply_markup=main_menu(language))
         finally:
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
             with suppress(Exception):
                 await _stop_progress(progress_task)
             if json_zip is not None:
@@ -4696,6 +5754,13 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
+        tool = "a2t"
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
+        progress_task = asyncio.create_task(
+            update_conversion_progress(status, progress, msgs["converting"], tool, language)
+        )
         txt_out: Path | None = None
         try:
             result_txt = await process_account_to_txt(
@@ -4703,13 +5768,29 @@ async def process_quick_action(
                 output_dir=settings.storage_dir / "outbox",
                 credentials=settings.api_credential_list,
                 original_name=str(original_name),
+                progress=progress,
+                cancel_event=cancel_event,
             )
             txt_out = result_txt.output_zip_path
+            await _stop_progress(progress_task)
             report = (
                 f"{msgs['title']}\n\n"
-                f"{msgs['summary'].format(total=result_txt.total, active=result_txt.active, invalid=result_txt.invalid_converted, failed=result_txt.failed)}\n"
-                "──────────────"
+                + EmojiRegistry.enrich_report(
+                    msgs['summary'].format(total=result_txt.total, active=result_txt.active, invalid=result_txt.invalid_converted, failed=result_txt.failed)
+                )
+                + "\n──────────────"
             )
+            detail_lines = [
+                f"{entry.report_icon} {html.quote(entry.profile.identifier)} | "
+                f"{html.quote(entry.profile.phone)} | {html.quote(entry.profile.username)}"
+                + ("" if entry.authorized else f" — {html.quote(entry.reason)}")
+                for entry in result_txt.entries
+            ]
+            details, skipped = _truncate_detail_lines(detail_lines)
+            if details:
+                report = f"{report}\n{details}"
+            if skipped:
+                report += msgs["more"].format(count=skipped)
             if txt_out is None:
                 await status.edit_text(
                     f"{report}\n\n{msgs['no_output']}",
@@ -4726,15 +5807,23 @@ async def process_quick_action(
                     ),
                 )
                 await callback.message.answer_document(
-                    FSInputFile(txt_out, filename="account_txt.zip")
+                    FSInputFile(txt_out, filename="account_txt.zip"),
+                    caption=msgs.get("caption"),
                 )
+        except JobCancelled:
+            await _stop_progress(progress_task)
+            await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
         except Exception:
             LOGGER.exception(
                 "Direct account-to-txt conversion failed for user %s",
                 callback.from_user.id,
             )
+            await _stop_progress(progress_task)
             await status.edit_text(msgs["no_output"], reply_markup=main_menu(language))
         finally:
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
+            with suppress(Exception):
+                await _stop_progress(progress_task)
             if txt_out and txt_out.exists():
                 txt_out.unlink(missing_ok=True)
             file_path.unlink(missing_ok=True)
@@ -4745,35 +5834,38 @@ async def process_quick_action(
         msgs_2fa = TWO_FACTOR_MESSAGES.get(language, TWO_FACTOR_MESSAGES["en"])
         if not sessions:
             file_path.unlink(missing_ok=True)
-            await state.clear()
+            await _clear_two_factor_state(state)
             await callback.message.edit_text(
-                msgs_2fa["no_sessions"], reply_markup=main_menu(language)
+                EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+                reply_markup=main_menu(language),
             )
             return
+        if not isinstance(callback.message, Message):
+            file_path.unlink(missing_ok=True)
+            await _clear_two_factor_state(state)
+            return
 
-        if action == "change_2fa":
-            await state.set_state(Change2FA.waiting_for_old_password)
-        else:
-            await state.set_state(Disable2FA.waiting_for_password)
-
-        await state.update_data(
-            temp_file_path=str(file_path),
-            original_name=original_name,
-            session_count=len(sessions),
-            flow_message_id=callback.message.message_id,
-        )
-        fmt = ENTER_CURRENT_2FA_PROMPT.get(language, ENTER_CURRENT_2FA_PROMPT["en"])
-        await callback.message.edit_text(
-            fmt.format(count=len(sessions)), reply_markup=cancel_menu(language)
+        operation = "changed" if action == "change_2fa" else "disabled"
+        await state.update_data(flow_message_id=callback.message.message_id)
+        await _begin_two_factor_batch(
+            file_path,
+            original_name,
+            operation,
+            callback.message,
+            bot,
+            state,
+            language,
         )
 
     elif action == "reset_2fa":
         await state.set_state(Reset2FA.waiting_for_file)
         msgs_2fa = TWO_FACTOR_MESSAGES.get(language, TWO_FACTOR_MESSAGES["en"])
-        status = await callback.message.edit_text(msgs_2fa["processing"])
+        status = await callback.message.edit_text(
+            EmojiRegistry.enrich(msgs_2fa["processing"])
+        )
         if not isinstance(status, Message):
             file_path.unlink(missing_ok=True)
-            await state.clear()
+            await _clear_two_factor_state(state)
             return
         out_res: Path | None = None
         try:
@@ -4784,10 +5876,12 @@ async def process_quick_action(
                 original_name=original_name,
             )
             out_res = res_2fa.output_path
-            report = msgs_2fa["done_reset"].format(
-                success=res_2fa.success,
-                pending=res_2fa.pending,
-                failed=res_2fa.failed,
+            report = EmojiRegistry.enrich(
+                msgs_2fa["done_reset"].format(
+                    success=res_2fa.success,
+                    pending=res_2fa.pending,
+                    failed=res_2fa.failed,
+                )
             )
             report += _two_factor_failure_details(res_2fa, language)
             await status.edit_text(
@@ -4813,13 +5907,14 @@ async def process_quick_action(
                 "Direct 2FA reset failed for user %s", callback.from_user.id
             )
             await status.edit_text(
-                msgs_2fa["request_failed"], reply_markup=main_menu(language)
+                EmojiRegistry.enrich(msgs_2fa["request_failed"]),
+                reply_markup=main_menu(language),
             )
         finally:
             if out_res and out_res.exists():
                 out_res.unlink(missing_ok=True)
             file_path.unlink(missing_ok=True)
-            await state.clear()
+            await _clear_two_factor_state(state)
 
     elif action in ("channel_join", "leave_channel"):
         sessions = await inspect_mergeable_sessions(file_path)
@@ -4995,69 +6090,84 @@ async def process_quick_action(
             await state.clear()
             return
         msgs_age = ACCOUNT_AGE_MESSAGES.get(language, ACCOUNT_AGE_MESSAGES["en"])
+        await state.set_state(AccountAge.waiting_for_file)
         status = await callback.message.edit_text(msgs_age["fetching"])
         if not isinstance(status, Message):
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
 
-        user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
-        res = await process_account_age_check(
-            file_path,
-            settings.api_credential_list,
-            original_name=original_name,
-            proxy=user_proxy,
-        )
-        file_path.unlink(missing_ok=True)
+        keep_state = False
+        try:
+            user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
+            res = await process_account_age_check(
+                file_path,
+                settings.api_credential_list,
+                original_name=original_name,
+                proxy=user_proxy,
+            )
 
-        if res.total == 0 or res.checked == 0 or not res.accounts:
-            await state.clear()
+            if res.total == 0 or res.checked == 0 or not res.accounts:
+                await status.edit_text(
+                    msgs_age["no_sessions"], reply_markup=main_menu(language)
+                )
+                return
+
+            if len(res.accounts) > 1:
+                await state.set_state(AccountAge.viewing_results)
+                await state.update_data(
+                    accounts=[
+                        {
+                            "session_name": a.session_name,
+                            "user_id": a.user_id,
+                            "phone": a.phone,
+                            "username": a.username,
+                            "first_name": a.first_name,
+                            "last_name": a.last_name,
+                            "is_premium": a.is_premium,
+                            "dc_id": a.dc_id,
+                            "creation_estimate": a.creation_estimate,
+                            "exact_creation_date": a.exact_creation_date,
+                            "is_scam": a.is_scam,
+                            "is_fake": a.is_fake,
+                            "is_verified": a.is_verified,
+                        }
+                        for a in res.accounts
+                    ],
+                    res_total=res.total,
+                    res_checked=res.checked,
+                    res_failed=res.failed,
+                    page=0,
+                )
+                keep_state = True
+            else:
+                await state.clear()
+
+            report = format_account_age_report(res, msgs_age, page=0)
             await status.edit_text(
-                msgs_age["no_sessions"], reply_markup=main_menu(language)
+                report,
+                reply_markup=account_age_result_menu(
+                    res.total,
+                    res.checked,
+                    res.failed,
+                    language,
+                    page=0,
+                    total_pages=len(res.accounts),
+                ),
             )
-            return
-
-        if len(res.accounts) > 1:
-            await state.set_state(AccountAge.viewing_results)
-            await state.update_data(
-                accounts=[
-                    {
-                        "session_name": a.session_name,
-                        "user_id": a.user_id,
-                        "phone": a.phone,
-                        "username": a.username,
-                        "first_name": a.first_name,
-                        "last_name": a.last_name,
-                        "is_premium": a.is_premium,
-                        "dc_id": a.dc_id,
-                        "creation_estimate": a.creation_estimate,
-                        "exact_creation_date": a.exact_creation_date,
-                        "is_scam": a.is_scam,
-                        "is_fake": a.is_fake,
-                        "is_verified": a.is_verified,
-                    }
-                    for a in res.accounts
-                ],
-                res_total=res.total,
-                res_checked=res.checked,
-                res_failed=res.failed,
-                page=0,
+        except Exception:
+            LOGGER.exception(
+                "Account age quick process error for user %s",
+                callback.from_user.id if callback.from_user else 0,
             )
-        else:
-            await state.clear()
-
-        report = format_account_age_report(res, msgs_age, page=0)
-        await status.edit_text(
-            report,
-            reply_markup=account_age_result_menu(
-                res.total,
-                res.checked,
-                res.failed,
-                language,
-                page=0,
-                total_pages=len(res.accounts),
-            ),
-        )
+            with contextlib.suppress(Exception):
+                await status.edit_text(
+                    msgs_age["request_failed"], reply_markup=main_menu(language)
+                )
+        finally:
+            file_path.unlink(missing_ok=True)
+            if not keep_state:
+                await state.clear()
 
     elif action == "kill_sessions":
         if not isinstance(callback.message, Message):
@@ -5066,7 +6176,9 @@ async def process_quick_action(
             return
         temp_storage = settings.storage_dir / "temp" / f"kill_{uuid4().hex}"
         temp_storage.parent.mkdir(parents=True, exist_ok=True)
-        saved_file = temp_storage.with_suffix(Path(original_name or file_path.name).suffix)
+        saved_file = temp_storage.with_suffix(
+            Path(original_name or file_path.name).suffix
+        )
         shutil.copy2(file_path, saved_file)
 
         await state.set_state(KillSessions.confirming)
@@ -5092,7 +6204,9 @@ async def process_quick_action(
             return
         temp_storage = settings.storage_dir / "temp" / f"fresh_{uuid4().hex}"
         temp_storage.parent.mkdir(parents=True, exist_ok=True)
-        saved_file = temp_storage.with_suffix(Path(original_name or file_path.name).suffix)
+        saved_file = temp_storage.with_suffix(
+            Path(original_name or file_path.name).suffix
+        )
         shutil.copy2(file_path, saved_file)
         file_path.unlink(missing_ok=True)
 
@@ -5102,7 +6216,9 @@ async def process_quick_action(
             original_name=original_name,
         )
         await callback.message.edit_text(
-            FRESH_SESSION_2FA_PROMPT.get(language, FRESH_SESSION_2FA_PROMPT["en"]),
+            EmojiRegistry.enrich(
+                FRESH_SESSION_2FA_PROMPT.get(language, FRESH_SESSION_2FA_PROMPT["en"])
+            ),
             reply_markup=fresh_session_2fa_menu(language),
         )
         return
@@ -5149,9 +6265,11 @@ async def process_quick_action(
             filename=filename,
         )
         await state.set_state(PrivacySettings.selecting_mode)
-        msgs_priv = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
+        msgs_priv = PRIVACY_SETTINGS_MESSAGES.get(
+            language, PRIVACY_SETTINGS_MESSAGES["en"]
+        )
         await callback.message.edit_text(
-            msgs_priv["prompt_mode"],
+            EmojiRegistry.enrich(msgs_priv["prompt_mode"]),
             reply_markup=privacy_mode_menu(language),
         )
         return
@@ -5180,9 +6298,12 @@ async def process_quick_action(
                 proxy=user_proxy,
             )
             out_clr = res_clr.output_path
-            report = msgs_clear["done"].format(
-                success=res_clr.cleared, failed=res_clr.failed
-            )
+            if res_clr.cleared == 0:
+                report = msgs_clear["failed_report"].format(failed=res_clr.failed)
+            else:
+                report = msgs_clear["done"].format(
+                    success=res_clr.cleared, failed=res_clr.failed
+                )
             await status_msg.edit_text(
                 report,
                 reply_markup=clear_contacts_result_menu(
@@ -5211,19 +6332,6 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             return
-        
-        # Stop any active paused jobs first
-        with session_factory() as db_sess:
-            user_record = db_sess.query(User).filter(User.telegram_id == callback.from_user.id).first()
-            if user_record:
-                paused_jobs = db_sess.query(Job).filter(
-                    Job.user_id == user_record.id,
-                    Job.operation == "mass_message",
-                    Job.status == "paused"
-                ).all()
-                for pj in paused_jobs:
-                    pj.status = "stopped"
-                db_sess.commit()
 
         temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_mass_msg_sess_"))
         session_files: list[Path] = []
@@ -5239,12 +6347,16 @@ async def process_quick_action(
 
             file_path.unlink(missing_ok=True)
 
-            valid_sessions = [str(f) for f in session_files if _is_valid_sqlite_session(f)]
+            valid_sessions = [
+                str(f) for f in session_files if _is_valid_sqlite_session(f)
+            ]
             if not valid_sessions:
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 await state.clear()
                 msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
-                await callback.message.edit_text(msgs["no_sessions"], reply_markup=main_menu(language))
+                await callback.message.edit_text(
+                    msgs["no_sessions"], reply_markup=main_menu(language)
+                )
                 return
 
             await state.set_state(MassMessage.waiting_for_recipients)
@@ -5263,12 +6375,13 @@ async def process_quick_action(
             file_path.unlink(missing_ok=True)
             await state.clear()
             msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
-            await callback.message.edit_text(msgs["no_sessions"], reply_markup=main_menu(language))
+            await callback.message.edit_text(
+                msgs["no_sessions"], reply_markup=main_menu(language)
+            )
 
     else:
         direct_messages = DIRECT_FILE_MESSAGES.get(language, DIRECT_FILE_MESSAGES["en"])
         await callback.answer(direct_messages["invalid_action"], show_alert=True)
-
 
 
 # ==============================================================================
@@ -5291,11 +6404,15 @@ async def request_mass_message(
     with session_factory() as db_sess:
         user_record = db_sess.query(User).filter(User.telegram_id == user_id).first()
         if user_record:
-            paused_job = db_sess.query(Job).filter(
-                Job.user_id == user_record.id,
-                Job.operation == "mass_message",
-                Job.status == "paused",
-            ).first()
+            paused_job = (
+                db_sess.query(Job)
+                .filter(
+                    Job.user_id == user_record.id,
+                    Job.operation == "mass_message",
+                    Job.status == "paused",
+                )
+                .first()
+            )
 
             if paused_job:
                 _ = json.loads(paused_job.options_json or "{}")
@@ -5308,32 +6425,32 @@ async def request_mass_message(
                 cancel_btn_text = ""
 
                 if language == "bn":
-                    prompt_text = f"⚠️ আপনার একটি স্থগিত গণ বার্তা কাজ (#MM-{display_id}) রয়েছে যা {pct}% সম্পন্ন হয়েছে।\n\nআপনি কি করতে চান?"
+                    prompt_text = f"⚠️ আপনার একটি স্থগিত গণ বার্তা কাজ (#{display_id}) রয়েছে যা {pct}% সম্পন্ন হয়েছে।\n\nআপনি কি করতে চান?"
                     resume_btn_text = "▶️ কাজ পুনরায় শুরু করুন"
                     new_btn_text = "➕ নতুন কাজ শুরু করুন"
                     cancel_btn_text = "❌ বাতিল"
                 elif language == "hi":
-                    prompt_text = f"⚠️ आपके पास एक रुका हुआ सामूहिक संदेश कार्य (#MM-{display_id}) है जो {pct}% पूर्ण हो चुका है।\n\nआप क्या करना चाहेंगे?"
+                    prompt_text = f"⚠️ आपके पास एक रुका हुआ सामूहिक संदेश कार्य (#{display_id}) है जो {pct}% पूर्ण हो चुका है।\n\nआप क्या करना चाहेंगे?"
                     resume_btn_text = "▶️ कार्य फिर से शुरू करें"
                     new_btn_text = "➕ नया कार्य शुरू करें"
                     cancel_btn_text = "❌ रद्द करें"
                 elif language == "ur":
-                    prompt_text = f"⚠️ آپ کے پاس ایک رکا ہوا ماس میسج کام (#MM-{display_id}) ہے جو {pct}% مکمل ہو چکا ہے۔\n\nآپ کیا کرنا چاہیں گے؟"
+                    prompt_text = f"⚠️ آپ کے پاس ایک رکا ہوا ماس میسج کام (#{display_id}) ہے جو {pct}% مکمل ہو چکا ہے۔\n\nآپ کیا کرنا چاہیں گے؟"
                     resume_btn_text = "▶️ کام دوبارہ شروع کریں"
                     new_btn_text = "➕ نیا کام شروع کریں"
                     cancel_btn_text = "❌ منسوخ کریں"
                 elif language == "ar":
-                    prompt_text = f"⚠️ لديك مهمة إرسال رسائل جماعية معلقة (#MM-{display_id}) بنسبة تقدم {pct}%.\n\nماذا تود أن تفعل؟"
+                    prompt_text = f"⚠️ لديك مهمة إرسال رسائل جماعية معلقة (#{display_id}) بنسبة تقدم {pct}%.\n\nماذا تود أن تفعل؟"
                     resume_btn_text = "▶️ استئناف المهمة"
                     new_btn_text = "➕ بدء مهمة جديدة"
                     cancel_btn_text = "❌ إلغاء"
                 elif language == "zh":
-                    prompt_text = f"⚠️ 您有一个暂停的的群发消息任务 (#MM-{display_id})，进度为 {pct}%。\n\n您想怎么做？"
+                    prompt_text = f"⚠️ 您有一个暂停的的群发消息任务 (#{display_id})，进度为 {pct}%。\n\n您想怎么做？"
                     resume_btn_text = "▶️ 恢复任务"
                     new_btn_text = "➕ 开始新任务"
                     cancel_btn_text = "❌ 取消"
                 else:  # en
-                    prompt_text = f"⚠️ You have a paused mass messaging job (#MM-{display_id}) with {pct}% progress.\n\nWhat would you like to do?"
+                    prompt_text = f"⚠️ You have a paused mass messaging job (#{display_id}) with {pct}% progress.\n\nWhat would you like to do?"
                     resume_btn_text = "▶️ Resume Job"
                     new_btn_text = "➕ Start New Job"
                     cancel_btn_text = "❌ Cancel"
@@ -5344,20 +6461,23 @@ async def request_mass_message(
                             InlineKeyboardButton(
                                 text=resume_btn_text,
                                 callback_data=f"resume_job:{paused_job.id}",
+                                style=ButtonStyle.SUCCESS.value,
                             )
                         ],
                         [
                             InlineKeyboardButton(
                                 text=new_btn_text,
                                 callback_data="mass_msg_job:new",
+                                style=ButtonStyle.PRIMARY.value,
                             )
                         ],
                         [
                             InlineKeyboardButton(
                                 text=cancel_btn_text,
                                 callback_data="menu:back",
+                                style=ButtonStyle.DANGER.value,
                             )
-                        ]
+                        ],
                     ]
                 )
                 await callback.message.edit_text(prompt_text, reply_markup=keyboard)
@@ -5378,22 +6498,9 @@ async def start_new_job_callback(
     if callback.from_user is None or not isinstance(callback.message, Message):
         return
     language = user_language(session_factory, callback.from_user.id)
-    with session_factory() as db_sess:
-        user_record = db_sess.query(User).filter(User.telegram_id == callback.from_user.id).first()
-        if user_record:
-            paused_jobs = db_sess.query(Job).filter(
-                Job.user_id == user_record.id,
-                Job.operation == "mass_message",
-                Job.status == "paused"
-            ).all()
-            for pj in paused_jobs:
-                pj.status = "stopped"
-            db_sess.commit()
-
     await state.set_state(MassMessage.waiting_for_file)
     prompt = MASS_MESSAGE_PROMPTS.get(language, MASS_MESSAGE_PROMPTS["en"])
     await callback.message.edit_text(prompt, reply_markup=cancel_menu(language))
-
 
 
 @router.message(MassMessage.waiting_for_file, F.document)
@@ -5408,6 +6515,7 @@ async def receive_mass_message_sessions(
         return
     language = user_language(session_factory, message.from_user.id)
     msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
+    temp_dir: str | None = None
     try:
         path, name = await download_document(message, bot, settings, language)
         temp_dir = tempfile.mkdtemp(prefix="ftgc_mass_msg_sess_")
@@ -5441,6 +6549,8 @@ async def receive_mass_message_sessions(
         )
     except Exception:
         LOGGER.exception("Error receiving sessions for Mass Message")
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
         await state.clear()
         await message.answer(msgs["no_sessions"], reply_markup=main_menu(language))
 
@@ -5490,11 +6600,19 @@ async def use_contacts_as_recipients(
                 elif s.status == "invalid_sqlite":
                     lines.append(f"• `{s.session_name}`: دیتابیس سشن نامعتبر")
                 else:
-                    lines.append(f"• `{s.session_name}`: خطا ({s.error_detail or s.status})")
+                    lines.append(
+                        f"• `{s.session_name}`: خطا ({s.error_detail or s.status})"
+                    )
             lines.append("\n⚠️ **دلایل احتمالی:**")
-            lines.append("• اکانت‌های انتخابی هیچ مخاطب ذخیره‌شده‌ای (Saved Contacts) در دفترچه تلفن تلگرام ندارند.")
-            lines.append("• مخاطبین فاقد نام کاربری عمومی، شماره تلفن یا آیدی عددی هستند.")
-            lines.append("\n💡 *می‌توانید به جای آن یک فایل TXT شامل نام‌های کاربری (@username) یا شماره‌ها آپلود کنید.*")
+            lines.append(
+                "• اکانت‌های انتخابی هیچ مخاطب ذخیره‌شده‌ای (Saved Contacts) در دفترچه تلفن تلگرام ندارند."
+            )
+            lines.append(
+                "• مخاطبین فاقد نام کاربری عمومی، شماره تلفن یا آیدی عددی هستند."
+            )
+            lines.append(
+                "\n💡 *می‌توانید به جای آن یک فایل TXT شامل نام‌های کاربری (@username) یا شماره‌ها آپلود کنید.*"
+            )
         else:
             lines.append("❌ **No Valid Recipients Found**\n")
             lines.append(f"📇 **Sessions Checked ({len(stats)}):**")
@@ -5502,15 +6620,25 @@ async def use_contacts_as_recipients(
                 if s.status == "no_contacts":
                     lines.append(f"• `{s.session_name}`: 0 saved contacts")
                 elif s.status == "unauthorized":
-                    lines.append(f"• `{s.session_name}`: Session unauthorized or revoked")
+                    lines.append(
+                        f"• `{s.session_name}`: Session unauthorized or revoked"
+                    )
                 elif s.status == "invalid_sqlite":
                     lines.append(f"• `{s.session_name}`: Invalid session database")
                 else:
-                    lines.append(f"• `{s.session_name}`: Error ({s.error_detail or s.status})")
+                    lines.append(
+                        f"• `{s.session_name}`: Error ({s.error_detail or s.status})"
+                    )
             lines.append("\n⚠️ **Possible Reasons:**")
-            lines.append("• Selected account(s) have 0 saved contacts in their Telegram address book.")
-            lines.append("• Contacts do not have a public username, phone, or Telegram ID.")
-            lines.append("\n💡 *You can upload a TXT file containing usernames (@username) or phone numbers instead.*")
+            lines.append(
+                "• Selected account(s) have 0 saved contacts in their Telegram address book."
+            )
+            lines.append(
+                "• Contacts do not have a public username, phone, or Telegram ID."
+            )
+            lines.append(
+                "\n💡 *You can upload a TXT file containing usernames (@username) or phone numbers instead.*"
+            )
 
         await callback.message.edit_text(
             "\n".join(lines),
@@ -5550,7 +6678,9 @@ async def use_contacts_as_recipients(
         summary_lines.append(f"👤 **Sessions Checked ({len(stats)}):**")
         for s in stats:
             if s.status == "ok":
-                summary_lines.append(f"• `{s.session_name}`: {s.contacts_found} contacts")
+                summary_lines.append(
+                    f"• `{s.session_name}`: {s.contacts_found} contacts"
+                )
             elif s.status == "no_contacts":
                 summary_lines.append(f"• `{s.session_name}`: 0 contacts")
             else:
@@ -5725,7 +6855,10 @@ async def run_mass_message_job_loop(
     msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
     media_file_path: Path | None = None
     clients: list[tuple[Any, Path, tempfile.TemporaryDirectory[str]]] = []
+    last_error_session: str | None = None
+    last_error_detail: str | None = None
 
+    await MASS_MESSAGE_SEMAPHORE.acquire()
     try:
         # Download Telegram bot media if present
         if media_file_id:
@@ -5748,7 +6881,9 @@ async def run_mass_message_job_loop(
 
         if not clients:
             completed_set = {d["recipient"] for d in details}
-            remaining_recs = [r for r in recipients if r.raw_identifier not in completed_set]
+            remaining_recs = [
+                r for r in recipients if r.raw_identifier not in completed_set
+            ]
             for rec in remaining_recs:
                 failed += 1
                 details.append(
@@ -5763,7 +6898,9 @@ async def run_mass_message_job_loop(
             start_time = time.time()
             queue: asyncio.Queue[Recipient] = asyncio.Queue()
             completed_set = {d["recipient"] for d in details}
-            remaining_recs = [r for r in recipients if r.raw_identifier not in completed_set]
+            remaining_recs = [
+                r for r in recipients if r.raw_identifier not in completed_set
+            ]
             for rec in remaining_recs:
                 queue.put_nowait(rec)
 
@@ -5771,11 +6908,15 @@ async def run_mass_message_job_loop(
             global_rate_limiter = GlobalRateLimiter(min_interval_seconds=0.1)
             last_ui_update_time = 0.0
             ui_update_interval = 1.5
-            last_error_session: str | None = None
-            last_error_detail: str | None = None
 
             async def worker(cli: Any, session_path: Path) -> None:
-                nonlocal sent, failed, skipped, last_ui_update_time, last_error_session, last_error_detail
+                nonlocal \
+                    sent, \
+                    failed, \
+                    skipped, \
+                    last_ui_update_time, \
+                    last_error_session, \
+                    last_error_detail
                 entity_cache: dict[str, Any] = {}
                 flood_until = 0.0
 
@@ -5864,7 +7005,9 @@ async def run_mass_message_job_loop(
                                 if j:
                                     j.progress = pct
                                     curr_opt = json.loads(j.options_json or "{}")
-                                    curr_completed_set = {d["recipient"] for d in details}
+                                    curr_completed_set = {
+                                        d["recipient"] for d in details
+                                    }
                                     curr_opt.update(
                                         {
                                             "sent": sent,
@@ -5874,9 +7017,12 @@ async def run_mass_message_job_loop(
                                             "pending_recipients": [
                                                 r.raw_identifier
                                                 for r in recipients
-                                                if r.raw_identifier not in curr_completed_set
+                                                if r.raw_identifier
+                                                not in curr_completed_set
                                             ],
-                                            "completed_recipients": list(curr_completed_set),
+                                            "completed_recipients": list(
+                                                curr_completed_set
+                                            ),
                                             "details": details,
                                         }
                                     )
@@ -5920,6 +7066,7 @@ async def run_mass_message_job_loop(
     except Exception:
         LOGGER.exception("Mass message loop error")
     finally:
+        MASS_MESSAGE_SEMAPHORE.release()
         duration_seconds = (
             max(1.0, time.time() - start_time) if "start_time" in locals() else 1.0
         )
@@ -5936,30 +7083,38 @@ async def run_mass_message_job_loop(
             if j:
                 if is_interrupted:
                     j.status = "stopped" if is_stopped else "paused"
-                    j.progress = int((processed_count / total) * 100) if total > 0 else 0
-                    
+                    j.progress = (
+                        int((processed_count / total) * 100) if total > 0 else 0
+                    )
+
                     curr_opt = json.loads(j.options_json or "{}")
                     curr_completed_set = {d["recipient"] for d in details}
-                    curr_opt.update({
-                        "sent": sent,
-                        "failed": failed,
-                        "skipped": skipped,
-                        "processed_count": processed_count,
-                        "last_error_session": last_error_session,
-                        "last_error_detail": last_error_detail,
-                        "pending_recipients": [
-                            r.raw_identifier for r in recipients if r.raw_identifier not in curr_completed_set
-                        ],
-                        "completed_recipients": list(curr_completed_set),
-                        "details": details,
-                    })
+                    curr_opt.update(
+                        {
+                            "sent": sent,
+                            "failed": failed,
+                            "skipped": skipped,
+                            "processed_count": processed_count,
+                            "last_error_session": last_error_session,
+                            "last_error_detail": last_error_detail,
+                            "pending_recipients": [
+                                r.raw_identifier
+                                for r in recipients
+                                if r.raw_identifier not in curr_completed_set
+                            ],
+                            "completed_recipients": list(curr_completed_set),
+                            "details": details,
+                        }
+                    )
                     j.options_json = json.dumps(curr_opt)
                     db_sess.commit()
                 else:
                     finish_job(
                         db_sess,
                         j,
-                        error_code=None if (sent > 0 or total == 0) else "MASS_MSG_FAILED",
+                        error_code=None
+                        if (sent > 0 or total == 0)
+                        else "MASS_MSG_FAILED",
                     )
 
         ACTIVE_MASS_MESSAGE_JOBS.pop(user_id, None)
@@ -5986,6 +7141,8 @@ async def run_mass_message_job_loop(
         final_status = "completed"
         if is_interrupted:
             final_status = "stopped" if is_stopped else "paused"
+        elif sent == 0 and total > 0:
+            final_status = "failed"
 
         summary_text = format_mass_message_summary(
             job_id=display_id,
@@ -6007,14 +7164,17 @@ async def run_mass_message_job_loop(
 
                 if final_status == "paused":
                     from app.keyboards import mass_message_paused_menu
-                    reply_markup = mass_message_paused_menu(job_id=job_id, language=language)
+
+                    reply_markup = mass_message_paused_menu(
+                        job_id=job_id, language=language
+                    )
                 else:
                     reply_markup = main_menu(language)
 
                 await bot.send_document(
                     chat_id=callback.from_user.id,
                     document=FSInputFile(
-                        report_tmp, filename=f"mass_message_report_{job_id[:8]}.csv"
+                        report_tmp, filename=f"mass_message_report_{display_id}.csv"
                     ),
                     caption=msgs["export_caption"],
                     reply_markup=reply_markup,
@@ -6039,6 +7199,10 @@ async def start_mass_message_execution(
     language = user_language(session_factory, callback.from_user.id)
     msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
     await callback.answer()
+
+    if callback.from_user.id in ACTIVE_MASS_MESSAGE_JOBS:
+        await callback.answer(msgs.get("already_active", "⚠️ Job already active."), show_alert=True)
+        return
 
     data = await state.get_data()
     session_files = [Path(p) for p in data.get("session_files", [])]
@@ -6207,6 +7371,10 @@ async def resume_job_callback(
             await callback.answer("❌ Job not found.", show_alert=True)
             return
 
+        if job.status != "paused":
+            await callback.answer(msgs.get("not_paused", "❌ Job is not paused."), show_alert=True)
+            return
+
         job.status = "running"
         db_sess.commit()
 
@@ -6215,7 +7383,16 @@ async def resume_job_callback(
 
     message_text = options.get("message_text", "")
     media_file_id = options.get("media_file_id")
-    session_files = [Path(p) for p in options.get("session_files", [])]
+    session_files = [Path(p) for p in options.get("session_files", []) if Path(p).exists()]
+
+    if not session_files:
+        with session_factory() as db_sess:
+            job_ref = db_sess.query(Job).filter(Job.id == job_id).first()
+            if job_ref:
+                job_ref.status = "paused"
+                db_sess.commit()
+        await callback.answer(msgs.get("sessions_missing", "❌ Session files are missing; job remains paused."), show_alert=True)
+        return
 
     completed_recipients_set = set(options.get("completed_recipients", []))
     pending_recipients_list = options.get("pending_recipients", [])
@@ -6350,10 +7527,42 @@ async def control_mass_message_execution(
                         db_sess.commit()
 
         await callback.answer(msgs.get("status_pausing", msgs["status_paused"]))
+        progress_text: str | None = None
+        if current_job_id:
+            with session_factory() as db_sess:
+                j = db_sess.query(Job).filter(Job.id == current_job_id).first()
+                if j:
+                    opts = json.loads(j.options_json or "{}")
+                    sent_n = opts.get("sent", 0)
+                    failed_n = opts.get("failed", 0)
+                    skipped_n = opts.get("skipped", 0)
+                    processed_n = sent_n + failed_n + skipped_n
+                    total_n = opts.get("total", processed_n or 1)
+                    pct_n = int((processed_n / total_n) * 100) if total_n > 0 else 0
+                    progress_text = msgs["live_progress"].format(
+                        progress=processed_n,
+                        total=total_n,
+                        percentage=pct_n,
+                        sent=sent_n,
+                        failed=failed_n,
+                        skipped=skipped_n,
+                        remaining=max(0, total_n - processed_n),
+                        status_text=msgs["status_paused"],
+                    )
         with suppress(Exception):
-            await callback.message.edit_reply_markup(
-                reply_markup=mass_message_live_menu(is_paused=True, language=language)
-            )
+            if progress_text:
+                await callback.message.edit_text(
+                    progress_text,
+                    reply_markup=mass_message_live_menu(
+                        is_paused=True, language=language
+                    ),
+                )
+            else:
+                await callback.message.edit_reply_markup(
+                    reply_markup=mass_message_live_menu(
+                        is_paused=True, language=language
+                    )
+                )
     elif action == "resume":
         await state.update_data(is_paused=False)
         if "pause_event" in job_info:
@@ -6375,9 +7584,10 @@ async def control_mass_message_execution(
             )
     elif action == "stop":
         await state.update_data(is_stopped=True)
-        job_info["is_stopped"] = True
-        if "pause_event" in job_info:
-            job_info["pause_event"].set()
+        if job_info:
+            job_info["is_stopped"] = True
+            if "pause_event" in job_info:
+                job_info["pause_event"].set()
 
         # Update DB Job Status
         if current_job_id:

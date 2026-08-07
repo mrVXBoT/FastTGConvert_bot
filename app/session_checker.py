@@ -16,12 +16,15 @@ Result mapping
 | Phase 1             | Phase 2             | SessionCheckResult bucket  |
 +=====================+=====================+============================+
 | structurally_valid  | active              | active                     |
+| structurally_valid  | spam                | spam                       |
 | structurally_valid  | frozen              | frozen                     |
 | structurally_valid  | banned              | banned                     |
 | structurally_valid  | invalid             | invalid                    |
 | structurally_valid  | inconclusive        | inconclusive               |
-| structurally_valid  | (no credentials)    | active  ← offline only     |
-| incomplete          | (skipped)           | frozen                     |
+| structurally_valid  | (no credentials)    | inconclusive ← unverified  |
+| incomplete          | (skipped)           | frozen (inferred offline   |
+|                     |                     |   from a wiped auth key;   |
+|                     |                     |   never falsely "active")  |
 | invalid             | (skipped)           | invalid                    |
 +---------------------+---------------------+----------------------------+
 
@@ -40,16 +43,23 @@ Security constraints:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from app.session_results import SessionCheckResult
 
-__all__ = ["check_sessions"]
+__all__ = [
+    "SessionCheckEntry",
+    "SessionProgress",
+    "check_sessions",
+    "check_sessions_detailed",
+]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,7 +78,32 @@ _ALLOWED_SUFFIXES = {".session", ".zip"}
 _OfflineStatus = Literal["structurally_valid", "incomplete", "invalid"]
 
 # Final labels after both phases – mirrors SpamStatus + offline-only labels.
-_FinalStatus = Literal["active", "frozen", "banned", "invalid", "inconclusive"]
+_FinalStatus = Literal[
+    "active", "spam", "frozen", "banned", "invalid", "inconclusive"
+]
+
+
+@dataclass(frozen=True)
+class SessionCheckEntry:
+    """
+    Per-session check result.
+
+    ``member`` is the original member path inside the uploaded ZIP archive
+    (or the bare file name for a single ``.session`` upload); it is what the
+    status ZIP separation uses to regroup files by outcome.  Empty for a
+    malformed archive where no member could be identified.
+    """
+
+    member: str
+    status: _FinalStatus
+
+
+@dataclass
+class SessionProgress:
+    """Shared mutable progress state for a running session check."""
+
+    total: int = 0
+    done: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -231,8 +266,11 @@ async def _resolve_final_status(
     """
     Combine the offline result with the (optional) live spam check.
 
-    If no credentials are configured, only the offline result is used
-    (structurally_valid → active, incomplete → frozen).
+    An ``incomplete`` file (valid SQLite but wiped/empty auth_key) is the
+    local fingerprint of a logged-out / killed session and is reported
+    ``frozen`` from offline inspection alone; it is never mislabelled active.
+    A structurally valid session without credentials is reported
+    ``inconclusive`` — never ``active`` — because it was not verified live.
     """
     if offline == "incomplete":
         return "frozen"
@@ -241,25 +279,27 @@ async def _resolve_final_status(
 
     # offline == "structurally_valid"
     if not credentials:
-        # No credentials → report as active (structural only).
-        return "active"
+        # No credentials configured → cannot connect to Telegram servers.
+        # Report inconclusive (never report unverified accounts as active).
+        return "inconclusive"
 
-    # Run live check.
+    # Run live check against Telegram servers.
     try:
         return await _live_status(session_path, credentials, timeout, proxy=proxy)
     except Exception:
-        LOGGER.exception("Live spam check failed; falling back to structural result")
-        return "active"
+        LOGGER.exception("Live spam check failed")
+        return "inconclusive"
 
 
 def _summarize(statuses: list[_FinalStatus]) -> SessionCheckResult:
     """
     Map final status labels to ``SessionCheckResult``.
-    Invariant: checked == active + frozen + banned + invalid + inconclusive.
+    Invariant: checked == active + spam + frozen + banned + invalid + inconclusive.
     """
     return SessionCheckResult(
         checked=len(statuses),
         active=statuses.count("active"),
+        spam=statuses.count("spam"),
         frozen=statuses.count("frozen"),
         banned=statuses.count("banned"),
         invalid=statuses.count("invalid"),
@@ -278,7 +318,8 @@ async def _check_zip(
     credentials: list[tuple[int, str]],
     timeout: int,
     proxy: tuple | None = None,
-) -> list[_FinalStatus]:
+    progress: SessionProgress | None = None,
+) -> list[SessionCheckEntry]:
     """
     Handle a ZIP archive: extract each .session, run both phases, return results.
     One failing member never aborts the rest.
@@ -288,56 +329,70 @@ async def _check_zip(
             members = archive.infolist()
 
             if len(members) > _MAX_ZIP_MEMBERS:
-                return ["invalid"]
+                return [SessionCheckEntry("", "invalid")]
 
             total_uncompressed = 0
             for info in members:
                 member_path = Path(info.filename)
                 if member_path.is_absolute() or ".." in member_path.parts:
-                    return ["invalid"]
+                    return [SessionCheckEntry("", "invalid")]
                 total_uncompressed += info.file_size
                 if total_uncompressed > _MAX_ZIP_UNCOMPRESSED_BYTES:
-                    return ["invalid"]
+                    return [SessionCheckEntry("", "invalid")]
                 if info.compress_size and info.file_size:
                     ratio = info.file_size / info.compress_size
                     if ratio > _MAX_COMPRESSION_RATIO:
-                        return ["invalid"]
+                        return [SessionCheckEntry("", "invalid")]
 
             session_members = [
                 m for m in members if m.filename.lower().endswith(".session")
             ]
             if not session_members:
-                return ["invalid"]
+                return [SessionCheckEntry("", "invalid")]
 
-            results: list[_FinalStatus] = []
+            if progress is not None:
+                progress.total = len(session_members)
+
+            sem = asyncio.Semaphore(50 if credentials is None else 30)
+
             with tempfile.TemporaryDirectory(prefix="ftgc_zip_") as tmp:
                 tmp_dir = Path(tmp)
-                for info in session_members:
-                    dest = tmp_dir / Path(info.filename).name
+
+                async def _check_one_member(idx: int, info: zipfile.ZipInfo) -> SessionCheckEntry:
+                    dest = tmp_dir / f"sess_{idx}_{Path(info.filename).name}"
                     try:
                         _extract_member_chunked(archive, info.filename, dest)
                         offline = _classify_session_file(dest)
-                        final = await _resolve_final_status(
-                            dest,
-                            offline,
-                            credentials=credentials,
-                            timeout=timeout,
-                            proxy=proxy,
-                        )
-                        results.append(final)
+                        async with sem:
+                            final = await _resolve_final_status(
+                                dest,
+                                offline,
+                                credentials=credentials,
+                                timeout=timeout,
+                                proxy=proxy,
+                            )
+                        return SessionCheckEntry(info.filename, final)
                     except Exception:  # noqa: BLE001
                         LOGGER.debug("Failed to process one .session member in ZIP")
-                        results.append("invalid")
+                        return SessionCheckEntry(info.filename, "invalid")
                     finally:
                         dest.unlink(missing_ok=True)
+                        if progress is not None:
+                            progress.done += 1
 
-            return results
+                entries = list(
+                    await asyncio.gather(
+                        *(_check_one_member(idx, info) for idx, info in enumerate(session_members))
+                    )
+                )
+
+            return entries
 
     except zipfile.BadZipFile:
-        return ["invalid"]
+        return [SessionCheckEntry("", "invalid")]
     except OSError as exc:
         LOGGER.error("I/O error reading ZIP: %s", exc)
-        return ["invalid"]
+        return [SessionCheckEntry("", "invalid")]
 
 
 # --------------------------------------------------------------------------- #
@@ -351,6 +406,7 @@ async def check_sessions(
     credentials: list[tuple[int, str]] | None = None,
     timeout: int = 15,
     proxy: tuple | None = None,
+    progress: SessionProgress | None = None,
 ) -> SessionCheckResult:
     """
     Classify all session files found at *path*.
@@ -369,26 +425,166 @@ async def check_sessions(
         structural classification is returned.
     timeout:
         Seconds to wait for @SpamBot's reply during the live check.
+    progress:
+        Optional shared counter; ``total`` is set once the member count is
+        known and ``done`` is incremented after every member finishes.
 
     Returns
     -------
-    A ``SessionCheckResult`` where
-    ``checked == active + frozen + invalid`` is always satisfied.
+    A ``SessionCheckResult`` always satisfying
+    ``checked == active + spam + frozen + banned + invalid + inconclusive``.
+    """
+    result, _ = await check_sessions_detailed(
+        path,
+        credentials=credentials,
+        timeout=timeout,
+        proxy=proxy,
+        progress=progress,
+    )
+    return result
+
+
+async def check_sessions_detailed(
+    path: Path,
+    *,
+    credentials: list[tuple[int, str]] | None = None,
+    timeout: int = 15,
+    proxy: tuple | None = None,
+    progress: SessionProgress | None = None,
+) -> tuple[SessionCheckResult, list[SessionCheckEntry]]:
+    """
+    Like :func:`check_sessions` but also returns per-session entries with the
+    original member names, so callers can regroup the uploaded files by status.
     """
     creds: list[tuple[int, str]] = credentials or []
     suffix = path.suffix.lower()
 
     if suffix not in _ALLOWED_SUFFIXES:
         LOGGER.debug("Rejected unsupported extension: %r", suffix)
-        return _summarize(["invalid"])
+        return _summarize(["invalid"]), [SessionCheckEntry("", "invalid")]
 
     if suffix == ".zip":
-        statuses = await _check_zip(path, credentials=creds, timeout=timeout, proxy=proxy)
-        return _summarize(statuses)
+        entries = await _check_zip(
+            path,
+            credentials=creds,
+            timeout=timeout,
+            proxy=proxy,
+            progress=progress,
+        )
+        return _summarize([e.status for e in entries]), entries
 
     # Single .session file.
     offline = _classify_session_file(path)
+    if progress is not None:
+        progress.total = 1
     final = await _resolve_final_status(
         path, offline, credentials=creds, timeout=timeout, proxy=proxy
     )
-    return _summarize([final])
+    if progress is not None:
+        progress.done = 1
+    return _summarize([final]), [SessionCheckEntry(path.name, final)]
+
+
+# --------------------------------------------------------------------------- #
+# Status ZIP separation                                                        #
+# --------------------------------------------------------------------------- #
+
+# Status → (file-name stem, display label).  Mirrors the reference bot's
+# per-category archives ("📦 No Restriction - 9 accounts", "📦 Spam - 1 …").
+# Spam-flagged and genuinely frozen accounts get their own archives.
+_STATUS_ZIP_META: dict[str, tuple[str, str]] = {
+    "active": ("No_Restriction", "No Restriction"),
+    "spam": ("Spam", "Spam"),
+    "frozen": ("Frozen", "Frozen"),
+    "banned": ("Banned", "Banned"),
+    "invalid": ("Invalid", "Invalid"),
+    "inconclusive": ("Error", "Error"),
+}
+
+
+def _is_safe_member_name(name: str) -> bool:
+    member_path = Path(name)
+    return not member_path.is_absolute() and ".." not in member_path.parts
+
+
+def build_status_zips(
+    path: Path,
+    entries: list[SessionCheckEntry],
+    output_dir: Path,
+) -> list[tuple[Path, str, int]]:
+    """
+    Regroup the checked sessions into one ZIP archive per status bucket.
+
+    For a single ``.session`` upload the file is copied into its bucket.
+    For a ZIP archive every member is written under its ORIGINAL relative
+    path (so ``.session`` + sibling ``.json`` pairs stay together), grouped
+    by the status of the account's ``.session`` member.
+
+    Returns ``(zip_path, status, count)`` for every non-empty bucket, where
+    *status* is one of the ``SessionCheckEntry`` status labels.
+    """
+    if not entries:
+        return []
+    if path.suffix.lower() != ".zip":
+        # Single .session upload.
+        entry = entries[0]
+        meta = _STATUS_ZIP_META.get(entry.status)
+        if meta is None:
+            return []
+        stem, _label = meta
+        out = output_dir / f"{stem}_{1}.zip"
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.write(path, arcname=Path(path.name).name)
+        return [(out, entry.status, 1)]
+
+    # Group ZIP members by account (path without extension) so siblings such
+    # as ``123.session`` and ``123.json`` land in the same bucket.
+    account_members: dict[str, list[zipfile.ZipInfo]] = {}
+    try:
+        with zipfile.ZipFile(path, "r") as archive:
+            for info in archive.infolist():
+                if not _is_safe_member_name(info.filename):
+                    continue
+                key = str(Path(info.filename).with_suffix(""))
+                account_members.setdefault(key, []).append(info)
+    except (zipfile.BadZipFile, OSError) as exc:
+        LOGGER.error("Could not re-read ZIP for separation: %s", exc)
+        return []
+
+    counts: dict[str, int] = {}
+    for entry in entries:
+        if entry.member:
+            counts[entry.status] = counts.get(entry.status, 0) + 1
+
+    archives: list[tuple[Path, str, int]] = []
+    try:
+        src = zipfile.ZipFile(path, "r")
+    except (zipfile.BadZipFile, OSError) as exc:
+        LOGGER.error("Could not re-open ZIP for separation: %s", exc)
+        return []
+    with src:
+        for status, (stem, _label) in _STATUS_ZIP_META.items():
+            count = counts.get(status, 0)
+            if count == 0:
+                continue
+            out = output_dir / f"{stem}_{count}.zip"
+            written: set[str] = set()
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+                for entry in entries:
+                    if entry.status != status or not entry.member:
+                        continue
+                    key = str(Path(entry.member).with_suffix(""))
+                    for info in account_members.get(key, []):
+                        if info.filename in written:
+                            continue
+                        written.add(info.filename)
+                        try:
+                            archive.writestr(info, src.read(info.filename))
+                        except (OSError, KeyError, RuntimeError) as exc:
+                            LOGGER.debug(
+                                "Skipping member %r during separation: %s",
+                                info.filename,
+                                exc,
+                            )
+            archives.append((out, status, count))
+    return archives

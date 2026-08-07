@@ -1,6 +1,7 @@
 import sqlite3
 import zipfile
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -9,6 +10,7 @@ from app.locales import LANGUAGES, SPLIT_MESSAGES, SPLIT_PROMPTS
 from app.services.files import UnsafeArchiveError
 from app.services.session_split import (
     country_for_phone,
+    flag_for_phone,
     inspect_session_split,
     process_session_split,
 )
@@ -46,6 +48,14 @@ def test_country_detection() -> None:
     assert country_for_phone("+989121234567") == "Iran"
     assert country_for_phone(None) == "Unknown"
     assert country_for_phone("invalid") == "Unknown"
+
+
+def test_flag_detection() -> None:
+    assert flag_for_phone("+573118508561") == "🇨🇴"
+    assert flag_for_phone("+989121234567") == "🇮🇷"
+    assert flag_for_phone("+2347031234567") == "🇳🇬"
+    assert flag_for_phone(None) is None
+    assert flag_for_phone("invalid") is None
 
 
 @pytest.mark.asyncio
@@ -109,6 +119,7 @@ async def test_split_by_country(tmp_path: Path) -> None:
         "Iran_1.zip",
     }
     assert {output.label for output in result.outputs} == {"Colombia", "Iran"}
+    assert {output.flag for output in result.outputs} == {"🇨🇴", "🇮🇷"}
 
 
 @pytest.mark.asyncio
@@ -141,6 +152,69 @@ async def test_zip_slip_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(UnsafeArchiveError, match="zip_unsafe_path"):
         await inspect_session_split(archive_path)
+
+
+@pytest.mark.asyncio
+async def test_split_by_country_with_credentials_unpacks_full_profile(
+    tmp_path: Path,
+) -> None:
+    session = _session(tmp_path / "573118508561.session", "573118508561", user_id=1)
+
+    with patch(
+        "app.services.session_split._live_probe",
+        new_callable=AsyncMock,
+        return_value=(True, "+573118508561"),
+    ):
+        result = await process_session_split(
+            session,
+            "country",
+            tmp_path / "out",
+            [(12345, "hash")],
+        )
+
+    assert (result.total, result.split, result.failed, result.groups) == (1, 1, 0, 1)
+    assert result.outputs[0].flag == "🇨🇴"
+
+
+@pytest.mark.asyncio
+async def test_quantity_split_with_credentials_only_counts_authorized(
+    tmp_path: Path,
+) -> None:
+    good = _session(tmp_path / "573118508561.session", "573118508561", user_id=1)
+    dead = _session(tmp_path / "989121234567.session", "989121234567", user_id=2)
+    archive_path = tmp_path / "mixed.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.write(good, good.name)
+        archive.write(dead, dead.name)
+
+    async def fake_probe(path: Path, _credentials: object):
+        if path.name.startswith("session_1_"):
+            return False, None
+        return True, "+573118508561"
+
+    with patch(
+        "app.services.session_split._live_probe",
+        new_callable=AsyncMock,
+        side_effect=fake_probe,
+    ):
+        result = await process_session_split(
+            archive_path, "quantity", tmp_path / "out", [(12345, "hash")], quantity=10
+        )
+
+    assert (result.total, result.split, result.failed, result.groups) == (2, 1, 1, 1)
+    with zipfile.ZipFile(result.outputs[0].path) as archive:
+        assert archive.namelist() == ["573118508561.session"]
+
+
+@pytest.mark.asyncio
+async def test_quantity_split_without_credentials_stays_offline(
+    tmp_path: Path,
+) -> None:
+    good = _session(tmp_path / "573118508561.session", "573118508561", user_id=1)
+    result = await process_session_split(
+        good, "quantity", tmp_path / "out", quantity=10
+    )
+    assert (result.total, result.split, result.failed, result.groups) == (1, 1, 0, 1)
 
 
 def test_split_locales_and_keyboards() -> None:

@@ -32,6 +32,14 @@ OTP_WAIT_SECONDS = 90  # how long to wait for OTP from Telegram
 TELETHON_TIMEOUT = 60
 
 
+def _mask_phone(phone: str) -> str:
+    """Mask the middle digits of a phone number for log safety (PII)."""
+    digits = "".join(ch for ch in phone if ch.isdigit() or ch == "+")
+    if len(digits) < 6:
+        return "***"
+    return f"{digits[:3]}...{digits[-2:]}"
+
+
 # ── Data structures ──────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -85,6 +93,7 @@ async def freshen_single_session(
         from telethon import TelegramClient, events  # type: ignore[import-untyped]
         from telethon.errors import (  # type: ignore[import-untyped]
             AuthKeyUnregisteredError,
+            PasswordHashInvalidError,
             PhoneCodeExpiredError,
             PhoneCodeInvalidError,
             SessionPasswordNeededError,
@@ -131,7 +140,10 @@ async def freshen_single_session(
                 if not phone.startswith("+"):
                     phone = "+" + phone
 
-                LOGGER.info("Fresh session: old session is %s (%s)", me.first_name, phone)
+                LOGGER.info(
+                    "Fresh session: old session authorised (%s)",
+                    session_name,
+                )
 
                 # ── Step 2: OTP event listener on old session ─────────────
                 otp_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -144,7 +156,7 @@ async def freshen_single_session(
                     text = event.message.message or ""
                     codes = re.findall(r"\b\d{5,6}\b", text)
                     if codes:
-                        LOGGER.info("OTP received for %s: %s", session_name, codes[0])
+                        LOGGER.info("OTP received for %s", session_name)
                         await _q.put(codes[0])
 
                 # Client is already connected & authorized — events dispatch after connect()
@@ -160,7 +172,7 @@ async def freshen_single_session(
                     new_client.send_code_request(phone), timeout=60
                 )
                 phone_code_hash = sent.phone_code_hash
-                LOGGER.info("Code request sent to %s for %s", phone, session_name)
+                LOGGER.info("Code request sent to masked number for %s", session_name)
 
                 # ── Step 4: Wait for OTP ──────────────────────────────────
                 try:
@@ -189,9 +201,17 @@ async def freshen_single_session(
                             phone=phone,
                             message="2FA password required but not provided",
                         )
-                    await asyncio.wait_for(
-                        new_client.sign_in(password=password_2fa), timeout=60
-                    )
+                    try:
+                        await asyncio.wait_for(
+                            new_client.sign_in(password=password_2fa), timeout=60
+                        )
+                    except PasswordHashInvalidError:
+                        return SessionFreshDetail(
+                            session_name=session_name,
+                            status="2fa_required",
+                            phone=phone,
+                            message="Invalid 2FA password",
+                        )
                 except (PhoneCodeInvalidError, PhoneCodeExpiredError) as exc:
                     return SessionFreshDetail(
                         session_name=session_name,
@@ -212,7 +232,7 @@ async def freshen_single_session(
 
                 LOGGER.info(
                     "Fresh session success: %s (%s) → %s",
-                    session_name, phone, new_sess_path.name,
+                    session_name, _mask_phone(phone), new_sess_path.name,
                 )
                 return SessionFreshDetail(
                     session_name=session_name,

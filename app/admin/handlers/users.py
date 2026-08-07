@@ -90,6 +90,13 @@ async def process_user_search_input(message: Message, state: FSMContext, session
     """Handle text query search and render card-based results with Inline View buttons."""
     await state.clear()
     query_text = (message.text or "").strip()
+    if not query_text:
+        await message.reply(
+            "❌ Search query cannot be empty. Please enter a Telegram ID or @username:",
+            reply_markup=build_admin_cancel_keyboard("users"),
+            parse_mode="HTML",
+        )
+        return
     users, total_count = get_users_paginated(session, page=1, page_size=5, search_query=query_text)
     total_pages = max(1, math.ceil(total_count / 5))
 

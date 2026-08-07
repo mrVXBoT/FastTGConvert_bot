@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery
 from app.handlers.files import handle_contacts_stat_noop
 from app.keyboards import language_menu, main_menu, membership_menu
 from app.locales import SESSION_CHECK_PROMPTS, action_message
+from app.ui import EmojiRegistry
 
 
 def test_language_menu_matches_reference_order() -> None:
@@ -31,9 +32,9 @@ def test_language_is_only_confirmed_by_start_button() -> None:
 def test_english_membership_menu_has_join_and_verify_buttons() -> None:
     menu = membership_menu(("@FastTGConvert",), "en")
     row = menu.inline_keyboard[0]
-    assert row[0].text == "✅ Join Channel"
+    assert row[0].text == "📌 Join Channel"
     assert row[0].url == "https://t.me/FastTGConvert"
-    assert row[1].text == "🔄 I Joined"
+    assert row[1].text == "✅ I Joined"
     assert row[1].callback_data == "membership:check:en"
 
 
@@ -94,7 +95,7 @@ async def test_setup_bot_commands_registers_required_commands() -> None:
     }
 
 
-def test_main_menu_vip_badge_rendering() -> None:
+def test_main_menu_vip_badge_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
     free_menu = main_menu("en", vip_features=set())
     session_btn = free_menu.inline_keyboard[1][0]
     assert "💎" not in session_btn.text
@@ -102,16 +103,24 @@ def test_main_menu_vip_badge_rendering() -> None:
 
     vip_menu = main_menu("en", vip_features={"session_check", "read_otp"})
     vip_session_btn = vip_menu.inline_keyboard[1][0]
-    assert "💎" in vip_session_btn.text
-    assert vip_session_btn.icon_custom_emoji_id == "5260398020549197682"
+    assert "💎" not in vip_session_btn.text
+    assert vip_session_btn.icon_custom_emoji_id == "5413351005779672594"
 
     vip_otp_btn = vip_menu.inline_keyboard[2][0]
-    assert "💎" in vip_otp_btn.text
-    assert vip_otp_btn.icon_custom_emoji_id == "5260398020549197682"
+    assert "💎" not in vip_otp_btn.text
+    assert vip_otp_btn.icon_custom_emoji_id == "5413351005779672594"
 
     spam_btn = vip_menu.inline_keyboard[1][1]
     assert "💎" not in spam_btn.text
     assert spam_btn.icon_custom_emoji_id is None
+
+    monkeypatch.setattr(
+        EmojiRegistry, "get_custom_emoji_id", lambda key: None, raising=False
+    )
+    fallback_menu = main_menu("en", vip_features={"session_check"})
+    fb_btn = fallback_menu.inline_keyboard[1][0]
+    assert "💎" in fb_btn.text
+    assert fb_btn.icon_custom_emoji_id is None
 
 
 def test_vip_checkout_menu_has_back_and_cancel_buttons() -> None:

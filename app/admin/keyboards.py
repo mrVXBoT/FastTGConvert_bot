@@ -12,19 +12,28 @@ from app.admin.callbacks import (
     FeatureToggle,
     ForceJoinAction,
     PaymentAction,
+    PaymentWalletAction,
     StatsNav,
     UserAction,
     UserNav,
     VIPNav,
     VIPPlanAction,
 )
-from app.db.models import AdminUser, FeatureGate, ForceJoinChannel, Payment, VIPPlan
+from app.db.models import (
+    AdminUser,
+    FeatureGate,
+    ForceJoinChannel,
+    Payment,
+    PaymentSetting,
+    ReferralTier,
+    VIPPlan,
+)
 
 if TYPE_CHECKING:
     from app.db.models import User
 
 from app.locales import get_admin_locale
-from app.ui import Button, ButtonStyle
+from app.ui import Button, ButtonStyle, EmojiRegistry
 
 
 def build_admin_main_menu_keyboard(lang: str = "en", admin_role: str = "SUPPORT") -> InlineKeyboardMarkup:
@@ -50,12 +59,14 @@ def build_admin_main_menu_keyboard(lang: str = "en", admin_role: str = "SUPPORT"
     if row2:
         kb.append(row2)
 
-    # Force Join + VIP (SUPER_ADMIN for Force Join, ADMIN for VIP)
+    # Force Join + VIP + Referral (SUPER_ADMIN for Force Join, ADMIN for VIP & Referral)
     row3: list[InlineKeyboardButton] = []
     if has_permission(admin_role, "SUPER_ADMIN"):
         row3.append(Button.create(loc["btn_force_join"], AdminNav(action="force_join").pack(), style=ButtonStyle.PRIMARY, emoji_key="FORCE_JOIN"))
     if has_permission(admin_role, "ADMIN"):
         row3.append(Button.create(loc["btn_vip"], AdminNav(action="vip").pack(), style=ButtonStyle.SUCCESS, emoji_key="VIP"))
+    if has_permission(admin_role, "ADMIN"):
+        row3.append(Button.create(loc["btn_referral"], AdminNav(action="referral").pack(), style=ButtonStyle.PRIMARY, emoji_key="GIFT"))
     if row3:
         kb.append(row3)
 
@@ -209,9 +220,113 @@ def build_vip_plans_keyboard(plans: list[VIPPlan]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-def build_pending_payments_keyboard(pending_list: list[Payment]) -> InlineKeyboardMarkup:
+def build_payment_hub_keyboard(
+    ps: PaymentSetting,
+    pending_list: list[Payment],
+    clear_field: str = "",
+) -> InlineKeyboardMarkup:
+    """Payment Gateway & Verification Hub keyboard with per-wallet Edit/Clear rows.
+
+    Each wallet field gets a row pinning a short status caption plus an Edit
+    button and a Clear (with inline confirmation) button. Main Payment switches
+    are first, pending manual orders in the middle, and a back row last.
+    """
+    kb: list[list[InlineKeyboardButton]] = []
+
+    def _short(value: str, max_len: int = 14) -> str:
+        if len(value) <= max_len:
+            return value
+        return f"{value[:6]}…{value[-4:]}"
+
+    # Toggle main payment switches
+    kb.append(
+        [
+            Button.create(
+                f"Manual Payment: {'ON' if ps.manual_enabled else 'OFF'}",
+                PaymentAction(action="toggle_manual").pack(),
+                style=ButtonStyle.SUCCESS if ps.manual_enabled else ButtonStyle.DANGER,
+                emoji_key="PAYMENT",
+            ),
+            Button.create(
+                f"Auto Payment: {'ON' if ps.auto_enabled else 'OFF'}",
+                PaymentAction(action="toggle_auto").pack(),
+                style=ButtonStyle.SUCCESS if ps.auto_enabled else ButtonStyle.DANGER,
+                emoji_key="BOT",
+            ),
+        ]
+    )
+
+    # Wallet fields with inline Edit/Clear actions
+    field_rows = [
+        ("binance_id", "Binance UID", "ID"),
+        ("trc20_address", "Manual TRC20", "PAYMENT"),
+        ("bep20_address", "Manual BEP20", "PAYMENT"),
+        ("auto_trc20_address", "Auto TRC20", "BOT"),
+        ("auto_bep20_address", "Auto BEP20", "BOT"),
+    ]
+    for field, label, emoji_key in field_rows:
+        value = getattr(ps, field, "") or ""
+        caption = f"{label}: {_short(value) if value else 'not set'}"
+        if clear_field == field:
+            kb.append(
+                [
+                    Button.create(
+                        "Keep / Edit",
+                        PaymentWalletAction(action="clear_cancel", field=field).pack(),
+                        style=ButtonStyle.PRIMARY,
+                        emoji_key="BACK",
+                    ),
+                    Button.create(
+                        "🗑️ Clear / Remove",
+                        PaymentWalletAction(action="clear_confirm", field=field).pack(),
+                        style=ButtonStyle.DANGER,
+                        emoji_key="DELETE",
+                    ),
+                ]
+            )
+            continue
+        row = [
+            InlineKeyboardButton(text=caption, callback_data="ignore"),
+            Button.create(
+                "Edit",
+                PaymentWalletAction(action="edit", field=field).pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key="EDIT",
+            ),
+            Button.create(
+                "Clear",
+                PaymentWalletAction(action="clear", field=field).pack(),
+                style=ButtonStyle.DANGER,
+                emoji_key="DELETE",
+            ),
+        ]
+        kb.append(row)
+
+    # Pending manual verification orders
+    for p in pending_list:
+        kb.append(
+            [
+                Button.create(f"Approve #{p.id} (${p.amount})", PaymentAction(action="approve", payment_id=p.id).pack(), style=ButtonStyle.SUCCESS, emoji_key="SUCCESS"),
+                Button.create(f"Reject #{p.id}", PaymentAction(action="reject", payment_id=p.id).pack(), style=ButtonStyle.DANGER, emoji_key="CANCEL"),
+            ]
+        )
+
+    kb.append([Button.create("Back to VIP Menu", AdminNav(action="vip").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def build_pending_payments_keyboard(
+    pending_list: list[Payment],
+    manual_enabled: bool = True,
+    auto_enabled: bool = False,
+) -> InlineKeyboardMarkup:
     """Pending Manual Payment Verification Keyboard with direct Inline Action buttons."""
-    kb = []
+    kb = [
+        [
+            Button.create(f"Manual Payment: {'ON' if manual_enabled else 'OFF'}", PaymentAction(action="toggle_manual").pack(), style=ButtonStyle.PRIMARY, emoji_key="PAYMENT"),
+            Button.create(f"Auto Payment: {'ON' if auto_enabled else 'OFF'}", PaymentAction(action="toggle_auto").pack(), style=ButtonStyle.PRIMARY, emoji_key="BOT"),
+        ]
+    ]
     for p in pending_list:
         kb.append(
             [
@@ -250,6 +365,22 @@ def build_broadcast_preview_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
+def build_broadcast_cancel_job_keyboard(job_id: str) -> InlineKeyboardMarkup:
+    """Running-broadcast cancel keyboard (stop the background job)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                Button.create(
+                    "Cancel Broadcast",
+                    f"adm_bcast_cancel_job:{job_id}",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ]
+        ]
+    )
+
+
 def build_admin_cancel_keyboard(back_target: str = "home") -> InlineKeyboardMarkup:
     """Build a standard Cancel / Back inline button keyboard to exit prompt states."""
     return InlineKeyboardMarkup(
@@ -266,6 +397,13 @@ ROLE_EMOJI = {
     "ADMIN": "🛡️",
     "SUPPORT": "🎧",
     "OWNER": "👑",
+}
+
+ROLE_EMOJI_KEY = {
+    "SUPER_ADMIN": "ADMIN",
+    "ADMIN": "SPAM",
+    "SUPPORT": "SUPPORT",
+    "OWNER": "ADMIN",
 }
 
 
@@ -309,14 +447,17 @@ def build_admin_role_selector_keyboard(admin_id: int, current_role: str = "") ->
     """Role selector keyboard with current role highlighted."""
     kb: list[list[InlineKeyboardButton]] = []
     for role in ADMIN_ROLES:
-        prefix = "✅ " if role == current_role else ""
+        prefix = f"{EmojiRegistry.format_text_emoji('SUCCESS')} " if role == current_role else ""
+        emoji_key = ROLE_EMOJI_KEY.get(role)
         emoji = ROLE_EMOJI.get(role, "")
+        label = role if emoji_key else f"{emoji} {role}"
         kb.append([
             Button.create(
-                text=f"{prefix}{emoji} {role}",
+                text=f"{prefix}{label}",
                 callback_data=AdminMgmtAction(action="set_role", admin_id=admin_id, role=role).pack(),
                 style=ButtonStyle.PRIMARY,
-                include_emoji=False,
+                emoji_key=emoji_key,
+                include_emoji=bool(emoji_key),
             )
         ])
     kb.append([Button.create("Back", AdminMgmtAction(action="view", admin_id=admin_id).pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
@@ -337,13 +478,16 @@ def build_add_admin_role_selector_keyboard() -> InlineKeyboardMarkup:
     """Role selector for adding a NEW admin (no existing admin_id yet)."""
     kb: list[list[InlineKeyboardButton]] = []
     for role in ADMIN_ROLES:
+        emoji_key = ROLE_EMOJI_KEY.get(role)
         emoji = ROLE_EMOJI.get(role, "")
+        label = role if emoji_key else f"{emoji} {role}"
         kb.append([
             Button.create(
-                text=f"{emoji} {role}",
+                text=label,
                 callback_data=AdminMgmtAction(action="add_start", role=role).pack(),
                 style=ButtonStyle.PRIMARY,
-                include_emoji=False,
+                emoji_key=emoji_key,
+                include_emoji=bool(emoji_key),
             )
         ])
     kb.append([Button.create("Cancel", AdminNav(action="admins").pack(), style=ButtonStyle.DANGER, emoji_key="CANCEL")])
@@ -366,7 +510,7 @@ def build_admin_language_keyboard(current_lang: str = "en") -> InlineKeyboardMar
 
     kb = []
     for code, (label, emoji_key) in ADMIN_LANGUAGES.items():
-        prefix = "✅ " if code == current_lang else ""
+        prefix = f"{EmojiRegistry.format_text_emoji('SUCCESS')} " if code == current_lang else ""
         kb.append([
             Button.create(
                 f"{prefix}{label}",
@@ -377,3 +521,140 @@ def build_admin_language_keyboard(current_lang: str = "en") -> InlineKeyboardMar
         ])
     kb.append([Button.create("Back", AdminNav(action="home").pack(), style=ButtonStyle.PRIMARY, emoji_key="BACK")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def build_referral_menu_keyboard() -> InlineKeyboardMarkup:
+    """Referral System main submenu keyboard."""
+    from app.admin.callbacks import ReferralNav
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                Button.create(
+                    "Enable / Disable System",
+                    "adm_ref_toggle",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="GIFT",
+                ),
+                Button.create(
+                    "Reward Tiers",
+                    ReferralNav(section="tiers").pack(),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="TROPHY",
+                ),
+            ],
+            [
+                Button.create(
+                    "View Referrals",
+                    ReferralNav(section="referrals", page=1).pack(),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="USERS",
+                ),
+                Button.create(
+                    "View Rewards",
+                    ReferralNav(section="rewards", page=1).pack(),
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="GIFT",
+                ),
+            ],
+            [
+                Button.create(
+                    "Back to Admin Panel",
+                    AdminNav(action="home").pack(),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BACK",
+                ),
+            ],
+        ]
+    )
+
+
+def build_referral_tiers_keyboard(tiers: list[ReferralTier]) -> InlineKeyboardMarkup:
+    """Reward tiers list with toggle/delete per tier."""
+    from app.admin.callbacks import ReferralNav, ReferralTierAction
+
+    kb: list[list[InlineKeyboardButton]] = []
+    for tier in tiers:
+        status = "ON" if tier.is_active else "OFF"
+        kb.append(
+            [
+                Button.create(
+                    text=f"{tier.refs_required} refs → {tier.reward_days} days ({status})",
+                    callback_data=ReferralTierAction(action="toggle", tier_id=tier.id).pack(),
+                    style=ButtonStyle.SUCCESS if tier.is_active else ButtonStyle.PRIMARY,
+                    emoji_key="TROPHY",
+                ),
+                Button.create(
+                    text="Delete",
+                    callback_data=ReferralTierAction(action="delete", tier_id=tier.id).pack(),
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DELETE",
+                ),
+            ]
+        )
+    kb.append(
+        [
+            Button.create(
+                "Add New Tier",
+                "adm_ref_tier_add",
+                style=ButtonStyle.SUCCESS,
+                emoji_key="ADD",
+            )
+        ]
+    )
+    kb.append(
+        [
+            Button.create(
+                "Back to Referral Menu",
+                ReferralNav(section="menu").pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key="BACK",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def build_referral_list_nav_keyboard(
+    section: str, page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    """Pagination + back navigation for referrals / rewards lists."""
+    from app.admin.callbacks import ReferralNav
+
+    nav_row: list[InlineKeyboardButton] = []
+    if page > 1:
+        nav_row.append(
+            Button.create(
+                "Previous",
+                ReferralNav(section=section, page=page - 1).pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key="BACK",
+            )
+        )
+    nav_row.append(
+        InlineKeyboardButton(
+            text=f"Page {page}/{max(1, total_pages)}", callback_data="ignore"
+        )
+    )
+    if page < total_pages:
+        nav_row.append(
+            Button.create(
+                "Next",
+                ReferralNav(section=section, page=page + 1).pack(),
+                style=ButtonStyle.PRIMARY,
+                emoji_key="BACK",
+            )
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            nav_row,
+            [
+                Button.create(
+                    "Back to Referral Menu",
+                    ReferralNav(section="menu").pack(),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BACK",
+                )
+            ],
+        ]
+    )

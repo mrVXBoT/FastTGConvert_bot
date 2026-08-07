@@ -463,48 +463,47 @@ def format_mass_message_summary(
     footer = ""
 
     if status == "paused":
-        reason_block = ""
-        if last_error_session or last_error_detail:
-            if language == "bn":
-                reason_block = "\n\n⚠️ **স্থগিতের কারণ:**"
-                if last_error_session:
-                    reason_block += f"\n🔑 **সেশন:** `{last_error_session}`"
-                if last_error_detail:
-                    reason_block += f"\n❌ **বিবরণ:** `{last_error_detail}`"
-            elif language == "hi":
-                reason_block = "\n\n⚠️ **रोकने का कारण:**"
-                if last_error_session:
-                    reason_block += f"\n🔑 **सत्र:** `{last_error_session}`"
-                if last_error_detail:
-                    reason_block += f"\n❌ **विवरण:** `{last_error_detail}`"
-            elif language == "ur":
-                reason_block = "\n\n⚠️ **روکنے کی وجہ:**"
-                if last_error_session:
-                    reason_block += f"\n🔑 **سیشن:** `{last_error_session}`"
-                if last_error_detail:
-                    reason_block += f"\n❌ **تفصیل:** `{last_error_detail}`"
-            elif language == "ar":
-                reason_block = "\n\n⚠️ **سبب التعليق:**"
-                if last_error_session:
-                    reason_block += f"\n🔑 **الجلسة:** `{last_error_session}`"
-                if last_error_detail:
-                    reason_block += f"\n❌ **التفاصيل:** `{last_error_detail}`"
-            elif language == "zh":
-                reason_block = "\n\n⚠️ **暂停原因:**"
-                if last_error_session:
-                    reason_block += f"\n🔑 **会话:** `{last_error_session}`"
-                if last_error_detail:
-                    reason_block += f"\n❌ **详情:** `{last_error_detail}`"
-            else:
-                reason_block = "\n\n⚠️ **Pause Cause:**"
-                if last_error_session:
-                    reason_block += f"\n🔑 **Session:** `{last_error_session}`"
-                if last_error_detail:
-                    reason_block += f"\n❌ **Detail:** `{last_error_detail}`"
+        reason_heading = {
+            "bn": "স্থগিতের কারণ",
+            "hi": "रोकने का कारण",
+            "ur": "روکنے کی وجہ",
+            "ar": "سبب التعليق",
+            "zh": "暂停原因",
+            "en": "Pause Cause",
+        }
+    else:
+        reason_heading = {
+            "bn": "এড়িয়ে যাওয়া/ব্যর্থতার কারণ",
+            "hi": "छोड़े गए/विफल होने का कारण",
+            "ur": "چھوڑنے/ناکامی کی وجہ",
+            "ar": "سبب التخطي/الفشل",
+            "zh": "跳过/失败原因",
+            "en": "Skip / Fail Cause",
+        }
+    field_labels = {
+        "bn": ("সেশন", "বিবরণ"),
+        "hi": ("सत्र", "विवरण"),
+        "ur": ("سیشن", "تفصیل"),
+        "ar": ("الجلسة", "التفاصيل"),
+        "zh": ("会话", "详情"),
+        "en": ("Session", "Detail"),
+    }
 
+    reason_block = ""
+    if last_error_session or last_error_detail:
+        lang = language if language in reason_heading else "en"
+        heading = reason_heading[lang]
+        sess_label, detail_label = field_labels[lang]
+        reason_block = f"\n\n⚠️ **{heading}:**"
+        if last_error_session:
+            reason_block += f"\n🔑 **{sess_label}:** `{last_error_session}`"
+        if last_error_detail:
+            reason_block += f"\n❌ **{detail_label}:** `{last_error_detail}`"
+
+    if status == "paused":
         if language == "bn":
             title = f"⚠️ **গণ বার্তার কাজ স্থগিত করা হয়েছে (Job #{job_ref})**\n\n"
-            footer = f"{reason_block}\n\n⚠️ *রেট লিমিট বা সেশন শেষ হওয়ার কারণে কাজটি স্থগিত করা হয়েছে। আপনি যেকোনো সময় এটি পুনরায় শুরু করতে পারেন।*"
+            footer = f"{reason_block}\n\n⚠️ *রেট লিমিট বা সেশন শেষ হওয়ার কারণে কাজটি স্থগিত করা হয়েছে। আপনি যেকোনো সময় এটি পুনরায় শুরু করতে পারেন।*"
         elif language == "hi":
             title = f"⚠️ **सामूहिक संदेश कार्य रोक दिया गया है (Job #{job_ref})**\n\n"
             footer = f"{reason_block}\n\n⚠️ *दर सीमा या सत्र समाप्ति के कारण कार्य रोक दिया गया है। आप इसे कभी भी फिर से शुरू कर सकते हैं।*"
@@ -613,6 +612,9 @@ def format_mass_message_summary(
             f"⏱ Duration: {duration_str}\n"
             f"⚡ Average Speed: {speed_str}"
         )
+
+    if status != "paused":
+        footer = reason_block
 
     return f"{title}{body}{footer}"
 

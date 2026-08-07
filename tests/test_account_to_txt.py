@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -12,6 +13,7 @@ from app.services.account_to_txt import (
     process_account_to_txt,
     render_account_line,
 )
+from app.services.jobs import JobCancelled, JobProgress
 
 
 def _make_session(path: Path) -> None:
@@ -32,17 +34,22 @@ def test_render_account_line_matches_reference_format() -> None:
         username="@Over_Replyz",
         full_name="Echo > Null",
         user_id=1234567890,
+        premium=True,
+        dc_id=2,
+        two_fa=True,
+        registered="2023-05-01",
     )
     assert render_account_line(profile) == (
-        "573118508561|+573118508561|@Over_Replyz|Echo > Null|1234567890"
+        "573118508561|+573118508561|@Over_Replyz|Echo > Null|1234567890|1|2|1|2023-05-01"
     )
 
 
 def test_render_account_line_sanitizes_delimiters() -> None:
     profile = AccountProfile("1234567", "+1234567", "@a|b", "A\nB", 1)
     line = render_account_line(profile)
-    assert line.count("|") == 4
+    assert line.count("|") == 8
     assert "\n" not in line
+    assert line.endswith("|0|N/A|N/A|N/A")
 
 
 @pytest.mark.asyncio
@@ -55,11 +62,12 @@ async def test_process_single_session_creates_reference_txt(tmp_path: Path) -> N
         username="@Over_Replyz",
         full_name="Echo > Null",
         user_id=1234567890,
+        dc_id=2,
     )
 
     with patch(
         "app.services.account_to_txt.fetch_account_profile",
-        new=AsyncMock(return_value=("active", profile)),
+        new=AsyncMock(return_value=("active", profile, "")),
     ):
         result = await process_account_to_txt(
             uploaded,
@@ -96,15 +104,9 @@ async def test_process_zip_counts_active_invalid_and_failed(tmp_path: Path) -> N
             archive.write(path, arcname=path.name)
 
     responses = [
-        (
-            "active",
-            AccountProfile("1111111", "+1111111", "@one", "One", 11),
-        ),
-        (
-            "invalid",
-            AccountProfile("2222222", "+2222222", "N/A", "N/A", 0),
-        ),
-        ("failed", None),
+        ("active", AccountProfile("1111111", "+1111111", "@one", "One", 11), ""),
+        ("invalid", AccountProfile("2222222", "+2222222", "N/A", "N/A", 0), "unauthorized"),
+        ("failed", None, "no_credentials"),
     ]
     with patch(
         "app.services.account_to_txt.fetch_account_profile",
@@ -117,11 +119,85 @@ async def test_process_zip_counts_active_invalid_and_failed(tmp_path: Path) -> N
     assert result.total == 3
     assert result.active == 1
     assert result.invalid_converted == 1
-    assert result.converted == 2
+    assert result.converted == 1
     assert result.failed == 1
+    assert [entry.status for entry in result.entries] == [
+        "active",
+        "invalid",
+        "failed",
+    ]
     assert result.output_zip_path is not None
     with zipfile.ZipFile(result.output_zip_path) as archive:
-        assert sorted(archive.namelist()) == ["1111111.txt", "2222222.txt"]
+        assert sorted(archive.namelist()) == ["1111111.txt", "Invalid/2222222.txt"]
+        assert archive.read("Invalid/2222222.txt").decode().strip() == render_account_line(
+            AccountProfile("2222222", "+2222222", "N/A", "N/A", 0, dc_id=2)
+        )
+
+
+@pytest.mark.asyncio
+async def test_sidecar_password_sets_two_fa_for_invalid(tmp_path: Path) -> None:
+    uploaded = tmp_path / "1234567.session"
+    _make_session(uploaded)
+    sidecar = tmp_path / "password.txt"
+    sidecar.write_text("s3cret\n", encoding="utf-8")
+
+    archive_path = tmp_path / "accounts.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.write(uploaded, arcname="1234567.session")
+        archive.write(sidecar, arcname="password.txt")
+
+    profile = AccountProfile("1234567", "+1234567", "N/A", "N/A", 0)
+    with patch(
+        "app.services.account_to_txt.fetch_account_profile",
+        new=AsyncMock(return_value=("invalid", profile, "unauthorized")),
+    ):
+        result = await process_account_to_txt(
+            archive_path, tmp_path / "outbox", [(1, "hash")]
+        )
+
+    assert result.invalid_converted == 1
+    assert result.output_zip_path is not None
+    with zipfile.ZipFile(result.output_zip_path) as archive:
+        line = archive.read("Invalid/1234567.txt").decode().strip()
+    assert line.split("|")[7] == "1"
+
+
+@pytest.mark.asyncio
+async def test_cancel_event_raises_job_cancelled(tmp_path: Path) -> None:
+    uploaded = tmp_path / "1234567.session"
+    _make_session(uploaded)
+
+    progress = JobProgress()
+    cancel_event = asyncio.Event()
+    cancel_event.set()
+
+    with (
+        patch(
+            "app.services.account_to_txt.fetch_account_profile",
+            new=AsyncMock(return_value=("active", AccountProfile("1", "1", "N/A", "N/A", 0), "")),
+        ),
+        pytest.raises(JobCancelled),
+    ):
+        await process_account_to_txt(
+            uploaded,
+            tmp_path / "outbox",
+            [(1, "hash")],
+            progress=progress,
+            cancel_event=cancel_event,
+        )
+
+
+@pytest.mark.asyncio
+async def test_txt_input_is_ignored(tmp_path: Path) -> None:
+    uploaded = tmp_path / "accounts.txt"
+    uploaded.write_text("1|2|3", encoding="utf-8")
+
+    result = await process_account_to_txt(
+        uploaded, tmp_path / "outbox", [(1, "hash")], original_name="accounts.txt"
+    )
+
+    assert result.total == 0
+    assert result.output_zip_path is None
 
 
 def test_account_txt_locales_and_keyboards() -> None:
@@ -138,10 +214,15 @@ def test_account_txt_locales_and_keyboards() -> None:
                 "btn_total",
                 "btn_converted",
                 "btn_failed",
+                "btn_retry",
+                "btn_home",
+                "caption",
+                "cancelled",
+                "more",
             )
         )
         menu = account_txt_result_menu(3, 2, 1, language)
-        assert [row[1].text for row in menu.inline_keyboard] == ["3", "2", "1"]
+        assert [row[1].text for row in menu.inline_keyboard[:3]] == ["3", "2", "1"]
 
     callbacks = [
         button.callback_data

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 import shutil
 import sqlite3
 import tempfile
 import zipfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -12,8 +15,9 @@ from uuid import uuid4
 import phonenumbers
 from phonenumbers import geocoder
 
-from app.services.account_to_txt import fetch_account_profile
 from app.services.contacts_checker import extract_zip_sessions_safe
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,7 @@ class SplitOutput:
     filename: str
     label: str
     sessions: int
+    flag: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,21 +94,117 @@ def _phone_from_entities(path: Path) -> str | None:
     return None
 
 
-async def _resolve_phone(
-    session_path: Path, credentials: list[tuple[int, str]]
-) -> str | None:
-    phone = _phone_from_filename(session_path)
-    if phone:
-        return phone
+async def _live_probe(
+    session_path: Path,
+    credentials: list[tuple[int, str]],
+) -> tuple[bool, str | None]:
+    """Fast live authorization probe for splitting.
 
-    if credentials:
-        _status, profile = await fetch_account_profile(session_path, credentials)
-        if profile is not None and profile.phone != "N/A":
-            profile_phone = _valid_phone(profile.phone)
-            if profile_phone:
-                return profile_phone
+    One ``connect`` + ``get_me`` per session with the 2FA probe skipped and
+    Telethon retries/timeouts bounded, so dead or unreachable sessions fail in
+    seconds instead of hanging on Telethon's default retry loops.  Returns
+    ``(authorized, live_phone)``.
+    """
+    try:
+        from telethon import TelegramClient  # type: ignore[import-untyped]
+        from telethon.errors import (  # type: ignore[import-untyped]
+            AuthKeyDuplicatedError,
+            AuthKeyError,
+            AuthKeyUnregisteredError,
+            PhoneNumberBannedError,
+            SessionRevokedError,
+            UserDeactivatedBanError,
+            UserDeactivatedError,
+        )
+    except ModuleNotFoundError:
+        return False, None
 
-    return _phone_from_entities(session_path)
+    invalid_errors = (
+        AuthKeyDuplicatedError,
+        AuthKeyError,
+        AuthKeyUnregisteredError,
+        PhoneNumberBannedError,
+        SessionRevokedError,
+        UserDeactivatedBanError,
+        UserDeactivatedError,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="ftgc_split_probe_") as tmp:
+        copied = Path(tmp) / "account.session"
+        shutil.copy2(session_path, copied)
+        session_stem = str(copied.with_suffix(""))
+
+        for api_id, api_hash in credentials:
+            client = None
+            try:
+                client = TelegramClient(
+                    session_stem,
+                    api_id,
+                    api_hash,
+                    receive_updates=False,
+                    connection_retries=1,
+                    request_retries=1,
+                    retry_delay=0.25,
+                    timeout=10,
+                    flood_sleep_threshold=0,
+                )
+                await client.connect()
+                if not await client.is_user_authorized():
+                    return False, None
+                me = await client.get_me()
+                if me is None or not getattr(me, "id", None):
+                    return False, None
+                return True, _valid_phone(getattr(me, "phone", None))
+            except invalid_errors:
+                return False, None
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug(
+                    "Split live probe failed for api_id=%d on %s: %s",
+                    api_id,
+                    session_path.name,
+                    exc,
+                )
+            finally:
+                if client is not None:
+                    with suppress(Exception):
+                        await client.disconnect()
+                    with suppress(Exception):
+                        client.session.close()
+
+    return False, None
+
+
+async def _check_session(
+    session_path: Path,
+    credentials: list[tuple[int, str]] | None,
+) -> tuple[bool, str | None]:
+    """Return ``(splittable, resolved_phone)`` for one session.
+
+    When *credentials* are provided the session is verified live against
+    Telegram with a single fast API probe; only genuinely authorized sessions
+    count as splittable and the real phone from the API profile is preferred
+    over filename guessing.  Without credentials a pure offline structural
+    check is used and the result must be treated as unverified.
+    """
+    if not credentials:
+        if not _valid_session(session_path):
+            return False, None
+        phone = _phone_from_filename(session_path) or _phone_from_entities(
+            session_path
+        )
+        return True, phone
+    try:
+        authorized, live_phone = await _live_probe(session_path, credentials)
+    except Exception:  # noqa: BLE001
+        return False, None
+    if not authorized:
+        return False, None
+    phone = live_phone
+    if phone is None:
+        phone = _phone_from_filename(session_path) or _phone_from_entities(
+            session_path
+        )
+    return True, phone
 
 
 def country_for_phone(phone: str | None) -> str:
@@ -122,6 +223,23 @@ def country_for_phone(phone: str | None) -> str:
         return "Unknown"
 
 
+def flag_for_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    try:
+        number = phonenumbers.parse(phone, None)
+        if not phonenumbers.is_valid_number(number):
+            return None
+        region = phonenumbers.region_code_for_number(number)
+        if not region or len(region) != 2 or not region.isalpha():
+            return None
+        return "".join(
+            chr(0x1F1E6 + ord(char) - ord("A")) for char in region.upper()
+        )
+    except phonenumbers.NumberParseException:
+        return None
+
+
 def _safe_label(label: str) -> str:
     cleaned = re.sub(r"[^0-9A-Za-z_-]+", "_", label).strip("_")
     return cleaned or "Unknown"
@@ -133,6 +251,7 @@ def _write_session_zip(
     *,
     display_name: str,
     label: str,
+    flag: str | None = None,
 ) -> SplitOutput:
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"split_{uuid4().hex[:10]}.zip"
@@ -144,7 +263,7 @@ def _write_session_zip(
                 name = f"{Path(name).stem}_{index}.session"
             used.add(name)
             archive.write(session, arcname=name)
-    return SplitOutput(path, display_name, label, len(sessions))
+    return SplitOutput(path, display_name, label, len(sessions), flag)
 
 
 def _collect_sessions(
@@ -181,19 +300,40 @@ async def process_session_split(
     *,
     quantity: int | None = None,
     original_name: str | None = None,
+    concurrency: int = 10,
 ) -> SessionSplitResult:
     if mode not in {"country", "quantity"}:
         raise ValueError("invalid_split_type")
     if mode == "quantity" and (quantity is None or quantity <= 0):
         raise ValueError("invalid_quantity")
+    if concurrency < 1:
+        raise ValueError("invalid_concurrency")
 
     with tempfile.TemporaryDirectory(prefix="ftgc_session_split_") as temporary:
         sessions = _collect_sessions(
             input_path, Path(temporary), original_name=original_name
         )
         total = len(sessions)
-        valid = [session for session in sessions if _valid_session(session)]
-        failed = total - len(valid)
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def check(session: Path) -> tuple[Path, bool, str | None]:
+            async with semaphore:
+                authorized, phone = await _check_session(
+                    session, credentials or None
+                )
+                return session, authorized, phone
+
+        checked = await asyncio.gather(*(check(session) for session in sessions))
+        valid: list[Path] = []
+        phone_by_session: dict[Path, str | None] = {}
+        failed = 0
+        for session, authorized, phone in checked:
+            if authorized:
+                valid.append(session)
+                phone_by_session[session] = phone
+            else:
+                failed += 1
         outputs: list[SplitOutput] = []
 
         if mode == "quantity":
@@ -212,10 +352,13 @@ async def process_session_split(
                 )
         else:
             country_groups: dict[str, list[Path]] = {}
+            country_flags: dict[str, str | None] = {}
             for session in valid:
-                phone = await _resolve_phone(session, credentials or [])
+                phone = phone_by_session.get(session)
                 country = country_for_phone(phone)
                 country_groups.setdefault(country, []).append(session)
+                if country not in country_flags:
+                    country_flags[country] = flag_for_phone(phone)
 
             for country in sorted(country_groups):
                 group = country_groups[country]
@@ -226,6 +369,7 @@ async def process_session_split(
                         group,
                         display_name=filename,
                         label=country,
+                        flag=country_flags.get(country),
                     )
                 )
 

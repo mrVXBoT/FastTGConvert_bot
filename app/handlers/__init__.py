@@ -3,7 +3,11 @@
 from aiogram import Router
 
 from app.handlers import files, otp, start, vip
-from app.middlewares import FeatureGateMiddleware, UserStatusMiddleware
+from app.middlewares import (
+    FeatureGateMiddleware,
+    ForceJoinMiddleware,
+    UserStatusMiddleware,
+)
 
 
 def build_router() -> Router:
@@ -11,6 +15,9 @@ def build_router() -> Router:
     router.message.middleware(UserStatusMiddleware())
     router.callback_query.middleware(UserStatusMiddleware())
     router.inline_query.middleware(UserStatusMiddleware())
+
+    router.message.middleware(ForceJoinMiddleware())
+    router.callback_query.middleware(ForceJoinMiddleware())
 
     router.callback_query.middleware(FeatureGateMiddleware())
     router.message.middleware(FeatureGateMiddleware())

@@ -12,8 +12,27 @@ from pathlib import Path
 LOGGER = logging.getLogger(__name__)
 
 
+def sqlite_db_path_from_url(database_url: str) -> Path | None:
+    """Resolve the on-disk SQLite path from a SQLAlchemy ``database_url``.
+
+    Returns ``None`` for non-SQLite backends (backup via sqlite3 is not
+    applicable there) or for URLs that do not decode to a file path.
+    """
+    if not database_url:
+        return None
+    prefix = "sqlite:///"
+    if not database_url.startswith(prefix):
+        LOGGER.debug("Backup skipped: non-SQLite database URL (%s)", database_url)
+        return None
+    path_part = database_url[len(prefix):]
+    # sqlite:////absolute/path -> /absolute/path (4th slash is the root)
+    if path_part.startswith("/"):
+        return Path(path_part)
+    return Path(path_part or "data/bot.db")
+
+
 def perform_database_backup(
-    db_path: Path | str = "data/bot.db",
+    db_path: Path | str | None = "data/bot.db",
     backup_dir: Path | str = "data/backups",
     max_backups: int = 7,
 ) -> Path | None:
@@ -21,6 +40,9 @@ def perform_database_backup(
 
     Uses sqlite3.backup() API to ensure non-blocking, transactionally consistent backups.
     """
+    if db_path is None:
+        LOGGER.warning("No resolvable database path, skipping backup.")
+        return None
     db_file = Path(db_path)
     if not db_file.exists():
         LOGGER.warning("Database file %s does not exist, skipping backup.", db_file)

@@ -285,7 +285,7 @@ async def process_file_merge(
             for idx, sess_file in enumerate(session_files, start=1):
                 identifier, uid, phone = extract_account_identifier(sess_file)
                 connection = _session_connection(sess_file)
-                status, profile = await fetch_account_profile(
+                status, profile, _reason = await fetch_account_profile(
                     sess_file, credentials or []
                 )
                 if connection is None or profile is None or status == "failed":
@@ -304,7 +304,7 @@ async def process_file_merge(
 
                 tdata_temp_dir = tmp_path / f"tdata_out_{idx}"
                 tdata_created = await convert_session_to_tdata(
-                    sess_file, tdata_temp_dir
+                    sess_file, tdata_temp_dir, credentials=credentials
                 )
                 if not tdata_created or not (tdata_temp_dir / "key_datas").is_file():
                     entries.append(FileMergeAccountEntry(identifier, uid, phone, False))

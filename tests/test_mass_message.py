@@ -596,6 +596,172 @@ async def test_request_mass_message_with_paused_job():
 
 
 @pytest.mark.asyncio
+async def test_request_mass_message_no_double_mm_prefix():
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import Message
+    from sqlalchemy.pool import StaticPool
+
+    from app.handlers.files import request_mass_message
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSessionLocal = sessionmaker(bind=engine)
+
+    with TestingSessionLocal() as db:
+        u = User(telegram_id=11114444, username="test_mm_prefix")
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+
+        job = Job(
+            id="job_paused_mm",
+            display_id="MM-20260806-A1B2C3D4",
+            user_id=u.id,
+            operation="mass_message",
+            status="paused",
+            progress=50,
+            options_json=json.dumps({"total": 10}),
+        )
+        db.add(job)
+        db.commit()
+
+    callback = MagicMock()
+    callback.from_user = MagicMock(id=11114444)
+    callback.message = AsyncMock(spec=Message)
+    callback.message.edit_text = AsyncMock()
+    callback.answer = AsyncMock()
+
+    storage = MemoryStorage()
+    state = FSMContext(storage, MagicMock())
+
+    await request_mass_message(callback, state, TestingSessionLocal)
+
+    text = callback.message.edit_text.call_args.args[0]
+    assert "MM-20260806-A1B2C3D4" in text
+    assert "MM-MM-" not in text
+
+
+@pytest.mark.asyncio
+async def test_resume_job_rejects_non_paused_job():
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import Message
+    from sqlalchemy.pool import StaticPool
+
+    from app.handlers.files import resume_job_callback
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSessionLocal = sessionmaker(bind=engine)
+
+    with TestingSessionLocal() as db:
+        u = User(telegram_id=11115555, username="test_resume_guard")
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+
+        job = Job(
+            id="job_completed_1",
+            display_id="MM-20260101-ABCDEF12",
+            user_id=u.id,
+            operation="mass_message",
+            status="completed",
+            progress=100,
+            options_json=json.dumps({"total": 10, "session_files": []}),
+        )
+        db.add(job)
+        db.commit()
+
+    callback = MagicMock()
+    callback.data = "resume_job:job_completed_1"
+    callback.from_user = MagicMock(id=11115555)
+    callback.message = AsyncMock(spec=Message)
+    callback.answer = AsyncMock()
+
+    storage = MemoryStorage()
+    state = FSMContext(storage, MagicMock())
+
+    await resume_job_callback(callback, AsyncMock(), state, MagicMock(), TestingSessionLocal)
+
+    callback.answer.assert_awaited_once()
+    _, kwargs = callback.answer.call_args
+    assert kwargs.get("show_alert") is True
+
+    with TestingSessionLocal() as db:
+        j = db.query(Job).filter(Job.id == "job_completed_1").first()
+        assert j.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_resume_job_missing_sessions_keeps_paused():
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import Message
+    from sqlalchemy.pool import StaticPool
+
+    from app.handlers.files import resume_job_callback
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSessionLocal = sessionmaker(bind=engine)
+
+    with TestingSessionLocal() as db:
+        u = User(telegram_id=11116666, username="test_resume_missing")
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+
+        job = Job(
+            id="job_paused_missing",
+            display_id="MM-20260202-ABCDEF12",
+            user_id=u.id,
+            operation="mass_message",
+            status="paused",
+            progress=40,
+            options_json=json.dumps(
+                {
+                    "total": 10,
+                    "session_files": ["/nonexistent/tmp/missing.session"],
+                }
+            ),
+        )
+        db.add(job)
+        db.commit()
+
+    callback = MagicMock()
+    callback.data = "resume_job:job_paused_missing"
+    callback.from_user = MagicMock(id=11116666)
+    callback.message = AsyncMock(spec=Message)
+    callback.answer = AsyncMock()
+
+    storage = MemoryStorage()
+    state = FSMContext(storage, MagicMock())
+
+    await resume_job_callback(callback, AsyncMock(), state, MagicMock(), TestingSessionLocal)
+
+    callback.answer.assert_awaited_once()
+    _, kwargs = callback.answer.call_args
+    assert kwargs.get("show_alert") is True
+
+    with TestingSessionLocal() as db:
+        j = db.query(Job).filter(Job.id == "job_paused_missing").first()
+        assert j.status == "paused"
+
+
+@pytest.mark.asyncio
 async def test_start_new_job_callback():
     from aiogram.fsm.context import FSMContext
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -643,10 +809,10 @@ async def test_start_new_job_callback():
 
     await start_new_job_callback(callback, state, TestingSessionLocal)
 
-    # Job status should be transitioned to "stopped"
+    # Paused jobs must NOT be destroyed when starting a new job
     with TestingSessionLocal() as db:
         j = db.query(Job).filter(Job.id == "job_paused_abc").first()
-        assert j.status == "stopped"
+        assert j.status == "paused"
 
     # FSM state should now be waiting_for_file
     current_state = await state.get_state()

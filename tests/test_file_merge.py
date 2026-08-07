@@ -5,8 +5,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
-from app.handlers.start import clear_state_and_file
+from app.handlers.start import callback_flow_cancel, clear_state_and_file
 from app.keyboards import file_merge_choice_menu, file_merge_result_menu
 from app.locales import FILE_MERGE_MESSAGES, FILE_MERGE_PROMPTS, LANGUAGES
 from app.services.account_to_txt import AccountProfile
@@ -141,7 +143,9 @@ async def test_process_file_merge_session_json_tdata(
         premium=False,
     )
 
-    async def fake_tdata(_session: Path, target: Path) -> bool:
+    async def fake_tdata(
+        _session: Path, target: Path, *, credentials: object = None
+    ) -> bool:
         target.mkdir(parents=True)
         (target / "key_datas").write_bytes(b"valid")
         (target / "account_data").write_bytes(b"data")
@@ -151,7 +155,7 @@ async def test_process_file_merge_session_json_tdata(
         patch(
             "app.services.file_merge.fetch_account_profile",
             new_callable=AsyncMock,
-            return_value=("active", profile),
+            return_value=("active", profile, ""),
         ),
         patch(
             "app.services.file_merge.convert_session_to_tdata",
@@ -188,6 +192,8 @@ async def test_process_file_merge_session_json_tdata(
                 "dc_id": 2,
                 "server_address": "149.154.167.50",
                 "authorized": True,
+                "two_fa": None,
+                "registered": "N/A",
             }
 
 
@@ -200,7 +206,7 @@ async def test_session_json_tdata_failure_is_not_reported_as_success(
         patch(
             "app.services.file_merge.fetch_account_profile",
             new_callable=AsyncMock,
-            return_value=("active", profile),
+            return_value=("active", profile, ""),
         ),
         patch(
             "app.services.file_merge.convert_session_to_tdata",
@@ -238,9 +244,11 @@ async def test_multi_account_tdata_uses_separate_zip_folders(tmp_path: Path):
     }
 
     async def fake_profile(path: Path, _credentials: object):
-        return "active", profiles[path.name]
+        return "active", profiles[path.name], ""
 
-    async def fake_tdata(_session: Path, target: Path) -> bool:
+    async def fake_tdata(
+        _session: Path, target: Path, *, credentials: object = None
+    ) -> bool:
         target.mkdir(parents=True)
         (target / "key_datas").write_bytes(b"valid")
         return True
@@ -282,6 +290,70 @@ async def test_cancel_cleans_file_merge_upload(tmp_path: Path):
 
     assert not upload.exists()
     state.clear.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_state_and_file_removes_temp_dir(tmp_path: Path):
+    upload = tmp_path / "upload.session"
+    upload.write_bytes(b"temporary")
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    (work_dir / "inner.session").write_bytes(b"x")
+    state = AsyncMock()
+    state.get_data.return_value = {
+        "temp_file_path": str(upload),
+        "temp_dir": str(work_dir),
+    }
+
+    await clear_state_and_file(state)
+
+    assert not upload.exists()
+    assert not work_dir.exists()
+    state.clear.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_state_and_file_removes_file_path(tmp_path: Path):
+    saved = tmp_path / "saved.session"
+    saved.write_bytes(b"secret")
+    state = AsyncMock()
+    state.get_data.return_value = {"file_path": str(saved)}
+
+    await clear_state_and_file(state)
+
+    assert not saved.exists()
+    state.clear.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_flow_cancel_callback_cleans_state_and_returns_menu(tmp_path: Path):
+    upload = tmp_path / "upload.session"
+    upload.write_bytes(b"temporary")
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    state = AsyncMock(spec=FSMContext)
+    state.get_data.return_value = {
+        "temp_file_path": str(upload),
+        "temp_dir": str(work_dir),
+    }
+    callback = AsyncMock(spec=CallbackQuery)
+    callback.from_user = AsyncMock(id=123)
+    callback.message = AsyncMock(spec=Message)
+    callback.message.edit_text = AsyncMock()
+    callback.answer = AsyncMock()
+
+    with (
+        patch("app.handlers.start.user_language", return_value="en"),
+        patch("app.handlers.start.action_message", return_value="canceled"),
+        patch("app.handlers.start.main_menu", return_value="menu"),
+    ):
+        await callback_flow_cancel(callback, state, AsyncMock())
+
+    assert not upload.exists()
+    assert not work_dir.exists()
+    state.clear.assert_awaited_once()
+    callback.answer.assert_awaited_once()
+    callback.message.edit_text.assert_awaited_once()
 
 
 def test_file_merge_locales_and_keyboards():

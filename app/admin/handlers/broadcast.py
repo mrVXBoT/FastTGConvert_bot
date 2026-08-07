@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import logging
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.admin.callbacks import AdminNav
 from app.admin.keyboards import (
     build_admin_cancel_keyboard,
     build_admin_main_menu_keyboard,
+    build_broadcast_cancel_job_keyboard,
     build_broadcast_preview_keyboard,
 )
 from app.admin.states import BroadcastState
-from app.services.broadcast import BROADCAST_WORKER
+from app.services.broadcast import BROADCAST_WORKER, BroadcastJob
 
 router = Router()
+
+LOGGER = logging.getLogger(__name__)
+
+ACTIVE_BROADCAST_TASKS: dict[str, asyncio.Task[None]] = {}
 
 
 @router.callback_query(AdminNav.filter(F.action == "broadcast"))
@@ -68,9 +75,54 @@ async def process_broadcast_content(message: Message, state: FSMContext) -> None
     )
 
 
+async def _run_broadcast_job(
+    bot: Bot,
+    session_factory: sessionmaker[Session],
+    job: BroadcastJob,
+    status_message: Message,
+) -> None:
+    """Execute broadcast in background and report the summary once finished."""
+    with session_factory() as session:
+        try:
+            result = await BROADCAST_WORKER.enqueue_and_process(
+                bot=bot,
+                session=session,
+                job=job,
+            )
+            summary_text = (
+                f"{'✅' if result.status != 'cancelled' else '🚫'} <b>Broadcast Job "
+                f"<code>{result.job_id}</code> {result.status.upper()}!</b>\n\n"
+                f"👥 <b>Total Target Users:</b> <code>{result.total_users}</code>\n"
+                f"✅ <b>Successfully Sent:</b> <code>{result.sent_count}</code>\n"
+                f"❌ <b>Failed / Blocked:</b> <code>{result.failed_count}</code>"
+            )
+            with contextlib.suppress(TelegramBadRequest):
+                await status_message.edit_text(
+                    summary_text,
+                    reply_markup=build_admin_main_menu_keyboard(admin_role=job.admin_role),
+                    parse_mode="HTML",
+                )
+        except Exception:
+            LOGGER.exception("Broadcast job %s failed unexpectedly.", job.job_id)
+            with contextlib.suppress(TelegramBadRequest):
+                await status_message.edit_text(
+                    "❌ <b>Broadcast job failed with an internal error.</b>",
+                    reply_markup=build_admin_main_menu_keyboard(admin_role=job.admin_role),
+                    parse_mode="HTML",
+                )
+        finally:
+            ACTIVE_BROADCAST_TASKS.pop(job.job_id, None)
+
+
 @router.callback_query(F.data == "adm_bcast_send", BroadcastState.waiting_for_preview_confirm)
-async def callback_broadcast_confirm(query: CallbackQuery, state: FSMContext, session: Session, admin_role: str) -> None:
-    """Dispatch broadcast via BroadcastQueueWorker."""
+async def callback_broadcast_confirm(
+    query: CallbackQuery,
+    state: FSMContext,
+    session: Session,
+    admin_role: str,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Dispatch broadcast via background task so the bot never blocks."""
     data = await state.get_data()
     await state.clear()
 
@@ -87,27 +139,39 @@ async def callback_broadcast_confirm(query: CallbackQuery, state: FSMContext, se
         video=data.get("video"),
         document=data.get("document"),
     )
+    job.admin_role = admin_role
 
-    await query.message.edit_text(f"🚀 <b>Broadcast Job <code>{job.job_id}</code> queued!</b>\n\nProcessing active users...", parse_mode="HTML")
-    await query.answer()
-
-    result = await BROADCAST_WORKER.enqueue_and_process(
-        bot=query.bot,
-        session=session,
-        job=job,
-    )
-
-    summary_text = (
-        f"✅ <b>Broadcast Job <code>{result.job_id}</code> {result.status.upper()}!</b>\n\n"
-        f"👥 <b>Total Target Users:</b> <code>{result.total_users}</code>\n"
-        f"✅ <b>Successfully Sent:</b> <code>{result.sent_count}</code>\n"
-        f"❌ <b>Failed / Blocked:</b> <code>{result.failed_count}</code>"
-    )
-    await query.message.edit_text(
-        summary_text,
-        reply_markup=build_admin_main_menu_keyboard(admin_role=admin_role),
+    status_message = await query.message.edit_text(
+        f"🚀 <b>Broadcast Job <code>{job.job_id}</code> started!</b>\n\n"
+        "Processing active users in the background...",
+        reply_markup=build_broadcast_cancel_job_keyboard(job.job_id),
         parse_mode="HTML",
     )
+    await query.answer()
+
+    task = asyncio.create_task(
+        _run_broadcast_job(
+            bot=query.bot,
+            session_factory=session_factory,
+            job=job,
+            status_message=status_message,
+        )
+    )
+    ACTIVE_BROADCAST_TASKS[job.job_id] = task
+
+
+@router.callback_query(F.data.startswith("adm_bcast_cancel_job:"))
+async def callback_broadcast_cancel_job(query: CallbackQuery, session: Session, admin_role: str) -> None:
+    """Cancel a running broadcast job."""
+    job_id = query.data.split(":", 1)[1]
+    BROADCAST_WORKER.cancel_job(session, job_id)
+    await query.answer("🚫 Broadcast job cancelled.", show_alert=True)
+    if isinstance(query.message, Message):
+        with contextlib.suppress(TelegramBadRequest):
+            await query.message.edit_text(
+                "🚫 <b>Broadcast cancelled.</b>",
+                reply_markup=build_admin_main_menu_keyboard(admin_role=admin_role),
+            )
 
 
 @router.callback_query(F.data == "adm_bcast_cancel", BroadcastState.waiting_for_preview_confirm)

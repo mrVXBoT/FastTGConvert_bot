@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from app.services.list_checker import (
-    _extract_tdata_key,
+    _extract_implicit_tdata_key,
     _is_safe_path,
     compare_archive_files,
     compare_archives,
@@ -48,12 +48,13 @@ def test_is_safe_path():
 # ── 2. Tdata Key Extraction ───────────────────────────────────────────────────
 
 def test_extract_tdata_key():
-    assert _extract_tdata_key(["596696702021"]) == "596696702021"
-    assert _extract_tdata_key(["+596696702021"]) == "596696702021"
-    assert _extract_tdata_key(["596696702021", "tdata"]) == "596696702021"
-    assert _extract_tdata_key(["Batch1", "596696702021"]) == "596696702021"
-    assert _extract_tdata_key(["my_tdata"]) == "my_tdata"
-    assert _extract_tdata_key([]) is None
+    assert _extract_implicit_tdata_key(["596696702021"]) == "596696702021"
+    assert _extract_implicit_tdata_key(["+596696702021"]) == "596696702021"
+    assert _extract_implicit_tdata_key(["596696702021", "tdata"]) == "596696702021"
+    assert _extract_implicit_tdata_key(["Batch1", "596696702021"]) == "596696702021"
+    assert _extract_implicit_tdata_key(["my_tdata"]) is None
+    assert _extract_implicit_tdata_key(["docs", "report.txt"]) is None
+    assert _extract_implicit_tdata_key([]) is None
 
 
 # ── 3. Case Insensitivity ─────────────────────────────────────────────────────

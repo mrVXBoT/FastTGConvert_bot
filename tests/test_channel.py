@@ -2,7 +2,7 @@ import re
 import sqlite3
 import zipfile
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.types import CallbackQuery
@@ -322,4 +322,129 @@ def test_channel_locales_and_keyboards():
 
     kb = channel_result_menu(5, 4, 1, "en")
     assert kb is not None
-    assert len(kb.inline_keyboard) == 3
+    assert len(kb.inline_keyboard) == 4
+    assert kb.inline_keyboard[3][0].callback_data == "menu:back"
+    for lang in ("en", "bn", "hi", "ur", "ar", "zh"):
+        msgs = CHANNEL_MESSAGES[lang]
+        assert "failed_report" in msgs
+        assert "invalid_target" in msgs
+
+
+@pytest.mark.asyncio
+async def test_channel_join_rejects_all_target(tmp_path: Path) -> None:
+    from aiogram.types import Message
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.handlers.files import receive_channel_join_target
+
+    engine = create_engine("sqlite:///:memory:")
+    from app.db.migration import run_migrations
+    from app.db.models import Base
+    Base.metadata.create_all(engine)
+    run_migrations(engine)
+    session_factory = sessionmaker(bind=engine)
+
+    state = AsyncMock()
+    state.get_data = AsyncMock(
+        return_value={"temp_file_path": str(tmp_path / "x.session"), "original_name": "x.session"}
+    )
+    message = MagicMock(spec=Message)
+    message.from_user = MagicMock(id=1)
+    message.text = "all"
+    message.answer = AsyncMock()
+
+    settings = MagicMock()
+    settings.storage_dir = tmp_path
+    settings.api_credential_list = [(1, "h")]
+
+    with patch(
+        "app.handlers.files.process_channel_join"
+    ) as process_mock:
+        await receive_channel_join_target(message, state, settings, session_factory)
+
+    process_mock.assert_not_called()
+    message.answer.assert_awaited_once()
+    assert "Invalid target" in message.answer.call_args.args[0]
+    assert state.clear.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_channel_join_rejects_blank_target(tmp_path: Path) -> None:
+    from aiogram.types import Message
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.handlers.files import receive_channel_join_target
+
+    engine = create_engine("sqlite:///:memory:")
+    from app.db.migration import run_migrations
+    from app.db.models import Base
+    Base.metadata.create_all(engine)
+    run_migrations(engine)
+    session_factory = sessionmaker(bind=engine)
+
+    state = AsyncMock()
+    state.get_data = AsyncMock(
+        return_value={"temp_file_path": str(tmp_path / "x.session"), "original_name": "x.session"}
+    )
+    message = MagicMock(spec=Message)
+    message.from_user = MagicMock(id=1)
+    message.text = "   "
+    message.answer = AsyncMock()
+
+    settings = MagicMock()
+    settings.storage_dir = tmp_path
+    settings.api_credential_list = [(1, "h")]
+
+    with patch(
+        "app.handlers.files.process_channel_join"
+    ) as process_mock:
+        await receive_channel_join_target(message, state, settings, session_factory)
+
+    process_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_channel_leave_rejects_blank_target(tmp_path: Path) -> None:
+    from aiogram.types import Message
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.handlers.files import receive_channel_leave_target
+
+    engine = create_engine("sqlite:///:memory:")
+    from app.db.migration import run_migrations
+    from app.db.models import Base
+    Base.metadata.create_all(engine)
+    run_migrations(engine)
+    session_factory = sessionmaker(bind=engine)
+
+    state = AsyncMock()
+    state.get_data = AsyncMock(
+        return_value={"temp_file_path": str(tmp_path / "x.session"), "original_name": "x.session"}
+    )
+    message = MagicMock(spec=Message)
+    message.from_user = MagicMock(id=1)
+    message.text = "a b c"
+    message.answer = AsyncMock()
+
+    settings = MagicMock()
+    settings.storage_dir = tmp_path
+    settings.api_credential_list = [(1, "h")]
+
+    with patch(
+        "app.handlers.files.process_channel_leave"
+    ) as process_mock:
+        await receive_channel_leave_target(message, state, settings, session_factory)
+
+    process_mock.assert_not_called()
+    message.answer.assert_awaited_once()
+    assert "Invalid target" in message.answer.call_args.args[0]
+
+
+def test_channel_emoji_keys_are_mapped() -> None:
+    from app.ui.emojis import EmojiRegistry
+
+    assert EmojiRegistry.EMOJI_UNICODE_KEYS["🔗"] == "LINK"
+    assert EmojiRegistry.EMOJI_UNICODE_KEYS["🚪"] == "EXIT"

@@ -42,6 +42,7 @@ NAV_PERMISSIONS: dict[str, str] = {
     "vip":        "ADMIN",
     "force_join": "SUPER_ADMIN",
     "admins":     "SUPER_ADMIN",
+    "referral":   "ADMIN",
     "language":   "SUPPORT",
     "close":      "SUPPORT",
 }
@@ -74,6 +75,7 @@ MENU_SECTIONS: list[tuple[str, str, str]] = [
     ("broadcast",  "btn_broadcast",  "ADMIN"),
     ("support",    "btn_support",    "ADMIN"),
     ("vip",        "btn_vip",        "ADMIN"),
+    ("referral",   "btn_referral",   "ADMIN"),
     ("force_join", "btn_force_join", "SUPER_ADMIN"),
     ("admins",     "btn_admins",     "SUPER_ADMIN"),
 ]

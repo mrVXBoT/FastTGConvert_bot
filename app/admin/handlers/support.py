@@ -46,9 +46,15 @@ async def callback_support_settings(query: CallbackQuery, state: FSMContext, ses
 async def process_support_input(message: Message, state: FSMContext, session: Session, admin_role: str) -> None:
     """Update support username dynamically in database."""
     await state.clear()
-    new_supp = (message.text or "").strip()
-    if not new_supp.startswith("@"):
-        new_supp = f"@{new_supp}"
+    new_supp = (message.text or "").strip().strip("@")
+    if not new_supp:
+        await message.reply(
+            "❌ Support username cannot be empty. Please send a valid username (e.g., <code>@admin_support</code>):",
+            reply_markup=build_admin_cancel_keyboard("home"),
+            parse_mode="HTML",
+        )
+        return
+    new_supp = f"@{new_supp}"
     set_support_contact(session, new_supp)
     await message.reply(
         f"✅ Support username updated to <code>{html.escape(new_supp)}</code> in database!",

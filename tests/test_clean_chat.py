@@ -285,6 +285,33 @@ async def test_process_clean_chat_single(dummy_session: Path, tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_clean_session_chats_writes_changes_back_to_source(dummy_session: Path):
+    """B1 regression: Telethon writes to its own temp copy; the modified session
+    must be copied back to the source file so the output keeps the changes."""
+
+    class FakeTelegramClient:
+        def __init__(self, session_stem: str, *args: object, **kwargs: object):
+            self.session_path = Path(f"{session_stem}.session")
+            self.session_path.write_bytes(b"modified-by-telethon")
+
+        async def connect(self) -> None:
+            return None
+
+        async def is_user_authorized(self) -> bool:
+            return True
+
+        async def iter_dialogs(self):
+            if False:
+                yield None
+
+    with patch("telethon.TelegramClient", FakeTelegramClient):
+        res = await clean_session_chats(dummy_session, [(123, "hash")], mode="dms")
+
+    assert res is True
+    assert dummy_session.read_bytes() == b"modified-by-telethon"
+
+
+@pytest.mark.asyncio
 async def test_process_clean_chat_zip(dummy_session: Path, tmp_path: Path):
     second = _create_session(tmp_path / "second.session")
     zip_path = tmp_path / "sessions.zip"
@@ -335,13 +362,47 @@ def test_clean_chat_locales_and_keyboards():
     choice_kb = clean_chat_choice_menu("en", selected={"dms", "channels"})
     assert choice_kb is not None
     assert len(choice_kb.inline_keyboard) == 5
-    assert choice_kb.inline_keyboard[0][0].text.startswith("✅")
+    assert choice_kb.inline_keyboard[0][0].text.startswith("☑️")
     assert choice_kb.inline_keyboard[0][1].text.startswith("▫️")
     assert choice_kb.inline_keyboard[1][0].text.startswith("▫️")
-    assert choice_kb.inline_keyboard[1][1].text.startswith("✅")
+    assert choice_kb.inline_keyboard[1][1].text.startswith("☑️")
     assert choice_kb.inline_keyboard[3][0].callback_data == "clean_chat_confirm"
     assert choice_kb.inline_keyboard[4][0].callback_data == "action:cancel"
 
     res_kb = clean_chat_result_menu(5, 4, 1, "en")
     assert res_kb is not None
-    assert len(res_kb.inline_keyboard) == 3
+    assert len(res_kb.inline_keyboard) == 4
+
+
+def test_clean_chat_choice_menu_premium_emojis():
+    from app.ui import EmojiRegistry
+
+    previous_ids = dict(EmojiRegistry._custom_emoji_ids)
+    EmojiRegistry.set_custom_emoji("DM", "100001")
+    EmojiRegistry.set_custom_emoji("BOT", "100002")
+    EmojiRegistry.set_custom_emoji("GROUP", "100003")
+    EmojiRegistry.set_custom_emoji("CHANNEL", "100004")
+    EmojiRegistry.set_custom_emoji("CONFIRM", "100005")
+    try:
+        kb = clean_chat_choice_menu("en", selected={"bots"})
+        dm_btn = kb.inline_keyboard[0][0]
+        bot_btn = kb.inline_keyboard[0][1]
+        confirm_btn = kb.inline_keyboard[3][0]
+        assert dm_btn.icon_custom_emoji_id == "100001"
+        assert bot_btn.icon_custom_emoji_id == "100002"
+        assert dm_btn.text == "▫️ DMs"
+        assert bot_btn.text == "☑️ Bots"
+        assert "<tg-emoji" not in dm_btn.text
+        assert "👤" not in dm_btn.text
+        assert confirm_btn.icon_custom_emoji_id == "100005"
+        assert confirm_btn.text == "Confirm & Clean"
+        assert "🚀" not in confirm_btn.text
+
+        kb_unselected = clean_chat_choice_menu("en", selected=set())
+        assert kb_unselected.inline_keyboard[0][0].text == "▫️ DMs"
+        assert kb_unselected.inline_keyboard[0][1].text == "▫️ Bots"
+
+        cancel_btn = kb.inline_keyboard[4][0]
+        assert cancel_btn.text == "❌ Cancel"
+    finally:
+        EmojiRegistry._custom_emoji_ids = previous_ids

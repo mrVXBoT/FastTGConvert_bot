@@ -25,10 +25,35 @@ class Settings(BaseSettings):
     api_credentials: str = ""
     # Seconds to wait for @SpamBot reply before timing out
     spambot_timeout: int = Field(default=15, ge=5, le=60)
+    # Contacts check job tuning: concurrent sessions, per-session timeout and
+    # max FloodWait seconds honoured before skipping a credential.
+    contacts_check_concurrency: int = Field(default=3, ge=1, le=20)
+    contacts_check_timeout: int = Field(default=30, ge=5, le=300)
+    contacts_flood_ceiling: int = Field(default=5, ge=0, le=30)
+    # Split job tuning: how many sessions are live-verified in parallel.
+    split_concurrency: int = Field(default=10, ge=1, le=20)
+    # Clean chat job tuning: concurrent sessions and max FloodWait seconds to
+    # honour per dialog before skipping it.
+    clean_chat_concurrency: int = Field(default=5, ge=1, le=20)
+    clean_chat_flood_ceiling: int = Field(default=30, ge=0, le=300)
     # Optional 32-byte url-safe base64 key for encrypting user proxy passwords
     proxy_encryption_key: str = ""
     # Optional proxy URL for Bot connection (e.g., http://127.0.0.1:10809 or socks5://...)
     bot_proxy: str = ""
+    # Optional API keys for on-chain auto payment verification (empty = public endpoints)
+    tron_api_key: str = ""
+    bsc_api_key: str = ""
+    # Comma-separated BSC RPC node URLs (e.g. https://rpc.ankr names / bsc-dataseed).
+    # When set, BEP20 detection runs keyless via eth_getLogs on these nodes
+    # instead of requiring a paid Etherscan V2 plan.
+    bsc_rpc_urls: str = ""
+    # How often to scan for confirmed auto payments (seconds)
+    payment_check_interval_seconds: int = Field(default=15, ge=5, le=300)
+    # Validity window for auto payment orders (hours)
+    payment_order_hours: int = Field(default=2, ge=1, le=72)
+    # Extra seconds after expiry that a pending order is still accepted for a
+    # confirmed on-chain transfer (protects payments made at the edge of the window).
+    payment_expiry_grace_seconds: int = Field(default=1200, ge=0, le=86400)
     # Custom Telegram Emoji IDs for Telegram Premium themes
     custom_emoji_vip: str = ""
     custom_emoji_users: str = ""
@@ -50,7 +75,11 @@ class Settings(BaseSettings):
     custom_emoji_contacts: str = ""
     custom_emoji_export: str = ""
     custom_emoji_split: str = ""
+    custom_emoji_split_country: str = "5211157547645421280"
+    custom_emoji_split_quantity: str = "5210729536974503652"
     custom_emoji_merge: str = ""
+    custom_emoji_merge_multi_type: str = "6298486951657867390"
+    custom_emoji_merge_json_tdata: str = "6296504553667823627"
     custom_emoji_unlock: str = ""
     custom_emoji_reset: str = ""
     custom_emoji_refresh: str = ""
@@ -58,6 +87,36 @@ class Settings(BaseSettings):
     custom_emoji_edit: str = ""
     custom_emoji_add: str = ""
     custom_emoji_message: str = ""
+    custom_emoji_photo: str = ""
+    custom_emoji_loading: str = ""
+    # Comma-separated custom emoji IDs forming a decorative divider strip,
+    # e.g. CUSTOM_EMOJI_DIVIDER=id1,id2,id3  (rendered side by side).
+    custom_emoji_divider: str = ""
+    custom_emoji_active: str = ""
+    custom_emoji_frozen: str = ""
+    custom_emoji_banned: str = ""
+    custom_emoji_inconclusive: str = ""
+    custom_emoji_checked: str = ""
+    custom_emoji_invalid: str = "5821328845420106343"
+    custom_emoji_total: str = "5821421565174092291"
+    custom_emoji_converted: str = "5940635490645449104"
+    custom_emoji_failed: str = "5940804914220372462"
+    custom_emoji_phone: str = ""
+    custom_emoji_username: str = ""
+    custom_emoji_calls: str = ""
+    custom_emoji_voice: str = ""
+    custom_emoji_world: str = ""
+    custom_emoji_link: str = ""
+    custom_emoji_gift: str = ""
+    custom_emoji_trophy: str = ""
+    custom_emoji_medal: str = ""
+    custom_emoji_otp_code: str = ""
+    custom_emoji_session: str = ""
+    custom_emoji_check: str = ""
+    custom_emoji_skip: str = ""
+    custom_emoji_contact_checked: str = ""
+    custom_emoji_contact_ok: str = ""
+    custom_emoji_contact_error: str = ""
     custom_emoji_ban: str = ""
     custom_emoji_unban: str = ""
     custom_emoji_flag_en: str = ""
@@ -66,6 +125,12 @@ class Settings(BaseSettings):
     custom_emoji_flag_ar: str = ""
     custom_emoji_flag_zh: str = ""
     custom_emoji_flag_uz: str = ""
+    # Clean Chat category + action icons
+    custom_emoji_dm: str = ""
+    custom_emoji_bot: str = ""
+    custom_emoji_group: str = ""
+    custom_emoji_channel: str = ""
+    custom_emoji_confirm: str = ""
     # Prometheus HTTP metrics exporter configuration
     metrics_enabled: bool = True
     metrics_host: str = "127.0.0.1"

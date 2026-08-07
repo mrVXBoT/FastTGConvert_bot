@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import errno
 import json
 import shutil
 import sqlite3
@@ -15,6 +17,7 @@ from app.services.account_to_txt import (
     fetch_account_profile,
 )
 from app.services.contacts_checker import extract_zip_sessions_safe
+from app.services.jobs import JobCancelled, JobProgress
 
 DC_IP_MAP = {
     1: "149.154.175.50",
@@ -29,6 +32,7 @@ DC_IP_MAP = {
 class SessionJsonEntry:
     profile: AccountProfile
     authorized: bool
+    reason: str = ""
 
     @property
     def report_icon(self) -> str:
@@ -46,7 +50,10 @@ class SessionJsonResult:
 
     @property
     def converted(self) -> int:
-        return self.active + self.invalid_converted
+        # Only authorized sessions count as converted. Invalid (banned /
+        # deactivated) sessions still get a JSON file under Invalid/ but they
+        # are NOT usable accounts, so they must not inflate the count.
+        return self.active
 
 
 def _session_connection(path: Path) -> tuple[int, str] | None:
@@ -85,6 +92,8 @@ def render_session_json(
         "dc_id": dc_id,
         "server_address": server_address,
         "authorized": authorized,
+        "two_fa": profile.two_fa,
+        "registered": profile.registered,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
@@ -95,6 +104,8 @@ async def process_session_to_json(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    progress: JobProgress | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> SessionJsonResult:
     temp_dir: tempfile.TemporaryDirectory[str] | None = None
     session_files: list[Path] = []
@@ -103,7 +114,12 @@ async def process_session_to_json(
         suffix = Path(original_name or input_path.name).suffix.lower()
         if suffix == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_session_json_zip_")
-            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+            try:
+                session_files = await asyncio.to_thread(
+                    extract_zip_sessions_safe, input_path, Path(temp_dir.name)
+                )
+            except zipfile.BadZipFile as exc:
+                raise ValueError("bad_zip_file") from exc
         elif suffix == ".session":
             if original_name:
                 temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_session_json_one_")
@@ -113,22 +129,60 @@ async def process_session_to_json(
             else:
                 session_files = [input_path]
 
+        total = len(session_files)
+        if progress is not None:
+            progress.total = total
+
         active = 0
         invalid_converted = 0
         failed = 0
-        outputs: list[tuple[str, str]] = []
+        outputs: list[tuple[str, str, bool]] = []
         entries: list[SessionJsonEntry] = []
 
-        for session_file in session_files:
+        for index, session_file in enumerate(session_files, start=1):
+            if cancel_event is not None and cancel_event.is_set():
+                raise JobCancelled()
+            if progress is not None:
+                progress.done = index - 1
+
             if not _is_structural_session(session_file):
                 failed += 1
+                entries.append(
+                    SessionJsonEntry(
+                        profile=AccountProfile(
+                            identifier=session_file.stem,
+                            phone="N/A",
+                            username="N/A",
+                            full_name="N/A",
+                            user_id=0,
+                        ),
+                        authorized=False,
+                        reason="structural",
+                    )
+                )
                 continue
+
             connection = _session_connection(session_file)
             if connection is None:
                 failed += 1
+                entries.append(
+                    SessionJsonEntry(
+                        profile=AccountProfile(
+                            identifier=session_file.stem,
+                            phone="N/A",
+                            username="N/A",
+                            full_name="N/A",
+                            user_id=0,
+                        ),
+                        authorized=False,
+                        reason="no_connection",
+                    )
+                )
                 continue
 
-            status, profile = await fetch_account_profile(session_file, credentials)
+            status, profile, reason = await fetch_account_profile(
+                session_file, credentials
+            )
             if status == "active" and profile is not None:
                 authorized = True
                 active += 1
@@ -137,10 +191,25 @@ async def process_session_to_json(
                 invalid_converted += 1
             else:
                 failed += 1
+                entries.append(
+                    SessionJsonEntry(
+                        profile=AccountProfile(
+                            identifier=session_file.stem,
+                            phone="N/A",
+                            username="N/A",
+                            full_name="N/A",
+                            user_id=0,
+                        ),
+                        authorized=False,
+                        reason=reason,
+                    )
+                )
                 continue
 
             dc_id, server_address = connection
-            entries.append(SessionJsonEntry(profile=profile, authorized=authorized))
+            entries.append(
+                SessionJsonEntry(profile=profile, authorized=authorized, reason=reason)
+            )
             outputs.append(
                 (
                     f"{profile.identifier}.json",
@@ -150,21 +219,33 @@ async def process_session_to_json(
                         server_address=server_address,
                         authorized=authorized,
                     ),
+                    authorized,
                 )
             )
+            if progress is not None:
+                progress.done = index
 
         output_zip: Path | None = None
         if outputs:
             output_dir.mkdir(parents=True, exist_ok=True)
             output_zip = output_dir / f"session_json_{uuid4().hex[:10]}.zip"
-            with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as archive:
-                used: set[str] = set()
-                for index, (filename, content) in enumerate(outputs, start=1):
-                    arcname = filename
-                    if arcname in used:
-                        arcname = f"{Path(filename).stem}_{index}.json"
-                    used.add(arcname)
-                    archive.writestr(arcname, content)
+            try:
+                with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as archive:
+                    used: set[str] = set()
+                    for index, (filename, content, authorized) in enumerate(
+                        outputs, start=1
+                    ):
+                        arcname = filename
+                        if arcname in used:
+                            arcname = f"{Path(filename).stem}_{index}.json"
+                        used.add(arcname)
+                        if not authorized:
+                            arcname = f"Invalid/{arcname}"
+                        archive.writestr(arcname, content)
+            except OSError as exc:
+                if exc.errno == errno.ENOSPC:
+                    raise ValueError("storage_error") from exc
+                raise
 
         return SessionJsonResult(
             total=len(session_files),

@@ -40,7 +40,7 @@ class UserStatusMiddleware(BaseMiddleware):
         with session_factory() as session:
             # 1. Admin / Owner Bypass Check (Admins/Owners can access even if status changed)
             role = get_admin_role(session, user_id, owner_id=owner_id)
-            if role in ("OWNER", "ADMIN"):
+            if role in ("OWNER", "SUPER_ADMIN", "ADMIN", "SUPPORT"):
                 return await handler(event, data)
 
             # 2. Regular User Ban Check

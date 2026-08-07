@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -304,6 +305,7 @@ async def test_new_password_is_deleted_and_old_password_removed_from_state(
     message.text = "new exact password"
     message.delete = AsyncMock()
     status = MagicMock(spec=Message)
+    status.message_id = 555
     status.edit_text = AsyncMock()
     message.answer = AsyncMock(return_value=status)
     message.answer_document = AsyncMock()
@@ -334,13 +336,13 @@ async def test_new_password_is_deleted_and_old_password_removed_from_state(
         )
 
     message.delete.assert_awaited_once()
-    state.update_data.assert_awaited_once_with(old_password=None)
-    edit_session.assert_awaited_once_with(
-        upload,
-        settings.api_credential_list,
-        current_password="old exact password",
-        new_password="new exact password",
-    )
+    state.update_data.assert_any_await(old_password=None, two_factor_busy=True)
+    state.update_data.assert_any_await(flow_message_id=555)
+    edit_session.assert_awaited_once()
+    assert edit_session.await_args.args == (upload, settings.api_credential_list)
+    assert edit_session.await_args.kwargs["current_password"] == "old exact password"
+    assert edit_session.await_args.kwargs["new_password"] == "new exact password"
+    assert isinstance(edit_session.await_args.kwargs["cancel_event"], asyncio.Event)
     advance_batch.assert_awaited_once()
 
 

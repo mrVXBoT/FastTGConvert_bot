@@ -14,6 +14,12 @@ from app.services.session_to_tdata import _ensure_opentele_patched
 LOGGER = logging.getLogger(__name__)
 
 
+def _mask_api_id(api_id: int) -> str:
+    """Mask an API credential id for log safety."""
+    s = str(api_id)
+    return f"{s[:3]}***" if len(s) > 3 else "***"
+
+
 @dataclass(frozen=True)
 class SessionKillDetail:
     session_name: str
@@ -57,6 +63,7 @@ async def kill_single_session_others(
         LOGGER.error("Telethon not installed for kill session")
         return "error", "Telethon library missing"
 
+    last_err: str | None = None
     for api_id, api_hash in credentials:
         with tempfile.TemporaryDirectory(prefix="ftgc_kill_sess_") as tmp:
             run_sess = Path(tmp) / "account.session"
@@ -81,16 +88,18 @@ async def kill_single_session_others(
             except RPCError as exc:
                 if "FRESH_RESET_AUTHORISATION_FORBIDDEN" in str(exc) or "SESSION_TOO_FRESH" in str(exc):
                     return "fresh_forbidden", "Account session is < 24h old; Telegram requires 24h before resetting other sessions"
-                LOGGER.debug("Kill session RPC error with api_id=%d: %s", api_id, exc)
-                return "error", f"RPCError: {exc}"
+                LOGGER.debug("Kill session RPC error (api_id=%s): %s", _mask_api_id(api_id), exc)
+                last_err = f"RPCError: {exc}"
+                continue
             except Exception as exc:  # noqa: BLE001
-                LOGGER.debug("Kill session error with api_id=%d: %s", api_id, exc)
+                LOGGER.debug("Kill session error (api_id=%s): %s", _mask_api_id(api_id), exc)
+                last_err = f"Error: {exc}"
                 continue
             finally:
                 with suppress(Exception):
                     await client.disconnect()
 
-    return "error", "Connection failed across all credentials"
+    return "error", last_err or "Connection failed across all credentials"
 
 
 async def process_kill_sessions(

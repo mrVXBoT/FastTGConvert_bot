@@ -364,6 +364,215 @@ def migrate_to_v6(cursor: Any) -> None:
         )
 
 
+def migrate_to_v7(cursor: Any) -> None:
+    """Migration v7:
+    - Adds referred_by column to users table.
+    - Creates referrals, referral_tiers, referral_rewards tables.
+    - Seeds default referral reward tiers and referral_enabled setting.
+    """
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "referred_by" not in columns:
+            LOGGER.info("Applying migration v7: adding referred_by column to users...")
+            cursor.execute("ALTER TABLE users ADD COLUMN referred_by BIGINT")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_users_referred_by ON users(referred_by)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            referrer_telegram_id BIGINT NOT NULL,
+            referred_telegram_id BIGINT UNIQUE NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_referrals_referrer ON referrals(referrer_telegram_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_referrals_created_at ON referrals(created_at)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS referral_tiers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            refs_required INTEGER UNIQUE NOT NULL,
+            reward_days INTEGER NOT NULL DEFAULT 1,
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("SELECT COUNT(*) FROM referral_tiers")
+    if cursor.fetchone()[0] == 0:
+        default_tiers = [
+            (1, 1),
+            (7, 7),
+            (15, 15),
+            (30, 30),
+        ]
+        cursor.executemany(
+            "INSERT INTO referral_tiers (refs_required, reward_days, is_active, created_at) VALUES (?, ?, 1, CURRENT_TIMESTAMP)",
+            default_tiers,
+        )
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS referral_rewards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            referrer_telegram_id BIGINT NOT NULL,
+            tier_id INTEGER,
+            days INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(tier_id) REFERENCES referral_tiers(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_referral_rewards_referrer ON referral_rewards(referrer_telegram_id)")
+
+    cursor.execute("SELECT COUNT(*) FROM system_settings WHERE key='referral_enabled'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(
+            "INSERT INTO system_settings (key, value, updated_at) VALUES ('referral_enabled', '1', CURRENT_TIMESTAMP)"
+        )
+
+
+def migrate_to_v8(cursor: Any) -> None:
+    """Migration v8:
+    - Adds auto wallet addresses (auto_trc20_address, auto_bep20_address) to payment_settings.
+    - Adds auto payment order columns (order_code, network, wallet_address, expected_amount, expires_at) to payments.
+    - Creates indexes for payments.order_code and payments.expires_at.
+    """
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_settings'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(payment_settings)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        new_cols = {
+            "auto_trc20_address": "VARCHAR(255)",
+            "auto_bep20_address": "VARCHAR(255)",
+        }
+
+        for col_name, col_type in new_cols.items():
+            if col_name not in columns:
+                LOGGER.info(
+                    "Applying migration v8: adding %s column to payment_settings table...",
+                    col_name,
+                )
+                cursor.execute(f"ALTER TABLE payment_settings ADD COLUMN {col_name} {col_type}")
+
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payments'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(payments)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        new_cols = {
+            "order_code": "VARCHAR(32)",
+            "network": "VARCHAR(16)",
+            "wallet_address": "VARCHAR(255)",
+            "expected_amount": "FLOAT",
+            "expires_at": "DATETIME",
+        }
+
+        for col_name, col_type in new_cols.items():
+            if col_name not in columns:
+                LOGGER.info(
+                    "Applying migration v8: adding %s column to payments table...",
+                    col_name,
+                )
+                cursor.execute(f"ALTER TABLE payments ADD COLUMN {col_name} {col_type}")
+
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_payments_order_code ON payments(order_code)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS ix_payments_expires_at ON payments(expires_at)")
+
+
+def migrate_to_v9(cursor: Any) -> None:
+    """Migration v9:
+    - Deduplicates any legacy live pending auto orders that share the same
+      (wallet_address, network, expected_amount), keeping the oldest.
+    - Creates a partial unique index enforcing that live pending auto orders can
+      never collide on (wallet_address, network, expected_amount), so a single
+      on-chain transfer can never be claimed by two orders.
+    """
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payments'")
+    if not cursor.fetchone():
+        return
+    cursor.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
+        "AND name='ux_payments_pending_auto_amount'"
+    )
+    if cursor.fetchone()[0]:
+        return
+
+    LOGGER.info(
+        "Applying migration v9: deduplicating colliding pending auto orders..."
+    )
+    cursor.execute(
+        """
+        UPDATE payments SET status = 'cancelled'
+        WHERE status = 'pending'
+          AND network IN ('trc20', 'bep20')
+          AND expected_amount IS NOT NULL
+          AND wallet_address IS NOT NULL
+          AND id NOT IN (
+              SELECT MIN(id)
+              FROM payments
+              WHERE status = 'pending'
+                AND network IN ('trc20', 'bep20')
+                AND expected_amount IS NOT NULL
+                AND wallet_address IS NOT NULL
+              GROUP BY wallet_address, network, expected_amount
+          )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_payments_pending_auto_amount
+        ON payments(wallet_address, network, expected_amount)
+        WHERE status = 'pending'
+        """
+    )
+
+
+def migrate_to_v10(cursor: Any) -> None:
+    """Migration v10:
+    - Deduplicates legacy duplicate subscription rows created through the old
+      non-atomic activate path (keep the oldest per payment_id).
+    - Creates a unique index on `user_vip_subscriptions.payment_id` so a single
+      payment can never be granted VIP twice even across racing processes.
+    """
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='user_vip_subscriptions'"
+    )
+    if not cursor.fetchone():
+        return
+    cursor.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
+        "AND name='ux_user_vip_subscriptions_payment'"
+    )
+    if cursor.fetchone()[0]:
+        return
+
+    LOGGER.info(
+        "Applying migration v10: deduplicating double-granted subscriptions..."
+    )
+    cursor.execute(
+        """
+        DELETE FROM user_vip_subscriptions
+        WHERE payment_id IS NOT NULL
+          AND id NOT IN (
+              SELECT MIN(id)
+              FROM user_vip_subscriptions
+              WHERE payment_id IS NOT NULL
+              GROUP BY payment_id
+          )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_user_vip_subscriptions_payment
+        ON user_vip_subscriptions(payment_id)
+        WHERE payment_id IS NOT NULL
+        """
+    )
+
+
 # Registry of migrations mapped to target version numbers
 MIGRATIONS = {
     1: migrate_to_v1,
@@ -372,8 +581,12 @@ MIGRATIONS = {
     4: migrate_to_v4,
     5: migrate_to_v5,
     6: migrate_to_v6,
+    7: migrate_to_v7,
+    8: migrate_to_v8,
+    9: migrate_to_v9,
+    10: migrate_to_v10,
 }
-LATEST_VERSION = 6
+LATEST_VERSION = 10
 
 
 def run_migrations(engine: Engine) -> None:

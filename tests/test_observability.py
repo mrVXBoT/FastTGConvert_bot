@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from io import StringIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -261,6 +262,41 @@ def test_perform_database_backup(tmp_path: Path) -> None:
     row = cursor.fetchone()
     r_conn.close()
     assert row is not None and row[0] == "hello_backup"
+
+
+def test_sqlite_db_path_from_url() -> None:
+    from app.db.backup import sqlite_db_path_from_url
+
+    assert sqlite_db_path_from_url("sqlite:///data/bot.db") is not None
+    assert sqlite_db_path_from_url("sqlite:///data/bot.db").name == "bot.db"
+    assert (
+        sqlite_db_path_from_url("sqlite:////abs/var/db.sqlite").as_posix()
+        == "/abs/var/db.sqlite"
+    )
+    assert sqlite_db_path_from_url("") is None
+    assert sqlite_db_path_from_url("postgresql://user:pass@host/db") is None
+
+
+def test_cleanup_orphaned_staged_sessions(tmp_path: Path) -> None:
+    import os
+
+    from app.cleanup import cleanup_orphaned_staged_sessions
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir(parents=True)
+    fresh = inbox / "otp_fresh.session"
+    fresh.write_bytes(b"x")
+    stale = inbox / "otp_stale.session"
+    stale.write_bytes(b"x")
+    old_ts = time.time() - 8 * 3600
+    os.utime(stale, (old_ts, old_ts))
+    fresh_ts = time.time() - 60
+    os.utime(fresh, (fresh_ts, fresh_ts))
+
+    removed = cleanup_orphaned_staged_sessions(tmp_path, max_age_minutes=360)
+    assert removed == 1
+    assert not stale.exists()
+    assert fresh.exists()
 
 
 @pytest.mark.asyncio

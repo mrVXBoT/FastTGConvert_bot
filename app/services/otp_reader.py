@@ -39,20 +39,35 @@ async def read_account_otps(
     max_age_hours: int = 2,
     since_dt: datetime | None = None,
     proxy: tuple | None = None,
-) -> tuple[dict[str, str], list[OTPCode]]:
+) -> tuple[dict[str, str], list[OTPCode], str]:
     """
     Connect to Telegram with session_path and read recent OTP messages from Telegram (peer 777000).
-    Returns (user_info, list_of_OTPCode_objects).
+    Returns (user_info, list_of_OTPCode_objects, status).
+
+    *status* is ``"ok"`` on success, ``"banned"`` when the account is
+    banned/deactivated (or its session was revoked), ``"2fa"`` when login is
+    blocked by a two-step password, ``"invalid"`` for a corrupt session
+    database and ``"inconclusive"`` when no credential could produce a
+    definitive answer (network/timeout).
     """
     default_user_info: dict[str, str] = {}
     if not credentials or not session_path.exists():
-        return default_user_info, []
+        return default_user_info, [], "inconclusive"
 
     try:
         from telethon import TelegramClient  # type: ignore[import-untyped]
+        from telethon.errors import (  # type: ignore[import-untyped]
+            AuthKeyDuplicatedError,
+            AuthKeyError,
+            AuthKeyUnregisteredError,
+            PhoneNumberBannedError,
+            SessionPasswordNeededError,
+            UserDeactivatedBanError,
+            UserDeactivatedError,
+        )
     except ModuleNotFoundError:
         LOGGER.error("telethon is not installed; cannot read live OTPs")
-        return default_user_info, []
+        return default_user_info, [], "inconclusive"
 
     with tempfile.TemporaryDirectory(prefix="ftgc_otpread_") as tmp:
         tmp_session = Path(tmp) / "read.session"
@@ -66,8 +81,12 @@ async def read_account_otps(
             try:
                 await client.connect()
                 if not await client.is_user_authorized():
-                    await client.disconnect()
-                    continue
+                    # The connection succeeded but there is no user behind the
+                    # auth_key: the account was deactivated or permanently
+                    # limited by Telegram.  Reading OTPs is impossible.
+                    with suppress(Exception):
+                        await client.disconnect()
+                    return default_user_info, [], "banned"
 
                 me = await client.get_me()
                 user_info: dict[str, str] = {}
@@ -106,15 +125,36 @@ async def read_account_otps(
                             OTPCode(code=code, age=time_ago, source="Telegram")
                         )
 
-                await client.disconnect()
-                return user_info, codes
+                with suppress(Exception):
+                    await client.disconnect()
+                return user_info, codes, "ok"
+
+            except (AuthKeyDuplicatedError, AuthKeyError, AuthKeyUnregisteredError):
+                # Session auth key was invalidated / no longer registered →
+                # account deactivated or session revoked server-side.
+                LOGGER.debug("OTP read: session auth key invalid (api_id=%d)", api_id)
+                with suppress(Exception):
+                    await client.disconnect()
+                return default_user_info, [], "banned"
+
+            except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
+                LOGGER.debug("OTP read: account deactivated (api_id=%d)", api_id)
+                with suppress(Exception):
+                    await client.disconnect()
+                return default_user_info, [], "banned"
+
+            except SessionPasswordNeededError:
+                LOGGER.debug("OTP read: two-step verification required (api_id=%d)", api_id)
+                with suppress(Exception):
+                    await client.disconnect()
+                return default_user_info, [], "2fa"
 
             except Exception as exc:  # noqa: BLE001
                 LOGGER.debug("OTP read attempt failed with api_id=%d: %s", api_id, exc)
                 with suppress(Exception):
                     await client.disconnect()
 
-    return default_user_info, []
+    return default_user_info, [], "inconclusive"
 
 
 async def logout_account_session(

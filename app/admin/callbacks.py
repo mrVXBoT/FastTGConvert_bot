@@ -35,8 +35,13 @@ class VIPPlanAction(CallbackData, prefix="adm_plan"):
 
 
 class PaymentAction(CallbackData, prefix="adm_pay"):
-    action: str  # approve, reject
-    payment_id: int
+    action: str  # approve, reject, toggle_manual, toggle_auto
+    payment_id: int = 0
+
+
+class PaymentWalletAction(CallbackData, prefix="adm_wal"):
+    action: str  # edit | clear | clear_confirm | clear_cancel
+    field: str = ""  # binance_id|trc20_address|bep20_address|auto_trc20_address|auto_bep20_address
 
 
 class AdminMgmtAction(CallbackData, prefix="adm_mgmt"):
@@ -52,3 +57,14 @@ class ForceJoinAction(CallbackData, prefix="adm_fj"):
 
 class AdminLangAction(CallbackData, prefix="adm_lang"):
     lang: str
+
+
+class ReferralNav(CallbackData, prefix="adm_ref"):
+    section: str = "menu"  # menu, tiers, referrals, rewards
+    page: int = 1
+    referrer_id: int = 0
+
+
+class ReferralTierAction(CallbackData, prefix="adm_ref_tier"):
+    action: str  # toggle, delete
+    tier_id: int = 0

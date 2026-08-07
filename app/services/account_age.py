@@ -12,6 +12,7 @@ from pathlib import Path
 from aiogram import html
 
 from app.services.contacts_checker import extract_zip_sessions_safe
+from app.ui import EmojiRegistry
 
 LOGGER = logging.getLogger(__name__)
 
@@ -349,7 +350,7 @@ async def fetch_single_account_age(
                 )
             except RPCError as exc:
                 LOGGER.debug("Account age Telethon RPC error: %s", exc)
-                return None
+                continue
             except (OSError, TimeoutError) as exc:
                 LOGGER.debug("Account age connection error: %s", exc)
                 continue
@@ -445,7 +446,9 @@ def format_account_age_report(
             line.strip() for line in acc.creation_estimate.splitlines() if line.strip()
         ]
         created_val = lines[0] if lines else acc.creation_estimate
-        confidence_val = "🟢 High"
+        # Interpolated between two dataset milestones — informative but not
+        # exact, so Medium (never High) confidence.
+        confidence_val = "🟡 Medium"
 
     header = (
         f"📦 <b>Accounts ({target_page + 1}/{len(res.accounts)})</b>\n\n"
@@ -453,22 +456,23 @@ def format_account_age_report(
         else ""
     )
 
+    divider = EmojiRegistry.divider_line()
     return (
         f"{header}"
         f"👤 <b>Account Information</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"{divider}\n\n"
         f"Name        {html.quote(acc.full_name)}{badge_str}\n"
         f"Username    {username_str}\n"
         f"User ID     <code>{acc.user_id}</code>\n"
         f"Premium     {premium_str}\n"
         f"DC          {html.quote(acc.dc_name)}\n\n"
         f"📅 <b>Estimated Account Age</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"{divider}\n\n"
         f"Created     {created_val}\n"
         f"Confidence  {confidence_val}\n"
         f"Source      Community Dataset\n\n"
         f"📊 <b>Statistics</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"{divider}\n\n"
         f"Gifts       0\n"
         f"Rating      Level 0"
     )

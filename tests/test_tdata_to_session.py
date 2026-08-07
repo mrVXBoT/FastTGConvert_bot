@@ -1,9 +1,11 @@
+import asyncio
 import sqlite3
 import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from telethon.errors import AuthKeyUnregisteredError  # type: ignore[import-untyped]
 from telethon.sessions import SQLiteSession  # type: ignore[import-untyped]
 
 from app.locales import (
@@ -12,6 +14,7 @@ from app.locales import (
     TDATA_TO_SESSION_PROMPTS,
 )
 from app.services.files import UnsafeArchiveError
+from app.services.jobs import JobCancelled, JobProgress
 from app.services.session_to_tdata import convert_session_to_tdata
 from app.services.tdata_to_session import (
     convert_tdata_dir_to_sessions,
@@ -171,6 +174,8 @@ async def test_process_tdata_to_session_zip_single(dummy_session: Path, tmp_path
     assert res.output_path is not None
     assert res.output_path.name == "session_55667788.session"
     assert res.is_zip is False
+    assert len(res.entries) == 1
+    assert res.entries[0].ok is True
 
 
 @pytest.mark.asyncio
@@ -220,6 +225,8 @@ async def test_multi_account_tdata_count_accuracy(dummy_session: Path, tmp_path:
     assert res.output_path is not None
     assert res.output_path.suffix == ".zip"
     assert res.is_zip is True
+    assert all(entry.ok for entry in res.entries)
+    assert sorted(entry.name for entry in res.entries) == ["account1", "account2"]
 
 
 def test_find_tdata_dirs(tmp_path: Path):
@@ -294,14 +301,110 @@ def test_extract_zip_tdata_safe_suspicious_ratio(tmp_path: Path):
         extract_zip_tdata_safe(zip_path, target)
 
 
+@pytest.mark.asyncio
+async def test_process_tdata_to_session_live_verification(
+    dummy_session: Path, tmp_path: Path
+):
+    tdata_dir = tmp_path / "tdata"
+    await convert_session_to_tdata(dummy_session, tdata_dir)
+
+    zip_in = tmp_path / "input.zip"
+    with zipfile.ZipFile(zip_in, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in tdata_dir.rglob("*"):
+            if f.is_file():
+                zf.write(f, arcname=f"tdata/{f.relative_to(tdata_dir)}")
+
+    client = AsyncMock()
+    client.connect = AsyncMock()
+    client.get_me = AsyncMock(
+        side_effect=AuthKeyUnregisteredError("AUTH_KEY_UNREGISTERED")
+    )
+    client.disconnect = AsyncMock()
+
+    out_dir = tmp_path / "outbox"
+    with patch("telethon.TelegramClient", return_value=client):
+        res = await process_tdata_to_session_conversion(
+            zip_in, out_dir, credentials=[(111, "hash")]
+        )
+
+    assert res.total == 1
+    assert res.converted == 0
+    assert res.failed == 1
+    assert res.output_path is None
+    assert res.entries[0].ok is False
+
+
+@pytest.mark.asyncio
+async def test_process_tdata_to_session_live_verification_keeps_authorized(
+    dummy_session: Path, tmp_path: Path
+):
+    tdata_dir = tmp_path / "tdata"
+    await convert_session_to_tdata(dummy_session, tdata_dir)
+
+    zip_in = tmp_path / "input.zip"
+    with zipfile.ZipFile(zip_in, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in tdata_dir.rglob("*"):
+            if f.is_file():
+                zf.write(f, arcname=f"tdata/{f.relative_to(tdata_dir)}")
+
+    client = AsyncMock()
+    client.connect = AsyncMock()
+    client.get_me = AsyncMock(return_value=MagicMock(id=55667788))
+    client.disconnect = AsyncMock()
+
+    out_dir = tmp_path / "outbox"
+    with patch("telethon.TelegramClient", return_value=client):
+        res = await process_tdata_to_session_conversion(
+            zip_in, out_dir, credentials=[(123, "hash")]
+        )
+
+    assert res.total == 1
+    assert res.converted == 1
+    assert res.failed == 0
+    assert res.output_path is not None
+    assert res.entries[0].ok is True
+
+
 def test_tdata_to_session_locales_completeness():
     for lang in LANGUAGES:
         assert lang in TDATA_TO_SESSION_PROMPTS
         assert lang in TDATA_TO_SESSION_MESSAGES
         msgs = TDATA_TO_SESSION_MESSAGES[lang]
-        assert "converting" in msgs
-        assert "done" in msgs
-        assert "no_valid_tdata" in msgs
+        for key in (
+            "converting",
+            "done",
+            "title",
+            "summary",
+            "no_valid_tdata",
+            "btn_retry",
+            "btn_home",
+            "caption",
+            "cancelled",
+            "more",
+        ):
+            assert key in msgs
+
+
+@pytest.mark.asyncio
+async def test_process_tdata_to_session_job_cancelled(dummy_session: Path, tmp_path: Path):
+    tdata_dir = tmp_path / "tdata"
+    await convert_session_to_tdata(dummy_session, tdata_dir)
+
+    zip_in = tmp_path / "input.zip"
+    with zipfile.ZipFile(zip_in, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in tdata_dir.rglob("*"):
+            if f.is_file():
+                zf.write(f, arcname=f"tdata/{f.relative_to(tdata_dir)}")
+
+    cancel_event = asyncio.Event()
+    cancel_event.set()
+    with pytest.raises(JobCancelled):
+        await process_tdata_to_session_conversion(
+            zip_in,
+            tmp_path / "outbox",
+            progress=JobProgress(),
+            cancel_event=cancel_event,
+        )
 
 
 @pytest.mark.asyncio
@@ -333,6 +436,7 @@ async def test_tdata_to_session_handler_flow(dummy_session: Path, tmp_path: Path
     settings = MagicMock()
     settings.storage_dir = tmp_path
     settings.max_upload_bytes = 100 * 1024 * 1024
+    settings.api_credential_list = []
 
     status_msg = AsyncMock()
     message.answer.return_value = status_msg
@@ -380,6 +484,7 @@ async def test_tdata_to_session_handler_cleanup_on_send_error(
     settings = MagicMock()
     settings.storage_dir = tmp_path
     settings.max_upload_bytes = 100 * 1024 * 1024
+    settings.api_credential_list = []
 
     status_msg = AsyncMock()
     message.answer.return_value = status_msg

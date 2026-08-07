@@ -43,16 +43,17 @@ def _is_safe_path(path: str) -> bool:
     return ".." not in parts
 
 
-def _extract_tdata_key(parent_parts: list[str]) -> str | None:
-    """Determine the Tdata folder identifier key from parent directory parts.
+def _extract_implicit_tdata_key(parent_parts: list[str]) -> str | None:
+    """Strict Tdata key detection for file entries.
 
-    Prioritizes numeric/phone folder names (e.g. '596696702021') or 'tdata'.
-    Fallback to the first top-level parent folder without a dot extension.
+    Only numeric/phone account folders (e.g. '596696702021') or folders
+    anchored to an explicit 'tdata' directory qualify as Tdata folders.
+    Non-numeric folder names without an explicit directory entry are NOT
+    treated as Tdata (avoids false positives on unrelated zip structure).
     """
     if not parent_parts:
         return None
 
-    # Check for explicit numeric/phone or 'tdata' folders
     for part in reversed(parent_parts):
         clean = part.strip().lstrip("+")
         if clean.isdigit() and len(clean) >= 5:
@@ -62,11 +63,6 @@ def _extract_tdata_key(parent_parts: list[str]) -> str | None:
             if idx > 0 and "." not in parent_parts[idx - 1]:
                 return parent_parts[idx - 1].lower()
             return "tdata"
-
-    # Fallback to first parent folder without extension
-    for part in parent_parts:
-        if "." not in part and part.lower() not in ("files", "emoji", "user_data", "temp"):
-            return part.lower()
 
     return None
 
@@ -100,7 +96,7 @@ def _index_archive(data: bytes) -> tuple[
                         key = parts[0].lower().lstrip("+")
                         tdata_map.setdefault(key, [])
                     elif len(parts) > 1:
-                        td_key = _extract_tdata_key(parts)
+                        td_key = _extract_implicit_tdata_key(parts)
                         if td_key:
                             tdata_map.setdefault(td_key, [])
                 else:
@@ -119,7 +115,7 @@ def _index_archive(data: bytes) -> tuple[
                     else:
                         # Check if file belongs to a Tdata directory
                         parent_parts = parts[:-1]
-                        td_key = _extract_tdata_key(parent_parts)
+                        td_key = _extract_implicit_tdata_key(parent_parts)
                         if td_key:
                             tdata_map.setdefault(td_key, []).append(norm)
 

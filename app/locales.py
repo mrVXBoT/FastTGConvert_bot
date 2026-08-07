@@ -19,8 +19,8 @@ LANGUAGES = {
     "bn": Locale(
         language_name="🇧🇩 বাংলা",
         join_required="🔒 এই বট ব্যবহার করতে প্রথমে আমাদের চ্যানেলে যোগ দিন:",
-        join_channel="✅ চ্যানেলে যোগ দিন",
-        joined="🔄 আমি যোগ দিয়েছি",
+        join_channel="চ্যানেলে যোগ দিন",
+        joined="আমি যোগ দিয়েছি",
         membership_incomplete="সদস্যতা এখনো সম্পূর্ণ হয়নি।",
         membership_verified="সদস্যতা নিশ্চিত হয়েছে।",
         welcome="👋 <b>Telegram Account Checker Bot</b>",
@@ -29,8 +29,8 @@ LANGUAGES = {
     "en": Locale(
         language_name="🇬🇧 English",
         join_required="🔒 To use this bot, you must join our channel first:",
-        join_channel="✅ Join Channel",
-        joined="🔄 I Joined",
+        join_channel="Join Channel",
+        joined="I Joined",
         membership_incomplete="Your membership is not complete yet.",
         membership_verified="Membership verified.",
         welcome="👋 <b>Telegram Account Checker Bot</b>",
@@ -39,8 +39,8 @@ LANGUAGES = {
     "hi": Locale(
         language_name="🇮🇳 हिन्दी",
         join_required="🔒 इस बॉट का उपयोग करने के लिए पहले हमारे चैनल से जुड़ें:",
-        join_channel="✅ चैनल से जुड़ें",
-        joined="🔄 मैं जुड़ गया",
+        join_channel="चैनल से जुड़ें",
+        joined="मैं जुड़ गया",
         membership_incomplete="सदस्यता अभी पूरी नहीं हुई है।",
         membership_verified="सदस्यता सत्यापित हो गई।",
         welcome="👋 <b>Telegram Account Checker Bot</b>",
@@ -49,8 +49,8 @@ LANGUAGES = {
     "ur": Locale(
         language_name="🇵🇰 اردو",
         join_required="🔒 اس بوٹ کو استعمال کرنے کے لیے پہلے ہمارے چینل میں شامل ہوں:",
-        join_channel="✅ چینل جوائن کریں",
-        joined="🔄 میں شامل ہو گیا",
+        join_channel="چینل جوائن کریں",
+        joined="میں شامل ہو گیا",
         membership_incomplete="رکنیت ابھی مکمل نہیں ہوئی۔",
         membership_verified="رکنیت کی تصدیق ہو گئی۔",
         welcome="👋 <b>Telegram Account Checker Bot</b>",
@@ -59,8 +59,8 @@ LANGUAGES = {
     "ar": Locale(
         language_name="🇸🇦 العربية",
         join_required="🔒 لاستخدام هذا البوت، انضم إلى قناتنا أولاً:",
-        join_channel="✅ انضم إلى القناة",
-        joined="🔄 لقد انضممت",
+        join_channel="انضم إلى القناة",
+        joined="لقد انضممت",
         membership_incomplete="لم يكتمل الاشتراك بعد.",
         membership_verified="تم التحقق من الاشتراك.",
         welcome="👋 <b>Telegram Account Checker Bot</b>",
@@ -69,8 +69,8 @@ LANGUAGES = {
     "zh": Locale(
         language_name="🇨🇳 中文",
         join_required="🔒 要使用此机器人，请先加入我们的频道：",
-        join_channel="✅ 加入频道",
-        joined="🔄 我已加入",
+        join_channel="加入频道",
+        joined="我已加入",
         membership_incomplete="您尚未完成频道订阅。",
         membership_verified="频道订阅已验证。",
         welcome="👋 <b>Telegram Account Checker Bot</b>",
@@ -80,7 +80,7 @@ LANGUAGES = {
 
 ADMIN_LOCALES: dict[str, dict[str, str]] = {
     "en": {
-        "title": "👑 **Admin Control Panel**",
+        "title": "👑 <b>Admin Control Panel</b>",
         "btn_stats": "Statistics",
         "btn_users": "Users",
         "btn_broadcast": "Broadcast",
@@ -88,13 +88,14 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
         "btn_force_join": "Force Join",
         "btn_support": "Support",
         "btn_vip": "VIP Management",
+        "btn_referral": "Referral System",
         "btn_language": "Language",
         "btn_close": "Close Panel",
         "btn_back": "Back",
         "access_denied": "Access Denied: Admin privileges required.",
     },
     "bn": {
-        "title": "👑 **এডমিন কন্ট্রোল প্যানেল**",
+        "title": "👑 <b>এডমিন কন্ট্রোল প্যানেল</b>",
         "btn_stats": "পরিসংখ্যান",
         "btn_users": "ইউজার পরিচালনা",
         "btn_broadcast": "সার্বজনীন বার্তা",
@@ -102,13 +103,14 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
         "btn_force_join": "বাধ্যতামূলক জয়েন",
         "btn_support": "সাপোর্ট সেটিংস",
         "btn_vip": "VIP ব্যবস্থাপনা",
+        "btn_referral": "রেফারেল সিস্টেম",
         "btn_language": "ভাষা",
         "btn_close": "প্যানেল বন্ধ",
         "btn_back": "ফিরে যান",
         "access_denied": "প্রবেশাধিকার অস্বীকৃত: এডমিন ক্ষমতা আবশ্যক।",
     },
     "hi": {
-        "title": "👑 **एडमिन कंट्रोल पैनल**",
+        "title": "👑 <b>एडमिन कंट्रोल पैनल</b>",
         "btn_stats": "आंकड़े",
         "btn_users": "उपयोगकर्ता",
         "btn_broadcast": "ब्रॉडकास्ट",
@@ -116,13 +118,14 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
         "btn_force_join": "अनिवार्य जॉइन",
         "btn_support": "सपोर्ट",
         "btn_vip": "VIP प्रबंधन",
+        "btn_referral": "रेफ़रल सिस्टम",
         "btn_language": "भाषा",
         "btn_close": "पैनल बंद करें",
         "btn_back": "वापस",
         "access_denied": "पहुंच अस्वीकृत: एडमिन अनुमतियां आवश्यक।",
     },
     "ur": {
-        "title": "👑 **ایڈمن کنٹرول پینل**",
+        "title": "👑 <b>ایڈمن کنٹرول پینل</b>",
         "btn_stats": "اعداد و شمار",
         "btn_users": "صارفین",
         "btn_broadcast": "نشریات",
@@ -130,13 +133,14 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
         "btn_force_join": "لازمی شمولیت",
         "btn_support": "سپورٹ",
         "btn_vip": "VIP مینجمنٹ",
+        "btn_referral": "ریفرل سسٹم",
         "btn_language": "زبان",
         "btn_close": "پینل بند کریں",
         "btn_back": "واپس",
         "access_denied": "رسائی مسترد: ایڈمن کے اختیارات درکار ہیں۔",
     },
     "ar": {
-        "title": "👑 **لوحة تحكم المشرف**",
+        "title": "👑 <b>لوحة تحكم المشرف</b>",
         "btn_stats": "الإحصائيات",
         "btn_users": "إدارة المستخدمين",
         "btn_broadcast": "الإذاعة الجماعية",
@@ -144,13 +148,14 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
         "btn_force_join": "الاشتراك الإجباري",
         "btn_support": "إعدادات الدعم",
         "btn_vip": "إدارة VIP والخطط",
+        "btn_referral": "نظام الإحالة",
         "btn_language": "اللغة",
         "btn_close": "إغلاق اللوحة",
         "btn_back": "عودة",
         "access_denied": "تم رفض الوصول: يتطلب صلاحيات المشرف.",
     },
     "zh": {
-        "title": "👑 **管理员控制面板**",
+        "title": "👑 <b>管理员控制面板</b>",
         "btn_stats": "数据统计",
         "btn_users": "用户管理",
         "btn_broadcast": "广播群发",
@@ -158,6 +163,7 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
         "btn_force_join": "强制关注频道",
         "btn_support": "客服支持设置",
         "btn_vip": "VIP 与方案管理",
+        "btn_referral": "推荐系统",
         "btn_language": "语言",
         "btn_close": "关闭面板",
         "btn_back": "返回",
@@ -186,12 +192,10 @@ REFERRAL_MESSAGES: dict[str, str] = {
         "<code>{ref_link}</code>\n\n"
         "📊 <b>Your Stats</b>\n"
         "  👥 Referred: <b>{referred}</b> users\n"
-        "  🎁 VIP days earned: <b>{earned_days}</b>\n\n"
+        "  🎁 VIP days earned: <b>{earned_days}</b>\n"
+        "{next_tier}"
         "🥇 <b>Reward Tiers</b>\n"
-        "  🏆 <b>1 refs</b> → 1 days FREE VIP\n"
-        "  🏆 <b>7 refs</b> → 7 days FREE VIP\n"
-        "  🏆 <b>15 refs</b> → 15 days FREE VIP\n"
-        "  🏆 <b>30 refs</b> → 30 days FREE VIP\n\n"
+        "{tiers}"
         "Share your link! Every new user who joins via your link counts. 🔗"
     ),
     "bn": (
@@ -199,12 +203,10 @@ REFERRAL_MESSAGES: dict[str, str] = {
         "<code>{ref_link}</code>\n\n"
         "📊 <b>আপনার পরিসংখ্যান</b>\n"
         "  👥 রেফারেল: <b>{referred}</b> জন\n"
-        "  🎁 অর্জিত VIP দিন: <b>{earned_days}</b>\n\n"
+        "  🎁 অর্জিত VIP দিন: <b>{earned_days}</b>\n"
+        "{next_tier}"
         "🥇 <b>পুরস্কার স্তর</b>\n"
-        "  🏆 <b>1 রেফার</b> → 1 দিন ফ্রি VIP\n"
-        "  🏆 <b>7 রেফার</b> → 7 দিন ফ্রি VIP\n"
-        "  🏆 <b>15 রেফার</b> → 15 দিন ফ্রি VIP\n"
-        "  🏆 <b>30 রেফার</b> → 30 দিন ফ্রি VIP\n\n"
+        "{tiers}"
         "আপনার লিংক শেয়ার করুন! আপনার লিংকের মাধ্যমে আসা প্রতিটি নতুন ইউজার যুক্ত হবে। 🔗"
     ),
     "hi": (
@@ -212,12 +214,10 @@ REFERRAL_MESSAGES: dict[str, str] = {
         "<code>{ref_link}</code>\n\n"
         "📊 <b>आपके आंकड़े</b>\n"
         "  👥 आमंत्रित: <b>{referred}</b> उपयोगकर्ता\n"
-        "  🎁 अर्जित VIP दिन: <b>{earned_days}</b>\n\n"
+        "  🎁 अर्जित VIP दिन: <b>{earned_days}</b>\n"
+        "{next_tier}"
         "🥇 <b>पुरस्कार स्तर</b>\n"
-        "  🏆 <b>1 रेफ़रल</b> → 1 दिन मुफ़्त VIP\n"
-        "  🏆 <b>7 रेफ़रल</b> → 7 दिन मुफ़्त VIP\n"
-        "  🏆 <b>15 रेफ़रल</b> → 15 दिन मुफ़्त VIP\n"
-        "  🏆 <b>30 रेफ़रल</b> → 30 दिन मुफ़्त VIP\n\n"
+        "{tiers}"
         "अपना लिंक साझा करें! आपके लिंक के माध्यम से जुड़ने वाला प्रत्येक नया उपयोगकर्ता गिना जाता है। 🔗"
     ),
     "ur": (
@@ -225,12 +225,10 @@ REFERRAL_MESSAGES: dict[str, str] = {
         "<code>{ref_link}</code>\n\n"
         "📊 <b>آپ کے اعداد و شمار</b>\n"
         "  👥 شامل کیے گئے: <b>{referred}</b> صارفین\n"
-        "  🎁 حاصل شدہ VIP ایام: <b>{earned_days}</b>\n\n"
+        "  🎁 حاصل شدہ VIP ایام: <b>{earned_days}</b>\n"
+        "{next_tier}"
         "🥇 <b>انعامی درجات</b>\n"
-        "  🏆 <b>1 ریفرل</b> → 1 دن مفت VIP\n"
-        "  🏆 <b>7 ریفرل</b> → 7 دن مفت VIP\n"
-        "  🏆 <b>15 ریفرل</b> → 15 دن مفت VIP\n"
-        "  🏆 <b>30 ریفرل</b> → 30 دن مفت VIP\n\n"
+        "{tiers}"
         "اپنا لنک شیئر کریں! آپ کے لنک سے شامل ہونے والا ہر نیا صارف شمار ہوگا۔ 🔗"
     ),
     "ar": (
@@ -238,12 +236,10 @@ REFERRAL_MESSAGES: dict[str, str] = {
         "<code>{ref_link}</code>\n\n"
         "📊 <b>إحصائياتك</b>\n"
         "  👥 تمت إحالتهم: <b>{referred}</b> مستخدمين\n"
-        "  🎁 أيام VIP المكتسبة: <b>{earned_days}</b>\n\n"
+        "  🎁 أيام VIP المكتسبة: <b>{earned_days}</b>\n"
+        "{next_tier}"
         "🥇 <b>مستويات المكافآت</b>\n"
-        "  🏆 <b>1 إحالة</b> → يوم 1 VIP مجاني\n"
-        "  🏆 <b>7 إحالات</b> → 7 أيام VIP مجاناً\n"
-        "  🏆 <b>15 إحالة</b> → 15 يوم VIP مجاناً\n"
-        "  🏆 <b>30 إحالة</b> → 30 يوم VIP مجاناً\n\n"
+        "{tiers}"
         "شارك رابطك! كل مستخدم جديد ينضم عبر رابطك يمنحك نقاطاً. 🔗"
     ),
     "zh": (
@@ -251,14 +247,48 @@ REFERRAL_MESSAGES: dict[str, str] = {
         "<code>{ref_link}</code>\n\n"
         "📊 <b>您的统计数据</b>\n"
         "  👥 已推荐: <b>{referred}</b> 用户\n"
-        "  🎁 已获得 VIP 天数: <b>{earned_days}</b>\n\n"
+        "  🎁 已获得 VIP 天数: <b>{earned_days}</b>\n"
+        "{next_tier}"
         "🥇 <b>奖励阶梯</b>\n"
-        "  🏆 <b>1 人推荐</b> → 1 天免费 VIP\n"
-        "  🏆 <b>7 人推荐</b> → 7 天免费 VIP\n"
-        "  🏆 <b>15 人推荐</b> → 15 天免费 VIP\n"
-        "  🏆 <b>30 人推荐</b> → 30 天免费 VIP\n\n"
+        "{tiers}"
         "分享您的链接！通过您的链接加入的每一位新用户都算数。 🔗"
     ),
+}
+
+REFERRAL_TIER_LABELS: dict[str, str] = {
+    "en": "  🏆 <b>{refs} refs</b> → <b>{days} days</b> FREE VIP",
+    "bn": "  🏆 <b>{refs} রেফার</b> → <b>{days} দিন</b> ফ্রি VIP",
+    "hi": "  🏆 <b>{refs} रेफ़रल</b> → <b>{days} दिन</b> मुफ़्त VIP",
+    "ur": "  🏆 <b>{refs} ریفرل</b> → <b>{days} دن</b> مفت VIP",
+    "ar": "  🏆 <b>{refs} إحالة</b> → <b>{days} يوم</b> VIP مجاناً",
+    "zh": "  🏆 <b>{refs} 人推荐</b> → <b>{days} 天</b>免费 VIP",
+}
+
+REFERRAL_NEXT_TIER_LABELS: dict[str, str] = {
+    "en": "  🎯 Next reward: <b>{refs} refs</b> → <b>{days} days</b> VIP (<code>{remaining} left</code>)",
+    "bn": "  🎯 পরবর্তী পুরস্কার: <b>{refs} রেফার</b> → <b>{days} দিন</b> VIP (<code>{remaining} বাকি</code>)",
+    "hi": "  🎯 अगला पुरस्कार: <b>{refs} रेफ़रल</b> → <b>{days} दिन</b> VIP (<code>{remaining} बाकी</code>)",
+    "ur": "  🎯 اگلا انعام: <b>{refs} ریفرل</b> → <b>{days} دن</b> VIP (<code>{remaining} باقی</code>)",
+    "ar": "  🎯 المكافأة التالية: <b>{refs} إحالة</b> → <b>{days} يوم</b> VIP (<code>متبقي {remaining}</code>)",
+    "zh": "  🎯 下一个奖励: <b>{refs} 人推荐</b> → <b>{days} 天</b> VIP（还差 <code>{remaining}</code>）",
+}
+
+REFERRAL_NOTIFY_MESSAGES: dict[str, str] = {
+    "en": "🎁 <b>New Referral!</b>\n\n👤 A new user joined via your referral link.\n📊 Total referrals: <b>{count}</b>\n{reward}",
+    "bn": "🎁 <b>নতুন রেফারেল!</b>\n\n👤 আপনার রেফারেল লিংকের মাধ্যমে একজন নতুন ইউজার যোগ দিয়েছে।\n📊 মোট রেফারেল: <b>{count}</b>\n{reward}",
+    "hi": "🎁 <b>नया रेफ़रल!</b>\n\n👤 आपके रेफ़रल लिंक के माध्यम से एक नया उपयोगकर्ता जुड़ा।\n📊 कुल रेफ़रल: <b>{count}</b>\n{reward}",
+    "ur": "🎁 <b>نیا ریفرل!</b>\n\n👤 آپ کے ریفرل لنک کے ذریعے ایک نیا صارف شامل ہوا۔\n📊 کل ریفرلز: <b>{count}</b>\n{reward}",
+    "ar": "🎁 <b>إحالة جديدة!</b>\n\n👤 انضم مستخدم جديد عبر رابط الإحالة الخاص بك.\n📊 إجمالي الإحالات: <b>{count}</b>\n{reward}",
+    "zh": "🎁 <b>新推荐!</b>\n\n👤 一名新用户通过您的推荐链接加入。\n📊 总推荐人数: <b>{count}</b>\n{reward}",
+}
+
+REFERRAL_REWARD_LABELS: dict[str, str] = {
+    "en": "🎉 +{days} VIP days granted to your account!",
+    "bn": "🎉 আপনার অ্যাকাউন্টে +{days} VIP দিন যুক্ত হয়েছে!",
+    "hi": "🎉 आपके खाते में +{days} VIP दिन जुड़ गए!",
+    "ur": "🎉 آپ کے اکاؤنٹ میں +{days} VIP دن شامل ہو گئے!",
+    "ar": "🎉 تمت إضافة +{days} يوم VIP إلى حسابك!",
+    "zh": "🎉 您的账户已获得 +{days} 天 VIP!",
 }
 
 PROXY_MESSAGES: dict[str, str] = {
@@ -778,10 +808,14 @@ ACCOUNT_AGE_MESSAGES = {
     "en": {
         "fetching": "⏳ Estimating account age & fetching account details...",
         "no_sessions": "❌ No valid sessions found.",
+        "request_failed": "❌ An error occurred during request processing.",
         "report_title": "Account Information & Age Report",
         "btn_total": "Total",
         "btn_checked": "Checked",
         "btn_failed": "Failed",
+        "btn_back": "⬅️ Back to Menu",
+        "btn_next": "Next ▶️",
+        "btn_prev": "◀️ Prev",
         "label_name": "Name",
         "label_user_id": "User ID",
         "label_username": "Username",
@@ -795,10 +829,14 @@ ACCOUNT_AGE_MESSAGES = {
     "bn": {
         "fetching": "⏳ অ্যাকাউন্টের তথ্য এবং নিবন্ধনের তারিখ সংগ্রহ করা হচ্ছে...",
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
+        "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
         "report_title": "অ্যাকাউন্টের তথ্য এবং বয়সের রিপোর্ট",
         "btn_total": "মোট",
         "btn_checked": "পরীক্ষিত",
         "btn_failed": "ব্যর্থ",
+        "btn_back": "⬅️ মেনুতে ফিরুন",
+        "btn_next": "পরের ▶️",
+        "btn_prev": "◀️ আগের",
         "label_name": "নাম",
         "label_user_id": "ইউজার আইডি",
         "label_username": "ইউজারনেম",
@@ -812,10 +850,14 @@ ACCOUNT_AGE_MESSAGES = {
     "hi": {
         "fetching": "⏳ खाते की जानकारी और पंजीकरण तिथि प्राप्त की जा रही है...",
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
+        "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
         "report_title": "खाता जानकारी और आयु रिपोर्ट",
         "btn_total": "कुल",
         "btn_checked": "जांचा गया",
         "btn_failed": "विफल",
+        "btn_back": "⬅️ मेनू पर वापस",
+        "btn_next": "अगला ▶️",
+        "btn_prev": "◀️ पिछला",
         "label_name": "नाम",
         "label_user_id": "यूजर आईडी",
         "label_username": "यूजरनेम",
@@ -829,10 +871,14 @@ ACCOUNT_AGE_MESSAGES = {
     "ur": {
         "fetching": "⏳ اکاؤنٹ کی تفصیلات اور رجسٹریشن کی تاریخ کا تخمینہ لگایا جا رہا ہے...",
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
+        "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
         "report_title": "اکاؤنٹ کی معلومات اور عمر کی رپورٹ",
         "btn_total": "کل",
         "btn_checked": "چیک شدہ",
         "btn_failed": "ناکام",
+        "btn_back": "⬅️ مینو پر واپس جائیں",
+        "btn_next": "اگلا ▶️",
+        "btn_prev": "◀️ پچھلا",
         "label_name": "نام",
         "label_user_id": "یوزر آئی ڈی",
         "label_username": "یوزر نیم",
@@ -841,19 +887,23 @@ ACCOUNT_AGE_MESSAGES = {
         "label_est_creation": "تخمینہ شدہ تاریخ",
         "label_earliest_activity": "پہلی سرگرمی",
         "label_yes": "ہاں",
-        "label_no": "نہیں۔",
+        "label_no": "نہیں",
     },
     "ar": {
         "fetching": "⏳ جاري جلب تفاصيل الحساب وتقدير عمر الحساب...",
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
+        "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
         "report_title": "تقرير معلومات وعمر الحساب",
         "btn_total": "الإجمالي",
         "btn_checked": "تم الفحص",
         "btn_failed": "فشل",
+        "btn_back": "⬅️ العودة إلى القائمة",
+        "btn_next": "التالي ▶️",
+        "btn_prev": "◀️ السابق",
         "label_name": "الاسم",
         "label_user_id": "معرف المستخدم",
         "label_username": "اسم المستخدم",
-        "label_premium": "بانيوم",
+        "label_premium": "بريميوم",
         "label_dc": "مركز البيانات",
         "label_est_creation": "تاريخ الإنشاء التقديري",
         "label_earliest_activity": "أول نشاط",
@@ -863,10 +913,14 @@ ACCOUNT_AGE_MESSAGES = {
     "zh": {
         "fetching": "⏳ 正在获取账号详细信息和估算注册年份...",
         "no_sessions": "❌ 未找到有效会话。",
+        "request_failed": "❌ 处理请求时出错。",
         "report_title": "账号详细信息与注册年份报告",
         "btn_total": "总计",
         "btn_checked": "已检测",
         "btn_failed": "失败",
+        "btn_back": "⬅️ 返回菜单",
+        "btn_next": "下一页 ▶️",
+        "btn_prev": "◀️ 上一页",
         "label_name": "姓名",
         "label_user_id": "用户 ID",
         "label_username": "用户名",
@@ -933,7 +987,14 @@ ARCHIVE_ERRORS = {
         ),
         "zip_suspicious_ratio": "ZIP compression ratio is suspicious.",
         "zip_bomb_detected": "ZIP appears to be a Zip Bomb.",
+        "zip_no_sessions": "The ZIP contains no .session files.",
         "chunk_size_invalid": "Chunk size must be greater than zero.",
+        "bad_zip_file": "The uploaded file is not a valid ZIP archive.",
+        "storage_error": "Not enough free disk space to save the output.",
+        "opentele_not_installed": (
+            "The <code>opentele</code> dependency is not installed on the server. "
+            "Please contact the administrator."
+        ),
     },
     "bn": {
         "zip_too_many_members": ("ZIP এর ভেতর ফাইলের সংখ্যা অননুমোদিত মাত্রায় বেশি।"),
@@ -941,7 +1002,13 @@ ARCHIVE_ERRORS = {
         "zip_uncompressed_limit": ("ZIP আনকম্প্রেসড সাইজ সর্বোচ্চ সীমা অতিক্রম করেছে।"),
         "zip_suspicious_ratio": "ZIP এর কম্প্রেশন রেশিও সন্দেহজনক।",
         "zip_bomb_detected": "ZIP টি Zip Bomb হতে পারে।",
+        "zip_no_sessions": "ZIP এ কোনো .session ফাইল নেই।",
         "chunk_size_invalid": "টুকরোর সাইজ শুন্যের চেয়ে বেশি হতে হবে।",
+        "bad_zip_file": "আপলোড করা ফাইলটি সঠিক ZIP আর্কাইভ নয়।",
+        "storage_error": "আউটপুট সংরক্ষণ করতে পর্যাপ্ত ডিস্ক স্পেস নেই।",
+        "opentele_not_installed": (
+            "সার্ভারে <code>opentele</code> ডিপেন্ডেন্সি ইনস্টল নেই। অ্যাডমিনের সাথে যোগাযোগ করুন।"
+        ),
     },
     "hi": {
         "zip_too_many_members": "ZIP में फाइलों की संख्या बहुत अधिक है।",
@@ -949,7 +1016,13 @@ ARCHIVE_ERRORS = {
         "zip_uncompressed_limit": ("ZIP अनकंप्रेस्ड आकार अधिकतम सीमा से अधिक है।"),
         "zip_suspicious_ratio": "ZIP संपीड़न अनुपात संदिग्ध है।",
         "zip_bomb_detected": "ZIP एक Zip Bomb प्रतीत होता है।",
+        "zip_no_sessions": "ZIP में कोई .session फ़ाइल नहीं है।",
         "chunk_size_invalid": "भाग का आकार शून्य से अधिक होना चाहिए।",
+        "bad_zip_file": "अपलोड की गई फ़ाइल एक मान्य ZIP आर्काइव नहीं है।",
+        "storage_error": "आउटपुट सहेजने के लिए पर्याप्त डिस्क स्थान नहीं है।",
+        "opentele_not_installed": (
+            "सर्वर पर <code>opentele</code> निर्भरता स्थापित नहीं है। कृपया प्रशासक से संपर्क करें।"
+        ),
     },
     "ur": {
         "zip_too_many_members": "ZIP میں فائلوں کی تعداد بہت زیادہ ہے۔",
@@ -957,7 +1030,13 @@ ARCHIVE_ERRORS = {
         "zip_uncompressed_limit": "ZIP سائز حد سے زیادہ ہے۔",
         "zip_suspicious_ratio": "ZIP کمپریشن ریشو مشکوک ہے۔",
         "zip_bomb_detected": "ZIP بظاہر Zip Bomb معلوم ہوتا ہے۔",
+        "zip_no_sessions": "ZIP میں کوئی .session فائل نہیں ہے۔",
         "chunk_size_invalid": "ٹکڑے کا سائز صفر سے بڑا ہونا چاہیے۔",
+        "bad_zip_file": "اپ لوڈ کردہ فائل درست ZIP آرکائیو نہیں ہے۔",
+        "storage_error": "آؤٹ پٹ محفوظ کرنے کے لیے کافی ڈسک جگہ نہیں ہے۔",
+        "opentele_not_installed": (
+            "سرور پر <code>opentele</code> ڈیپنڈنسی انسٹال نہیں ہے۔ براہ کرم ایڈمن سے رابطہ کریں۔"
+        ),
     },
     "ar": {
         "zip_too_many_members": ("يحتوي ملف ZIP على عدد كبير جداً من الملفات."),
@@ -967,7 +1046,13 @@ ARCHIVE_ERRORS = {
         ),
         "zip_suspicious_ratio": "نسبة ضغط ZIP مشبوهة.",
         "zip_bomb_detected": ("يبدو ملف ZIP كأنه قنبلة ضغط (Zip Bomb)."),
+        "zip_no_sessions": "لا يحتوي ملف ZIP على أي ملفات .session.",
         "chunk_size_invalid": "يجب أن يكون حجم الجزء أكبر من الصفر.",
+        "bad_zip_file": "الملف المرفوع ليس أرشيف ZIP صالحاً.",
+        "storage_error": "لا توجد مساحة كافية على القرص لحفظ الناتج.",
+        "opentele_not_installed": (
+            "الاعتماد <code>opentele</code> غير مثبت على الخادم. يرجى التواصل مع المسؤول."
+        ),
     },
     "zh": {
         "zip_too_many_members": "ZIP 包含的文件数量过多。",
@@ -975,7 +1060,13 @@ ARCHIVE_ERRORS = {
         "zip_uncompressed_limit": ("ZIP 解压后的大小超过允许的最大限制。"),
         "zip_suspicious_ratio": "ZIP 压缩率可疑。",
         "zip_bomb_detected": "ZIP 似乎是 Zip 炸弹。",
+        "zip_no_sessions": "ZIP 中不包含 .session 文件。",
         "chunk_size_invalid": "分块大小必须大于零。",
+        "bad_zip_file": "上传的文件不是有效的 ZIP 压缩包。",
+        "storage_error": "磁盘空间不足，无法保存输出。",
+        "opentele_not_installed": (
+            "服务器上未安装 <code>opentele</code> 依赖。请联系管理员。"
+        ),
     },
 }
 
@@ -1219,6 +1310,8 @@ CHANNEL_MESSAGES = {
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
         "done": "✅ Done — {success} success | ❌ {failed} failed",
+        "failed_report": "❌ All attempts failed — {failed} failed",
+        "invalid_target": "❌ Invalid target. Send a channel username or link (e.g. <code>@channel</code> or <code>https://t.me/+link</code>). Joining with <code>all</code> is not supported.",
         "btn_total": "Total",
         "btn_success": "Success",
         "btn_failed": "Failed",
@@ -1228,6 +1321,8 @@ CHANNEL_MESSAGES = {
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
         "done": "✅ সম্পন্ন — {success}টি সফল | ❌ {failed}টি ব্যর্থ",
+        "failed_report": "❌ সব প্রচেষ্টা ব্যর্থ — {failed}টি ব্যর্থ",
+        "invalid_target": "❌ ভুল টার্গেট। চ্যানেলের ইউজারনেম বা লিংক পাঠান (যেমন <code>@channel</code> বা <code>https://t.me/+link</code>)। <code>all</code> দিয়ে জয়েন করা সমর্থিত নয়।",
         "btn_total": "মোট",
         "btn_success": "সফল",
         "btn_failed": "ব্যর্থ",
@@ -1237,6 +1332,8 @@ CHANNEL_MESSAGES = {
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
         "done": "✅ पूर्ण — {success} सफल | ❌ {failed} विफल",
+        "failed_report": "❌ सभी प्रयास विफल — {failed} विफल",
+        "invalid_target": "❌ अमान्य लक्ष्य। चैनल का यूज़रनेम या लिंक भेजें (जैसे <code>@channel</code> या <code>https://t.me/+link</code>)। <code>all</code> के साथ जॉइन करना समर्थित नहीं है।",
         "btn_total": "कुल",
         "btn_success": "सफल",
         "btn_failed": "विफल",
@@ -1246,6 +1343,8 @@ CHANNEL_MESSAGES = {
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
         "done": "✅ مکمل — {success} کامیاب | ❌ {failed} ناکام",
+        "failed_report": "❌ تمام کوششیں ناکام — {failed} ناکام",
+        "invalid_target": "❌ غلط ہدف۔ چینل کا صارف نام یا لنک بھیجیں (مثال: <code>@channel</code> یا <code>https://t.me/+link</code>)۔ <code>all</code> کے ساتھ جوائن کرنا معاون نہیں ہے۔",
         "btn_total": "کل",
         "btn_success": "کامیاب",
         "btn_failed": "ناکام",
@@ -1255,6 +1354,8 @@ CHANNEL_MESSAGES = {
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
         "done": "✅ اكتمل — {success} نجاح | ❌ {failed} فشل",
+        "failed_report": "❌ فشلت جميع المحاولات — {failed} فشل",
+        "invalid_target": "❌ هدف غير صالح. أرسل اسم مستخدم القناة أو الرابط (مثال: <code>@channel</code> أو <code>https://t.me/+link</code>). الانضمام عبر <code>all</code> غير مدعوم.",
         "btn_total": "الإجمالي",
         "btn_success": "الناجحة",
         "btn_failed": "الفاشلة",
@@ -1264,6 +1365,8 @@ CHANNEL_MESSAGES = {
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
         "done": "✅ 完成 — {success} 成功 | ❌ {failed} 失败",
+        "failed_report": "❌ 所有尝试均失败 — {failed} 失败",
+        "invalid_target": "❌ 无效目标。请发送频道用户名或链接（例如 <code>@channel</code> 或 <code>https://t.me/+link</code>）。不支持使用 <code>all</code> 加入。",
         "btn_total": "总计",
         "btn_success": "成功",
         "btn_failed": "失败",
@@ -1272,7 +1375,7 @@ CHANNEL_MESSAGES = {
 
 ENTER_CLEAR_CONTACTS_PROMPT = {
     "en": "📂 Please send your Telegram session file (.session) or ZIP archive to clear contacts:",
-    "bn": "📂 পরিচিতি পরিষ্কার করতে দয়া করে আপনার টেলিগ্রাম সেশন فایل (.session) বা ZIP আর্কাইভ পাঠান:",
+    "bn": "📂 পরিচিতি পরিষ্কার করতে দয়া করে আপনার টেলিগ্রাম সেশন ফাইল (.session) বা ZIP আর্কাইভ পাঠান:",
     "hi": "📂 संपर्क साफ़ करने के लिए कृपया अपनी टेलीग्राम सेशन फ़ाइल (.session) या ZIP संग्रह भेजें:",
     "ur": "📂 روابط صاف کرنے کے لیے براہ کرم اپنی ٹیلیگرام سیشن فائل (.session) یا ZIP آرکائیو بھیجیں:",
     "ar": "📂 يرجى إرسال ملف جلسة تليجرام (.session) أو أرشيف ZIP لمسح جهات الاتصال:",
@@ -1285,6 +1388,7 @@ CLEAR_CONTACTS_MESSAGES = {
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
         "done": "✅ Contacts Cleared — {success} success | ❌ {failed} failed",
+        "failed_report": "❌ All attempts failed — {failed} failed",
         "btn_total": "Total",
         "btn_success": "Cleared",
         "btn_failed": "Failed",
@@ -1294,6 +1398,7 @@ CLEAR_CONTACTS_MESSAGES = {
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
         "done": "✅ পরিচিতি পরিষ্কার সম্পন্ন — {success}টি সফল | ❌ {failed}টি ব্যর্থ",
+        "failed_report": "❌ সব প্রচেষ্টা ব্যর্থ — {failed}টি ব্যর্থ",
         "btn_total": "মোট",
         "btn_success": "পরিষ্কারকৃত",
         "btn_failed": "ব্যর্থ",
@@ -1303,6 +1408,7 @@ CLEAR_CONTACTS_MESSAGES = {
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
         "done": "✅ संपर्क साफ़ पूर्ण — {success} सफल | ❌ {failed} विफल",
+        "failed_report": "❌ सभी प्रयास विफल — {failed} विफल",
         "btn_total": "कुल",
         "btn_success": "साफ़",
         "btn_failed": "विफल",
@@ -1312,6 +1418,7 @@ CLEAR_CONTACTS_MESSAGES = {
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
         "done": "✅ روابط صاف مکمل — {success} کامیاب | ❌ {failed} ناکام",
+        "failed_report": "❌ تمام کوششیں ناکام — {failed} ناکام",
         "btn_total": "کل",
         "btn_success": "صاف کردہ",
         "btn_failed": "ناکام",
@@ -1321,6 +1428,7 @@ CLEAR_CONTACTS_MESSAGES = {
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
         "done": "✅ اكتمل مسح جهات الاتصال — {success} نجاح | ❌ {failed} فشل",
+        "failed_report": "❌ فشلت جميع المحاولات — {failed} فشل",
         "btn_total": "الإجمالي",
         "btn_success": "تم المسح",
         "btn_failed": "الفاشلة",
@@ -1330,6 +1438,7 @@ CLEAR_CONTACTS_MESSAGES = {
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
         "done": "✅ 联系人已清除 — {success} 成功 | ❌ {failed} 失败",
+        "failed_report": "❌ 所有尝试均失败 — {failed} 失败",
         "btn_total": "总计",
         "btn_success": "已清除",
         "btn_failed": "失败",
@@ -1552,6 +1661,7 @@ LIST_CHECKER_MESSAGES = {
             "✅ Total         : <b>{total} common items</b>"
         ),
         "invalid_format": "❌ Only <b>.zip</b> archives are supported.",
+        "download_failed": "❌ Failed to download the archive. Please try again.",
         "result_caption": "📦 matched_files.zip — {total} items",
     },
     "bn": {
@@ -1568,6 +1678,7 @@ LIST_CHECKER_MESSAGES = {
             "✅ মোট          : <b>{total}টি সাধারণ আইটেম</b>"
         ),
         "invalid_format": "❌ শুধুমাত্র <b>.zip</b> আর্কাইভ সমর্থিত।",
+        "download_failed": "❌ আর্কাইভ ডাউনলোড ব্যর্থ হয়েছে। আবার চেষ্টা করুন।",
         "result_caption": "📦 matched_files.zip — {total}টি আইটেম",
     },
     "hi": {
@@ -1584,6 +1695,7 @@ LIST_CHECKER_MESSAGES = {
             "✅ कुल           : <b>{total} समान आइटम</b>"
         ),
         "invalid_format": "❌ केवल <b>.zip</b> संग्रह समर्थित हैं।",
+        "download_failed": "❌ संग्रह डाउनलोड विफल रहा। कृपया पुनः प्रयास करें।",
         "result_caption": "📦 matched_files.zip — {total} आइटम",
     },
     "ur": {
@@ -1600,6 +1712,7 @@ LIST_CHECKER_MESSAGES = {
             "✅ کل            : <b>{total} مشترکہ آئٹمز</b>"
         ),
         "invalid_format": "❌ صرف <b>.zip</b> آرکائیوز معاون ہیں۔",
+        "download_failed": "❌ آرکائیو ڈاؤن لوڈ ناکام رہا۔ براہ کرم دوبارہ کوشش کریں۔",
         "result_caption": "📦 matched_files.zip — {total} آئٹمز",
     },
     "ar": {
@@ -1616,6 +1729,7 @@ LIST_CHECKER_MESSAGES = {
             "✅ الإجمالي      : <b>{total} عنصر مشترك</b>"
         ),
         "invalid_format": "❌ يُدعم فقط أرشيف <b>.zip</b>.",
+        "download_failed": "❌ فشل تنزيل الأرشيف. حاول مرة أخرى.",
         "result_caption": "📦 matched_files.zip — {total} عنصر",
     },
     "zh": {
@@ -1632,6 +1746,7 @@ LIST_CHECKER_MESSAGES = {
             "✅ 总计          : <b>{total} 个共同项目</b>"
         ),
         "invalid_format": "❌ 仅支持 <b>.zip</b> 压缩包。",
+        "download_failed": "❌ 压缩包下载失败，请重试。",
         "result_caption": "📦 matched_files.zip — {total} 个项目",
     },
 }
@@ -1654,33 +1769,33 @@ PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
             "⚙️ Applied Rule : <b>{preset}</b>"
             "{details}"
         ),
-        "btn_preset": "⚡ Apply Preset",
-        "btn_custom": "⚙️ Configure Rules",
-        "btn_apply_custom": "✅ Apply Custom Settings",
-        "btn_total": "👥 Total",
-        "btn_ok": "✅ Succeeded",
-        "btn_failed": "❌ Failed",
+        "btn_preset": "Apply Preset",
+        "btn_custom": "Configure Rules",
+        "btn_apply_custom": "Apply Custom Settings",
+        "btn_total": "Total",
+        "btn_ok": "Succeeded",
+        "btn_failed": "Failed",
         "invalid_file": "❌ Invalid file format. Please send a .session or .zip file.",
         "presets": {
-            "maximum": "🔴 Maximum Privacy",
-            "medium": "🟡 Medium Privacy",
-            "open": "🟢 Open / Public Privacy",
-            "custom": "⚙️ Custom Rules",
+            "maximum": "Maximum Privacy",
+            "medium": "Medium Privacy",
+            "open": "Open / Public Privacy",
+            "custom": "Custom Rules",
         },
         "rules": {
-            "last_seen": "👁 Last Seen",
-            "phone_number": "📞 Phone Number",
-            "profile_photo": "🖼 Profile Photo",
-            "forwarded_messages": "💬 Forwarded Messages",
-            "calls": "📞 Calls",
-            "p2p_calls": "🔗 P2P Calls",
-            "group_invites": "👥 Group Invites",
-            "voice_messages": "🎙 Voice Messages",
+            "last_seen": "Last Seen",
+            "phone_number": "Phone Number",
+            "profile_photo": "Profile Photo",
+            "forwarded_messages": "Forwarded Messages",
+            "calls": "Calls",
+            "p2p_calls": "P2P Calls",
+            "group_invites": "Group Invites",
+            "voice_messages": "Voice Messages",
         },
         "values": {
-            "everybody": "🌍 Everybody",
-            "contacts": "👥 My Contacts",
-            "nobody": "🚫 Nobody",
+            "everybody": "Everybody",
+            "contacts": "My Contacts",
+            "nobody": "Nobody",
         },
     },
     "bn": {
@@ -1699,33 +1814,33 @@ PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
             "⚙️ প্রয়োগকৃত নিয়ম : <b>{preset}</b>"
             "{details}"
         ),
-        "btn_preset": "⚡ প্রিসেট প্রয়োগ করুন",
-        "btn_custom": "⚙️ নিয়ম কনফিগার করুন",
-        "btn_apply_custom": "✅ কাস্টম প্রয়োগ করুন",
-        "btn_total": "👥 মোট",
-        "btn_ok": "✅ সফল",
-        "btn_failed": "❌ ব্যর্থ",
+        "btn_preset": "প্রিসেট প্রয়োগ করুন",
+        "btn_custom": "নিয়ম কনফিগার করুন",
+        "btn_apply_custom": "কাস্টম প্রয়োগ করুন",
+        "btn_total": "মোট",
+        "btn_ok": "সফল",
+        "btn_failed": "ব্যর্থ",
         "invalid_file": "❌ অকার্যকর ফাইল। একটি .session বা .zip ফাইল পাঠান।",
         "presets": {
-            "maximum": "🔴 সর্বোচ্চ গোপনীয়তা",
-            "medium": "🟡 মাঝারি গোপনীয়তা",
-            "open": "🟢 উন্মুক্ত / সর্বজনীন গোপনীয়তা",
-            "custom": "⚙️ কাস্টম নিয়ম",
+            "maximum": "সর্বোচ্চ গোপনীয়তা",
+            "medium": "মাঝারি গোপনীয়তা",
+            "open": "উন্মুক্ত / সর্বজনীন গোপনীয়তা",
+            "custom": "কাস্টম নিয়ম",
         },
         "rules": {
-            "last_seen": "👁 শেষ দেখা সময়",
-            "phone_number": "📞 ফোন নম্বর",
-            "profile_photo": "🖼 প্রোফাইল ছবি",
-            "forwarded_messages": "💬 ফরোয়ার্ড বার্তা",
-            "calls": "📞 কলসমূহ",
-            "p2p_calls": "🔗 P2P কলসমূহ",
-            "group_invites": "👥 গ্রুপ আমন্ত্রণ",
-            "voice_messages": "🎙 ভয়েস বার্তা",
+            "last_seen": "শেষ দেখা সময়",
+            "phone_number": "ফোন নম্বর",
+            "profile_photo": "প্রোফাইল ছবি",
+            "forwarded_messages": "ফরোয়ার্ড বার্তা",
+            "calls": "কলসমূহ",
+            "p2p_calls": "P2P কলসমূহ",
+            "group_invites": "গ্রুপ আমন্ত্রণ",
+            "voice_messages": "ভয়েস বার্তা",
         },
         "values": {
-            "everybody": "🌍 সবাই",
-            "contacts": "👥 আমার কনট্যাক্টস",
-            "nobody": "🚫 কেউ না",
+            "everybody": "সবাই",
+            "contacts": "আমার কনট্যাক্টস",
+            "nobody": "কেউ না",
         },
     },
     "hi": {
@@ -1744,33 +1859,33 @@ PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
             "⚙️ लागू नियम : <b>{preset}</b>"
             "{details}"
         ),
-        "btn_preset": "⚡ प्रीसेट लागू करें",
-        "btn_custom": "⚙️ नियम कॉन्फ़िगर करें",
-        "btn_apply_custom": "✅ कस्टम लागू करें",
-        "btn_total": "👥 कुल",
-        "btn_ok": "✅ सफल",
-        "btn_failed": "❌ विफल",
+        "btn_preset": "प्रीसेट लागू करें",
+        "btn_custom": "नियम कॉन्फ़िगर करें",
+        "btn_apply_custom": "कस्टम लागू करें",
+        "btn_total": "कुल",
+        "btn_ok": "सफल",
+        "btn_failed": "विफल",
         "invalid_file": "❌ अमान्य फ़ाइल प्रारूप। .session या .zip फ़ाइल भेजें।",
         "presets": {
-            "maximum": "🔴 अधिकतम गोपनीयता",
-            "medium": "🟡 मध्यम गोपनीयता",
-            "open": "🟢 खुली / सार्वजनिक गोपनीयता",
-            "custom": "⚙️ कस्टम नियम",
+            "maximum": "अधिकतम गोपनीयता",
+            "medium": "मध्यम गोपनीयता",
+            "open": "खुली / सार्वजनिक गोपनीयता",
+            "custom": "कस्टम नियम",
         },
         "rules": {
-            "last_seen": "👁 अंतिम बार देखा गया",
-            "phone_number": "📞 फ़ोन नंबर",
-            "profile_photo": "🖼 प्रोफ़ाइल फ़ोटो",
-            "forwarded_messages": "💬 फ़ॉरवर्ड किए गए संदेश",
-            "calls": "📞 कॉल्स",
-            "p2p_calls": "🔗 P2P कॉल्स",
-            "group_invites": "👥 समूह आमंत्रण",
-            "voice_messages": "🎙 वॉयस संदेश",
+            "last_seen": "अंतिम बार देखा गया",
+            "phone_number": "फ़ोन नंबर",
+            "profile_photo": "प्रोफ़ाइल फ़ोटो",
+            "forwarded_messages": "फ़ॉरवर्ड किए गए संदेश",
+            "calls": "कॉल्स",
+            "p2p_calls": "P2P कॉल्स",
+            "group_invites": "समूह आमंत्रण",
+            "voice_messages": "वॉयस संदेश",
         },
         "values": {
-            "everybody": "🌍 सभी",
-            "contacts": "👥 मेरे संपर्क",
-            "nobody": "🚫 कोई नहीं",
+            "everybody": "सभी",
+            "contacts": "मेरे संपर्क",
+            "nobody": "कोई नहीं",
         },
     },
     "ur": {
@@ -1789,33 +1904,33 @@ PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
             "⚙️ لاگو شدہ  : <b>{preset}</b>"
             "{details}"
         ),
-        "btn_preset": "⚡ پری سیٹ لاگو کریں",
-        "btn_custom": "⚙️ قواعد سیٹ کریں",
-        "btn_apply_custom": "✅ کسٹم لاگو کریں",
-        "btn_total": "👥 کل",
-        "btn_ok": "✅ کامیاب",
-        "btn_failed": "❌ ناکام",
+        "btn_preset": "پری سیٹ لاگو کریں",
+        "btn_custom": "قواعد سیٹ کریں",
+        "btn_apply_custom": "کسٹم لاگو کریں",
+        "btn_total": "کل",
+        "btn_ok": "کامیاب",
+        "btn_failed": "ناکام",
         "invalid_file": "❌ غیر موزوں فائل۔ .session یا .zip بھیجیں۔",
         "presets": {
-            "maximum": "🔴 زیادہ سے زیادہ رازداری",
-            "medium": "🟡 درمیانی رازداری",
-            "open": "🟢 کھلی / عوامی رازداری",
-            "custom": "⚙️ کسٹم قواعد",
+            "maximum": "زیادہ سے زیادہ رازداری",
+            "medium": "درمیانی رازداری",
+            "open": "کھلی / عوامی رازداری",
+            "custom": "کسٹم قواعد",
         },
         "rules": {
-            "last_seen": "👁 آخری بار دیکھا گیا",
-            "phone_number": "📞 فون نمبر",
-            "profile_photo": "🖼 پروفائل تصویر",
-            "forwarded_messages": "💬 فارورڈ شدہ پیغامات",
-            "calls": "📞 کالز",
-            "p2p_calls": "🔗 P2P کالز",
-            "group_invites": "👥 گروپ دعوت نامے",
-            "voice_messages": "🎙 وائس پیغامات",
+            "last_seen": "آخری بار دیکھا گیا",
+            "phone_number": "فون نمبر",
+            "profile_photo": "پروفائل تصویر",
+            "forwarded_messages": "فارورڈ شدہ پیغامات",
+            "calls": "کالز",
+            "p2p_calls": "P2P کالز",
+            "group_invites": "گروپ دعوت نامے",
+            "voice_messages": "وائس پیغامات",
         },
         "values": {
-            "everybody": "🌍 سبھی",
-            "contacts": "👥 میرے رابطے",
-            "nobody": "🚫 کوئی نہیں",
+            "everybody": "سبھی",
+            "contacts": "میرے رابطے",
+            "nobody": "کوئی نہیں",
         },
     },
     "ar": {
@@ -1834,33 +1949,33 @@ PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
             "⚙️ القالب المطبق : <b>{preset}</b>"
             "{details}"
         ),
-        "btn_preset": "⚡ تطبيق القالب",
-        "btn_custom": "⚙️ ضبط القواعد",
-        "btn_apply_custom": "✅ تطبيق المخصص",
-        "btn_total": "👥 الإجمالي",
-        "btn_ok": "✅ ناجح",
-        "btn_failed": "❌ فاشل",
+        "btn_preset": "تطبيق القالب",
+        "btn_custom": "ضبط القواعد",
+        "btn_apply_custom": "تطبيق المخصص",
+        "btn_total": "الإجمالي",
+        "btn_ok": "ناجح",
+        "btn_failed": "فاشل",
         "invalid_file": "❌ صيغة ملف غير صالحة. أرسل ملف .session أو .zip.",
         "presets": {
-            "maximum": "🔴 أقصى خصوصية",
-            "medium": "🟡 خصوصية متوسطة",
-            "open": "🟢 الخصوصية المفتوحة / العامة",
-            "custom": "⚙️ قواعد مخصصة",
+            "maximum": "أقصى خصوصية",
+            "medium": "خصوصية متوسطة",
+            "open": "الخصوصية المفتوحة / العامة",
+            "custom": "قواعد مخصصة",
         },
         "rules": {
-            "last_seen": "👁 آخر ظهور",
-            "phone_number": "📞 رقم الهاتف",
-            "profile_photo": "🖼 صورة الملف الشخصي",
-            "forwarded_messages": "💬 الرسائل المعاد توجيهها",
-            "calls": "📞 المكالمات",
-            "p2p_calls": "🔗 مكالمات P2P",
-            "group_invites": "👥 دعوات المجموعات",
-            "voice_messages": "🎙 الرسائل الصوتية",
+            "last_seen": "آخر ظهور",
+            "phone_number": "رقم الهاتف",
+            "profile_photo": "صورة الملف الشخصي",
+            "forwarded_messages": "الرسائل المعاد توجيهها",
+            "calls": "المكالمات",
+            "p2p_calls": "مكالمات P2P",
+            "group_invites": "دعوات المجموعات",
+            "voice_messages": "الرسائل الصوتية",
         },
         "values": {
-            "everybody": "🌍 الجميع",
-            "contacts": "👥 جهات اتصالي",
-            "nobody": "🚫 لا أحد",
+            "everybody": "الجميع",
+            "contacts": "جهات اتصالي",
+            "nobody": "لا أحد",
         },
     },
     "zh": {
@@ -1879,33 +1994,33 @@ PRIVACY_SETTINGS_MESSAGES: dict[str, dict[str, Any]] = {
             "⚙️ 应用设置 : <b>{preset}</b>"
             "{details}"
         ),
-        "btn_preset": "⚡ 应用预设",
-        "btn_custom": "⚙️ 配置规则",
-        "btn_apply_custom": "✅ 应用自定义设置",
-        "btn_total": "👥 总计",
-        "btn_ok": "✅ 成功",
-        "btn_failed": "❌ 失败",
+        "btn_preset": "应用预设",
+        "btn_custom": "配置规则",
+        "btn_apply_custom": "应用自定义设置",
+        "btn_total": "总计",
+        "btn_ok": "成功",
+        "btn_failed": "失败",
         "invalid_file": "❌ 无效的文件格式。请发送 .session 或 .zip 文件。",
         "presets": {
-            "maximum": "🔴 最高隐私",
-            "medium": "🟡 中等隐私",
-            "open": "🟢 公开 / 开放隐私",
-            "custom": "⚙️ 自定义规则",
+            "maximum": "最高隐私",
+            "medium": "中等隐私",
+            "open": "公开 / 开放隐私",
+            "custom": "自定义规则",
         },
         "rules": {
-            "last_seen": "👁 上线时间",
-            "phone_number": "📞 手机号码",
-            "profile_photo": "🖼 个人头像",
-            "forwarded_messages": "💬 转发消息",
-            "calls": "📞 通话",
-            "p2p_calls": "🔗 P2P 通话",
-            "group_invites": "👥 群组邀请",
-            "voice_messages": "🎙 语音消息",
+            "last_seen": "上线时间",
+            "phone_number": "手机号码",
+            "profile_photo": "个人头像",
+            "forwarded_messages": "转发消息",
+            "calls": "通话",
+            "p2p_calls": "P2P 通话",
+            "group_invites": "群组邀请",
+            "voice_messages": "语音消息",
         },
         "values": {
-            "everybody": "🌍 所有人",
-            "contacts": "👥 我的联系人",
-            "nobody": "🚫 不允许任何人",
+            "everybody": "所有人",
+            "contacts": "我的联系人",
+            "nobody": "不允许任何人",
         },
     },
 }
@@ -2007,6 +2122,7 @@ CLEAN_CHAT_MESSAGES = {
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
         "done": "✅ Chat Cleaned — {success} success | ❌ {failed} failed",
+        "failed_report": "❌ All attempts failed — {failed} failed",
         "btn_total": "Total",
         "btn_success": "Cleaned",
         "btn_failed": "Failed",
@@ -2016,6 +2132,7 @@ CLEAN_CHAT_MESSAGES = {
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
         "done": "✅ চ্যাট পরিষ্কার সম্পন্ন — {success}টি সফল | ❌ {failed}টি ব্যর্থ",
+        "failed_report": "❌ সব প্রচেষ্টা ব্যর্থ — {failed}টি ব্যর্থ",
         "btn_total": "মোট",
         "btn_success": "পরিষ্কারকৃত",
         "btn_failed": "ব্যর্থ",
@@ -2025,6 +2142,7 @@ CLEAN_CHAT_MESSAGES = {
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
         "done": "✅ चैट साफ़ पूर्ण — {success} सफल | ❌ {failed} विफल",
+        "failed_report": "❌ सभी प्रयास विफल — {failed} विफल",
         "btn_total": "कुल",
         "btn_success": "साफ़",
         "btn_failed": "विफल",
@@ -2034,6 +2152,7 @@ CLEAN_CHAT_MESSAGES = {
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
         "done": "✅ چیٹ صاف مکمل — {success} کامیاب | ❌ {failed} ناکام",
+        "failed_report": "❌ تمام کوششیں ناکام — {failed} ناکام",
         "btn_total": "کل",
         "btn_success": "صاف کردہ",
         "btn_failed": "ناکام",
@@ -2043,6 +2162,7 @@ CLEAN_CHAT_MESSAGES = {
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
         "done": "✅ اكتمل مسح المحادثات — {success} نجاح | ❌ {failed} فشل",
+        "failed_report": "❌ فشلت جميع المحاولات — {failed} فشل",
         "btn_total": "الإجمالي",
         "btn_success": "تم المسح",
         "btn_failed": "الفاشلة",
@@ -2052,6 +2172,7 @@ CLEAN_CHAT_MESSAGES = {
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
         "done": "✅ 聊天已清理 — {success} 成功 | ❌ {failed} 失败",
+        "failed_report": "❌ 所有尝试均失败 — {failed} 失败",
         "btn_total": "总计",
         "btn_success": "已清理",
         "btn_failed": "失败",
@@ -2084,6 +2205,7 @@ DELETE_CONTACT_MESSAGES = {
         "no_contacts": "ℹ️ No contacts found in this session.",
         "request_failed": "❌ An error occurred during request processing.",
         "done": "✅ Contacts Deleted — {success} success | ❌ {failed} failed",
+        "failed_report": "❌ All attempts failed — {failed} failed",
         "btn_total": "Total",
         "btn_deleted": "Deleted",
         "btn_failed": "Failed",
@@ -2099,6 +2221,7 @@ DELETE_CONTACT_MESSAGES = {
         "no_contacts": "ℹ️ এই সেশনে কোনো কনট্যাক্ট পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
         "done": "✅ কনট্যাক্ট মুছে ফেলা সম্পন্ন — {success}টি সফল | ❌ {failed}টি ব্যর্থ",
+        "failed_report": "❌ সব প্রচেষ্টা ব্যর্থ — {failed}টি ব্যর্থ",
         "btn_total": "মোট",
         "btn_deleted": "মুছে ফেলা হয়েছে",
         "btn_failed": "ব্যর্থ",
@@ -2114,6 +2237,7 @@ DELETE_CONTACT_MESSAGES = {
         "no_contacts": "ℹ️ इस सेशन में कोई संपर्क नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
         "done": "✅ संपर्क हटाए गए — {success} सफल | ❌ {failed} विफल",
+        "failed_report": "❌ सभी प्रयास विफल — {failed} विफल",
         "btn_total": "कुल",
         "btn_deleted": "हटाया गया",
         "btn_failed": "विफल",
@@ -2129,6 +2253,7 @@ DELETE_CONTACT_MESSAGES = {
         "no_contacts": "ℹ️ اس سیشن میں کوئی بھی رابطہ نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
         "done": "✅ روابط حذف مکمل — {success} کامیاب | ❌ {failed} ناکام",
+        "failed_report": "❌ تمام کوششیں ناکام — {failed} ناکام",
         "btn_total": "کل",
         "btn_deleted": "حذف شدہ",
         "btn_failed": "ناکام",
@@ -2144,6 +2269,7 @@ DELETE_CONTACT_MESSAGES = {
         "no_contacts": "ℹ️ لم يتم العثور على جهات اتصال في هذه الجلسة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
         "done": "✅ اكتمل حذف جهات الاتصال — {success} نجاح | ❌ {failed} فشل",
+        "failed_report": "❌ فشلت جميع المحاولات — {failed} فشل",
         "btn_total": "الإجمالي",
         "btn_deleted": "تم الحذف",
         "btn_failed": "الفاشلة",
@@ -2159,6 +2285,7 @@ DELETE_CONTACT_MESSAGES = {
         "no_contacts": "ℹ️ 在此会话中未找到联系人。",
         "request_failed": "❌ 处理请求时出错。",
         "done": "✅ 联系人已删除 — {success} 成功 | ❌ {failed} 失败",
+        "failed_report": "❌ 所有尝试均失败 — {failed} 失败",
         "btn_total": "总计",
         "btn_deleted": "已删除",
         "btn_failed": "失败",
@@ -2263,7 +2390,7 @@ PROFILE_SETUP_ABOUT_PROMPT = {
     "en": "📝 Send the new <b>Bio / About</b> text:",
     "bn": "📝 নতুন <b>বায়ো / বিবরণ</b> পাঠ্য পাঠান:",
     "hi": "📝 नया <b>बायो / विवरण</b> भेजें:",
-    "ur": "📝 نیا <b>بائیو / کیپشن</b> متن بھیجیں:",
+    "ur": "📝 نیا <b>بائیو / تفصیل</b> متن بھیجیں:",
     "ar": "📝 أرسل نص <b>السيرة الذاتية</b> الجديد:",
     "zh": "📝 发送新的<b>个人简介</b>文本：",
 }
@@ -2284,16 +2411,17 @@ PROFILE_SETUP_MESSAGES = {
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
         "done": "✅ Profile Setup Completed — {modified} modified | ⏭️ {skipped} skipped | ❌ {failed} failed",
+        "failed_report": "❌ All attempts failed — {failed} failed",
         "btn_total": "Total",
         "btn_modified": "Modified",
         "btn_skipped": "Skipped",
         "btn_failed": "Failed",
-        "btn_edit_name": "👤 Edit Name",
-        "btn_edit_username": "🏷️ Edit Username",
-        "btn_edit_about": "📝 Edit Bio",
-        "btn_set_photo": "🖼️ Set Photo",
-        "btn_apply": "⚡ Apply Changes & Next ➡️",
-        "btn_skip": "⏭️ Skip Account",
+        "btn_edit_name": "Edit Name",
+        "btn_edit_username": "Edit Username",
+        "btn_edit_about": "Edit Bio",
+        "btn_set_photo": "Set Photo",
+        "btn_apply": "Apply Changes & Next",
+        "btn_skip": "Skip Account",
         "photo_pending": "New Photo Selected",
         "photo_none": "None",
     },
@@ -2303,16 +2431,17 @@ PROFILE_SETUP_MESSAGES = {
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
         "done": "✅ প্রোফাইল সেটআপ সম্পন্ন — {modified} পরিবর্তন | ⏭️ {skipped} স্কিপ | ❌ {failed} ব্যর্থ",
+        "failed_report": "❌ সব প্রচেষ্টা ব্যর্থ — {failed}টি ব্যর্থ",
         "btn_total": "মোট",
         "btn_modified": "পরিবর্তিত",
         "btn_skipped": "স্কিপড",
         "btn_failed": "ব্যর্থ",
-        "btn_edit_name": "👤 নাম এডিট",
-        "btn_edit_username": "🏷️ ইউজারনেম এডিট",
-        "btn_edit_about": "📝 বায়ো এডিট",
-        "btn_set_photo": "🖼️ ছবি যুক্ত",
-        "btn_apply": "⚡ পরিবর্তন প্রয়োগ ও পরবর্তী ➡️",
-        "btn_skip": "⏭️ অ্যাকাউন্ট স্কিপ",
+        "btn_edit_name": "নাম এডিট",
+        "btn_edit_username": "ইউজারনেম এডিট",
+        "btn_edit_about": "বায়ো এডিট",
+        "btn_set_photo": "ছবি যুক্ত",
+        "btn_apply": "পরিবর্তন প্রয়োগ ও পরবর্তী",
+        "btn_skip": "অ্যাকাউন্ট স্কিপ",
         "photo_pending": "নতুন ছবি নির্বাচিত",
         "photo_none": "নাই",
     },
@@ -2322,16 +2451,17 @@ PROFILE_SETUP_MESSAGES = {
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
         "done": "✅ प्रोफ़ाइल सेटअप पूर्ण — {modified} संशोधित | ⏭️ {skipped} छूटे | ❌ {failed} विफल",
+        "failed_report": "❌ सभी प्रयास विफल — {failed} विफल",
         "btn_total": "कुल",
         "btn_modified": "संशोधित",
         "btn_skipped": "छूटे",
         "btn_failed": "विफल",
-        "btn_edit_name": "👤 नाम बदलें",
-        "btn_edit_username": "🏷️ यूज़रनेम बदलें",
-        "btn_edit_about": "📝 बायो बदलें",
-        "btn_set_photo": "🖼️ फ़ोटो जोड़ें",
-        "btn_apply": "⚡ बदलाव लागू करें और आगे ➡️",
-        "btn_skip": "⏭️ अकाउंट छोड़ें",
+        "btn_edit_name": "नाम बदलें",
+        "btn_edit_username": "यूज़रनेम बदलें",
+        "btn_edit_about": "बायो बदलें",
+        "btn_set_photo": "फ़ोटो जोड़ें",
+        "btn_apply": "बदलाव लागू करें और आगे",
+        "btn_skip": "अकाउंट छोड़ें",
         "photo_pending": "नयी फ़ोटो चुनी गई",
         "photo_none": "कोई नहीं",
     },
@@ -2341,16 +2471,17 @@ PROFILE_SETUP_MESSAGES = {
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
         "done": "✅ پروفائل سیٹ اپ مکمل — {modified} تبدیل | ⏭️ {skipped} چھوڑے | ❌ {failed} ناکام",
+        "failed_report": "❌ تمام کوششیں ناکام — {failed} ناکام",
         "btn_total": "کل",
         "btn_modified": "تبدیل شدہ",
         "btn_skipped": "اسکیپ شدہ",
         "btn_failed": "ناکام",
-        "btn_edit_name": "👤 نام ایڈٹ",
-        "btn_edit_username": "🏷️ یوزر نیم ایڈٹ",
-        "btn_edit_about": "📝 بائیو ایڈٹ",
-        "btn_set_photo": "🖼️ تصویر منتخب",
-        "btn_apply": "⚡ تبدیلیاں لاگو اور آگے ➡️",
-        "btn_skip": "⏭️ اکاؤنٹ اسکیپ",
+        "btn_edit_name": "نام ایڈٹ",
+        "btn_edit_username": "یوزر نیم ایڈٹ",
+        "btn_edit_about": "بائیو ایڈٹ",
+        "btn_set_photo": "تصویر منتخب",
+        "btn_apply": "تبدیلیاں لاگو اور آگے",
+        "btn_skip": "اکاؤنٹ اسکیپ",
         "photo_pending": "نئی تصویر منتخب",
         "photo_none": "کوئی نہیں",
     },
@@ -2360,16 +2491,17 @@ PROFILE_SETUP_MESSAGES = {
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
         "done": "✅ اكتمل إعداد الملف الشخصي — {modified} معدل | ⏭️ {skipped} متخطي | ❌ {failed} فشل",
+        "failed_report": "❌ فشلت جميع المحاولات — {failed} فشل",
         "btn_total": "الإجمالي",
         "btn_modified": "المعدلة",
         "btn_skipped": "المتخطاة",
         "btn_failed": "الفاشلة",
-        "btn_edit_name": "👤 تعديل الاسم",
-        "btn_edit_username": "🏷️ تعديل اسم المستخدم",
-        "btn_edit_about": "📝 تعديل السيرة الذاتية",
-        "btn_set_photo": "🖼️ تعيين صورة",
-        "btn_apply": "⚡ تطبيق والتالي ➡️",
-        "btn_skip": "⏭️ تخطي الحساب",
+        "btn_edit_name": "تعديل الاسم",
+        "btn_edit_username": "تعديل اسم المستخدم",
+        "btn_edit_about": "تعديل السيرة الذاتية",
+        "btn_set_photo": "تعيين صورة",
+        "btn_apply": "تطبيق والتالي",
+        "btn_skip": "تخطي الحساب",
         "photo_pending": "تم تحديد صورة جديدة",
         "photo_none": "لا يوجد",
     },
@@ -2379,16 +2511,17 @@ PROFILE_SETUP_MESSAGES = {
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
         "done": "✅ 个人资料设置完成 — {modified} 已修改 | ⏭️ {skipped} 已跳过 | ❌ {failed} 失败",
+        "failed_report": "❌ 所有尝试均失败 — {failed} 失败",
         "btn_total": "总计",
         "btn_modified": "已修改",
         "btn_skipped": "已跳过",
         "btn_failed": "失败",
-        "btn_edit_name": "👤 编辑姓名",
-        "btn_edit_username": "🏷️ 编辑用户名",
-        "btn_edit_about": "📝 编辑简介",
-        "btn_set_photo": "🖼️ 设置头像",
-        "btn_apply": "⚡ 应用更改并继续 ➡️",
-        "btn_skip": "⏭️ 跳过此账号",
+        "btn_edit_name": "编辑姓名",
+        "btn_edit_username": "编辑用户名",
+        "btn_edit_about": "编辑简介",
+        "btn_set_photo": "设置头像",
+        "btn_apply": "应用更改并继续",
+        "btn_skip": "跳过此账号",
         "photo_pending": "已选择新头像",
         "photo_none": "无",
     },
@@ -2504,6 +2637,7 @@ TWO_FACTOR_MESSAGES = {
         "btn_success": "Success",
         "btn_pending": "Pending",
         "btn_failed": "Failed",
+        "cancelled": "🚫 Operation cancelled.",
     },
     "bn": {
         "processing": "⏳ ২FA প্রসেসিং হচ্ছে...",
@@ -2516,6 +2650,7 @@ TWO_FACTOR_MESSAGES = {
         "btn_success": "সফল",
         "btn_pending": "অপেক্ষমাণ",
         "btn_failed": "ব্যর্থ",
+        "cancelled": "🚫 কার্যক্রম বাতিল হয়েছে।",
     },
     "hi": {
         "processing": "⏳ 2FA प्रक्रिया जारी है...",
@@ -2528,6 +2663,7 @@ TWO_FACTOR_MESSAGES = {
         "btn_success": "सफल",
         "btn_pending": "लंबित",
         "btn_failed": "विफल",
+        "cancelled": "🚫 कार्य रद्द कर दिया गया।",
     },
     "ur": {
         "processing": "⏳ 2FA عمل جاری ہے...",
@@ -2540,6 +2676,7 @@ TWO_FACTOR_MESSAGES = {
         "btn_success": "کامیاب",
         "btn_pending": "زیرِ انتظار",
         "btn_failed": "ناکام",
+        "cancelled": "🚫 کار منسوخ کر دیا گیا۔",
     },
     "ar": {
         "processing": "⏳ جاري معالجة 2FA...",
@@ -2552,6 +2689,7 @@ TWO_FACTOR_MESSAGES = {
         "btn_success": "الناجحة",
         "btn_pending": "قيد الانتظار",
         "btn_failed": "الفاشلة",
+        "cancelled": "🚫 تم إلغاء العملية.",
     },
     "zh": {
         "processing": "⏳ 正在处理 2FA...",
@@ -2564,6 +2702,7 @@ TWO_FACTOR_MESSAGES = {
         "btn_success": "成功",
         "btn_pending": "等待中",
         "btn_failed": "失败",
+        "cancelled": "🚫 操作已取消。",
     },
 }
 
@@ -2825,9 +2964,9 @@ ANALYSIS_MESSAGES = {
 SPLIT_MESSAGES = {
     "en": {
         "choose_type": "✂️ <b>Choose file split type</b>\n\n📦 Found <b>{count}</b> sessions",
-        "btn_country": "🗺️ Split by Country",
-        "btn_quantity": "🔢 Split by Quantity",
-        "btn_cancel": "❌ Cancel",
+        "btn_country": "Split by Country",
+        "btn_quantity": "Split by Quantity",
+        "btn_cancel": "Cancel",
         "quantity_prompt": (
             "🔢 <b>Split by Quantity</b>\n\n"
             "Enter number of sessions per zip:\n\nExample: <code>10</code>"
@@ -2843,104 +2982,104 @@ SPLIT_MESSAGES = {
             "📦 Total: <code>{total}</code> sessions → "
             "<code>{groups}</code> parts"
         ),
-        "caption_country": "🌍 {label} — {count} sessions",
+        "caption_country": "{flag} {label} — {count} sessions",
         "caption_part": "📦 {label} — {count} sessions",
         "no_sessions": "❌ No valid session files were found.",
         "invalid_quantity": "❌ Send a positive whole number.",
         "internal_error": "❌ Internal error occurred during splitting.",
-        "btn_total": "🔨 Total",
-        "btn_split": "🔨 Split",
-        "btn_failed": "🔨 Failed",
+        "btn_total": "Total",
+        "btn_split": "Split",
+        "btn_failed": "Failed",
     },
     "bn": {
         "choose_type": "✂️ <b>ফাইল বিভাজনের ধরন বেছে নিন</b>\n\n📦 <b>{count}</b>টি সেশন পাওয়া গেছে",
-        "btn_country": "🗺️ দেশ অনুযায়ী বিভক্ত করুন",
-        "btn_quantity": "🔢 সংখ্যা অনুযায়ী বিভক্ত করুন",
-        "btn_cancel": "❌ বাতিল",
+        "btn_country": "দেশ অনুযায়ী বিভক্ত করুন",
+        "btn_quantity": "সংখ্যা অনুযায়ী বিভক্ত করুন",
+        "btn_cancel": "বাতিল",
         "quantity_prompt": "🔢 <b>সংখ্যা অনুযায়ী বিভক্ত করুন</b>\n\nপ্রতি ZIP-এ সেশনের সংখ্যা লিখুন:\n\nউদাহরণ: <code>10</code>",
         "splitting": "⏳ সেশন বিভাজন করা হচ্ছে...",
         "country_completed": "✅ <b>বিভাজন সম্পন্ন!</b>\n\n📦 মোট: <code>{total}</code>\n🌍 দেশ: <code>{groups}</code>",
         "quantity_completed": "✅ <b>বিভাজন সম্পন্ন!</b>\n\n📦 মোট: <code>{total}</code> সেশন → <code>{groups}</code> অংশ",
-        "caption_country": "🌍 {label} — {count} সেশন",
+        "caption_country": "{flag} {label} — {count} সেশন",
         "caption_part": "📦 {label} — {count} সেশন",
         "no_sessions": "❌ কোনো বৈধ সেশন ফাইল পাওয়া যায়নি।",
         "invalid_quantity": "❌ একটি ধনাত্মক পূর্ণসংখ্যা পাঠান।",
         "internal_error": "❌ ভাগ করার সময় অভ্যন্তরীণ ত্রুটি ঘটেছে।",
-        "btn_total": "🔨 মোট",
-        "btn_split": "🔨 বিভক্ত",
-        "btn_failed": "🔨 ব্যর্থ",
+        "btn_total": "মোট",
+        "btn_split": "বিভক্ত",
+        "btn_failed": "ব্যর্থ",
     },
     "hi": {
         "choose_type": "✂️ <b>फ़ाइल विभाजन प्रकार चुनें</b>\n\n📦 <b>{count}</b> सेशन मिले",
-        "btn_country": "🗺️ देश के अनुसार विभाजित करें",
-        "btn_quantity": "🔢 संख्या के अनुसार विभाजित करें",
-        "btn_cancel": "❌ रद्द करें",
+        "btn_country": "देश के अनुसार विभाजित करें",
+        "btn_quantity": "संख्या के अनुसार विभाजित करें",
+        "btn_cancel": "रद्द करें",
         "quantity_prompt": "🔢 <b>संख्या के अनुसार विभाजन</b>\n\nप्रति ZIP सेशन की संख्या दर्ज करें:\n\nउदाहरण: <code>10</code>",
         "splitting": "⏳ सेशन विभाजित किए जा रहे हैं...",
         "country_completed": "✅ <b>विभाजन पूरा!</b>\n\n📦 कुल: <code>{total}</code>\n🌍 देश: <code>{groups}</code>",
         "quantity_completed": "✅ <b>विभाजन पूरा!</b>\n\n📦 कुल: <code>{total}</code> सेशन → <code>{groups}</code> भाग",
-        "caption_country": "🌍 {label} — {count} सेशन",
+        "caption_country": "{flag} {label} — {count} सेशन",
         "caption_part": "📦 {label} — {count} सेशन",
         "no_sessions": "❌ कोई वैध सेशन फ़ाइल नहीं मिली।",
         "invalid_quantity": "❌ एक धनात्मक पूर्णांक भेजें।",
         "internal_error": "❌ विभाजन के दौरान आंतरिक त्रुटि हुई।",
-        "btn_total": "🔨 कुल",
-        "btn_split": "🔨 विभाजित",
-        "btn_failed": "🔨 विफल",
+        "btn_total": "कुल",
+        "btn_split": "विभाजित",
+        "btn_failed": "विफल",
     },
     "ur": {
         "choose_type": "✂️ <b>فائل تقسیم کی قسم منتخب کریں</b>\n\n📦 <b>{count}</b> سیشن ملے",
-        "btn_country": "🗺️ ملک کے لحاظ سے تقسیم",
-        "btn_quantity": "🔢 تعداد کے لحاظ سے تقسیم",
-        "btn_cancel": "❌ منسوخ کریں",
+        "btn_country": "ملک کے لحاظ سے تقسیم",
+        "btn_quantity": "تعداد کے لحاظ سے تقسیم",
+        "btn_cancel": "منسوخ کریں",
         "quantity_prompt": "🔢 <b>تعداد کے لحاظ سے تقسیم</b>\n\nہر ZIP میں سیشن کی تعداد درج کریں:\n\nمثال: <code>10</code>",
         "splitting": "⏳ سیشن تقسیم ہو رہے ہیں...",
         "country_completed": "✅ <b>تقسیم مکمل!</b>\n\n📦 کل: <code>{total}</code>\n🌍 ممالک: <code>{groups}</code>",
         "quantity_completed": "✅ <b>تقسیم مکمل!</b>\n\n📦 کل: <code>{total}</code> سیشن → <code>{groups}</code> حصے",
-        "caption_country": "🌍 {label} — {count} سیشن",
+        "caption_country": "{flag} {label} — {count} سیشن",
         "caption_part": "📦 {label} — {count} سیشن",
         "no_sessions": "❌ کوئی درست سیشن فائل نہیں ملی۔",
         "invalid_quantity": "❌ مثبت صحیح عدد بھیجیں۔",
         "internal_error": "❌ تقسیم کے دوران اندرونی خرابی پیش آ گئی۔",
-        "btn_total": "🔨 کل",
-        "btn_split": "🔨 تقسیم",
-        "btn_failed": "🔨 ناکام",
+        "btn_total": "کل",
+        "btn_split": "تقسیم",
+        "btn_failed": "ناکام",
     },
     "ar": {
         "choose_type": "✂️ <b>اختر نوع تقسيم الملف</b>\n\n📦 تم العثور على <b>{count}</b> جلسة",
-        "btn_country": "🗺️ تقسيم حسب الدولة",
-        "btn_quantity": "🔢 تقسيم حسب العدد",
-        "btn_cancel": "❌ إلغاء",
+        "btn_country": "تقسيم حسب الدولة",
+        "btn_quantity": "تقسيم حسب العدد",
+        "btn_cancel": "إلغاء",
         "quantity_prompt": "🔢 <b>تقسيم حسب العدد</b>\n\nأدخل عدد الجلسات لكل ZIP:\n\nمثال: <code>10</code>",
         "splitting": "⏳ جارٍ تقسيم الجلسات...",
         "country_completed": "✅ <b>اكتمل التقسيم!</b>\n\n📦 الإجمالي: <code>{total}</code>\n🌍 الدول: <code>{groups}</code>",
         "quantity_completed": "✅ <b>اكتمل التقسيم!</b>\n\n📦 الإجمالي: <code>{total}</code> جلسة ← <code>{groups}</code> أجزاء",
-        "caption_country": "🌍 {label} — {count} جلسة",
+        "caption_country": "{flag} {label} — {count} جلسة",
         "caption_part": "📦 {label} — {count} جلسة",
         "no_sessions": "❌ لم يتم العثور على ملفات جلسة صالحة.",
         "invalid_quantity": "❌ أرسل عدداً صحيحاً موجباً.",
         "internal_error": "❌ حدث خطأ داخلي أثناء التقسيم.",
-        "btn_total": "🔨 الإجمالي",
-        "btn_split": "🔨 المقسمة",
-        "btn_failed": "🔨 الفاشلة",
+        "btn_total": "الإجمالي",
+        "btn_split": "المقسمة",
+        "btn_failed": "الفاشلة",
     },
     "zh": {
         "choose_type": "✂️ <b>选择文件分割类型</b>\n\n📦 找到 <b>{count}</b 个会话",
-        "btn_country": "🗺️ 按国家分割",
-        "btn_quantity": "🔢 按数量分割",
-        "btn_cancel": "❌ 取消",
+        "btn_country": "按国家分割",
+        "btn_quantity": "按数量分割",
+        "btn_cancel": "取消",
         "quantity_prompt": "🔢 <b>按数量分割</b>\n\n请输入每个 ZIP 的会话数量：\n\n示例：<code>10</code>",
         "splitting": "⏳ 正在分割会话...",
         "country_completed": "✅ <b>分割完成！</b>\n\n📦 总计：<code>{total}</code>\n🌍 国家：<code>{groups}</code>",
         "quantity_completed": "✅ <b>分割完成！</b>\n\n📦 总计：<code>{total}</code> 个会话 → <code>{groups}</code> 个部分",
-        "caption_country": "🌍 {label} — {count} 个会话",
+        "caption_country": "{flag} {label} — {count} 个会话",
         "caption_part": "📦 {label} — {count} 个会话",
         "no_sessions": "❌ 未找到有效的会话文件。",
         "invalid_quantity": "❌ 请发送正整数。",
         "internal_error": "❌ 拆分过程中发生内部错误。",
-        "btn_total": "🔨 总计",
-        "btn_split": "🔨 已分割",
-        "btn_failed": "🔨 失败",
+        "btn_total": "总计",
+        "btn_split": "已分割",
+        "btn_failed": "失败",
     },
 }
 
@@ -2992,6 +3131,38 @@ READ_OTP_MESSAGES = {
         "btn_skip": "⏭️ Skip",
         "btn_check_again": "🔄 Check Again",
         "btn_logout": "🚪 Logout",
+        "error_banned": (
+            "🚫 <b>Account banned/deactivated.</b>\n\n📁 Session:"
+            " <code>{session_id}</code>\n"
+            "This account has been banned or deactivated by Telegram, so its"
+            " OTP messages can no longer be read. Skip it and continue."
+        ),
+        "error_2fa": (
+            "🔐 <b>Two-step verification required.</b>\n\n📁 Session:"
+            " <code>{session_id}</code>\n"
+            "Login is protected by a two-step password; OTPs cannot be read without it."
+        ),
+        "error_invalid": (
+            "❌ <b>Invalid/corrupt session.</b>\n\n📁 Session:"
+            " <code>{session_id}</code>\n"
+            "The session database is corrupt; OTPs cannot be read."
+        ),
+        "error_inconclusive": (
+            "⚠️ <b>Could not read OTPs.</b>\n\n📁 Session:"
+            " <code>{session_id}</code>\n"
+            "A connection error occurred (network timeout or credential problem)."
+        ),
+        "no_api_credentials": (
+            "⚠️ <b>Cannot read OTPs.</b>\n\n📁 Session:"
+            " <code>{session_id}</code>\n"
+            "No API credentials are configured on this bot, so OTP messages"
+            " cannot be read from Telegram."
+        ),
+        "logout_failed": (
+            "🚪 <b>Logout failed.</b>\n\n📁 Session: <code>{session_id}</code>\n"
+            "The session could not be logged out (no API credentials,"
+            " unauthorized session, or a connection error)."
+        ),
     },
     "bn": {
         "account_header": (
@@ -3018,6 +3189,35 @@ READ_OTP_MESSAGES = {
         "btn_skip": "⏭️ এড়িয়ে যান",
         "btn_check_again": "🔄 পুনরায় চেক করুন",
         "btn_logout": "🚪 লগআউট",
+        "error_banned": (
+            "🚫 <b>অ্যাকাউন্ট ব্যান/নিষ্ক্রিয়।</b>\n\n📁 সেশন:"
+            " <code>{session_id}</code>\nআউনা অ্যাকাউন্টটি ব্যান বা নিষ্ক্রিয় হয়ে"
+            " গেছে, তাই এর OTP পড়া যাবে না। এটি এড়িয়ে যান।"
+        ),
+        "error_2fa": (
+            "🔐 <b>দুই-ধাপ যাচাই প্রয়োজন।</b>\n\n📁 সেশন:"
+            " <code>{session_id}</code>\nOটিপি পড়তে পাসওয়ার্ড দরকার।"
+        ),
+        "error_invalid": (
+            "❌ <b>অবৈধ/দূষিত সেশন।</b>\n\n📁 সেশন: <code>{session_id}</code>"
+            "সেশন ডেটাবেস ক্ষতিগ্রস্ত।"
+        ),
+        "error_inconclusive": (
+            "⚠️ <b>OTP পড়া যায়নি।</b>\n\n📁 সেশন: <code>{session_id}</code>"
+            "সংযোগ ত্রুটি ঘটেছে।"
+        ),
+        "no_api_credentials": (
+            "⚠️ <b>OTP পড়া যায়নি।</b>\n\n📁 সেশন:"
+            " <code>{session_id}</code>\n"
+            "এই বটে কোনো API ক্রেডেনশিয়াল কনফিগার করা নেই, তাই OTP মেসেজ"
+            " টেলিগ্রাম থেকে পড়া যাবে না।"
+        ),
+        "logout_failed": (
+            "🚪 <b>লগআউট ব্যর্থ হয়েছে।</b>\n\n📁 সেশন:"
+            " <code>{session_id}</code>\n"
+            "সেশনটি লগআউট করা যায়নি (API ক্রেডেনশিয়াল নেই, অননুমোদিত সেশন"
+            " বা সংযোগ ত্রুটি)।"
+        ),
     },
     "hi": {
         "account_header": (
@@ -3045,6 +3245,34 @@ READ_OTP_MESSAGES = {
         "btn_skip": "⏭️ छोड़ें",
         "btn_check_again": "🔄 पुनः जाँचें",
         "btn_logout": "🚪 लॉग आउट",
+        "error_banned": (
+            "🚫 <b>अकाउंट प्रतिबंधित/निष्क्रिय।</b>\n\n📁 सेशन:"
+            " <code>{session_id}</code>\nयह अकाउंट टेलीग्राम द्वारा बैन या निष्क्रिय"
+            " कर दिया गया है, इसलिए OTP नहीं पढ़े जा सकते। इसे छोड़ें।"
+        ),
+        "error_2fa": (
+            "🔐 <b>दो-चरणीय सत्यापन आवश्यक।</b>\n\n📁 सेशन: <code>{session_id}</code>"
+"OTP पढ़ने के लिए पासवर्ड चाहिए।"
+        ),
+        "error_invalid": (
+            "❌ <b>अमान्य/क्षतिग्रस्त सेशन।</b>\n\n📁 सेशन: <code>{session_id}</code>"
+            "सेशन डेटाबेस दूषित है।"
+        ),
+        "error_inconclusive": (
+            "⚠️ <b>OTP नहीं पढ़ सके।</b>\n\n📁 सेशन: <code>{session_id}</code>"
+            "कनेक्शन त्रुटि हुई।"
+        ),
+        "no_api_credentials": (
+            "⚠️ <b>OTP नहीं पढ़ सके।</b>\n\n📁 सेशन:"
+            " <code>{session_id}</code>\n"
+            "इस बॉट पर कोई API क्रेडेंशियल कॉन्फ़िगर नहीं है, इसलिए OTP संदेश"
+            " टेलीग्राम से नहीं पढ़े जा सकते।"
+        ),
+        "logout_failed": (
+            "🚪 <b>लॉगआउट विफल।</b>\n\n📁 सेशन: <code>{session_id}</code>\n"
+            "सेशन लॉगआउट नहीं हो सका (कोई API क्रेडेंशियल नहीं, अनधिकृत सेशन,"
+            " या कनेक्शन त्रुटि)।"
+        ),
     },
     "ur": {
         "account_header": (
@@ -3072,6 +3300,33 @@ READ_OTP_MESSAGES = {
         "btn_skip": "⏭️ چھوڑیں",
         "btn_check_again": "🔄 دوبارہ چیک کریں",
         "btn_logout": "🚪 لاگ آؤٹ",
+        "error_banned": (
+            "🚫 <b>اکاؤنٹ بین/غیر فعال۔</b>\n\n📁 سیشن: <code>{session_id}</code>"
+"یہ اکاؤنٹ بین یا غیر فعال ہو چکا ہے، OTP پڑھا نہیں جا سکتا۔ اسے چھوڑیں۔"
+        ),
+        "error_2fa": (
+            "🔐 <b>دو مرحلہ توثیق ضروری۔</b>\n\n📁 سیشن: <code>{session_id}</code>"
+"OTP پڑھنے کے لیے پاسورڈ درکار ہے۔"
+        ),
+        "error_invalid": (
+            "❌ <b>غلط/خراب سیشن۔</b>\n\n📁 سیشن: <code>{session_id}</code>"
+            "سیشن ڈیٹا بیس خراب ہے۔"
+        ),
+        "error_inconclusive": (
+            "⚠️ <b>OTP پڑھا نہیں جا سکا۔</b>\n\n📁 سیشن: <code>{session_id}</code>"
+            "کنکشن خرابی واقع ہوئی۔"
+        ),
+        "no_api_credentials": (
+            "⚠️ <b>OTP پڑھا نہیں جا سکا۔</b>\n\n📁 سیشن:"
+            " <code>{session_id}</code>\n"
+            "اس بوٹ پر کوئی API اسناد ترتیب نہیں دی گئیں، اس لیے OTP پیغامات"
+            " ٹیلیگرام سے پڑھے نہیں جا سکتے۔"
+        ),
+        "logout_failed": (
+            "🚪 <b>لاگ آؤٹ ناکام۔</b>\n\n📁 سیشن: <code>{session_id}</code>\n"
+            "سیشن لاگ آؤٹ نہیں ہو سکا (کوئی API اسناد نہیں، غیر مجاز سیشن، یا"
+            " کنکشن خرابی)۔"
+        ),
     },
     "ar": {
         "account_header": (
@@ -3100,6 +3355,34 @@ READ_OTP_MESSAGES = {
         "btn_skip": "⏭️ تخطي",
         "btn_check_again": "🔄 فحص مجدداً",
         "btn_logout": "🚪 تسجيل الخروج",
+        "error_banned": (
+            "🚫 <b>الحساب محظور/معطل.</b>\n\n📁 الجلسة: <code>{session_id}</code>"
+            "تم حظر أو تعطيل هذا الحساب من تيليجرام، لذا لا يمكن قراءة رموز OTP. تخطّه."
+        ),
+        "error_2fa": (
+            "🔐 <b>مطلوب التحقق بخطوتين.</b>\n\n📁 الجلسة: <code>{session_id}</code>"
+            "التحقق محمي بكلمة مرور؛ لا يمكن قراءة الرموز بدونها."
+        ),
+        "error_invalid": (
+            "❌ <b>جلسة غير صالحة/تالفة.</b>\n\n📁 الجلسة: <code>{session_id}</code>"
+            "قاعدة بيانات الجلسة تالفة."
+        ),
+        "error_inconclusive": (
+            "⚠️ <b>تعذر قراءة OTP.</b>\n\n📁 الجلسة: <code>{session_id}</code>"
+            "حدث خطأ في الاتصال."
+        ),
+        "no_api_credentials": (
+            "⚠️ <b>تعذر قراءة OTP.</b>\n\n📁 الجلسة:"
+            " <code>{session_id}</code>\n"
+            "لا توجد بيانات اعتماد API مُهيأة على هذا البوت، لذا لا يمكن قراءة"
+            " رسائل OTP من تيليجرام."
+        ),
+        "logout_failed": (
+            "🚪 <b>فشل تسجيل الخروج.</b>\n\n📁 الجلسة:"
+            " <code>{session_id}</code>\n"
+            "تعذر تسجيل الخروج من الجلسة (لا توجد بيانات اعتماد API، أو جلسة"
+            " غير مصرح بها، أو خطأ اتصال)."
+        ),
     },
     "zh": {
         "account_header": (
@@ -3126,6 +3409,31 @@ READ_OTP_MESSAGES = {
         "btn_skip": "⏭️ 跳过",
         "btn_check_again": "🔄 再次检查",
         "btn_logout": "登出",
+        "error_banned": (
+            "🚫 <b>账户已被封禁/停用。</b>\n\n📁 会话: <code>{session_id}</code>"
+            "该账户已被 Telegram 封禁或停用，无法读取 OTP。请跳过。"
+        ),
+        "error_2fa": (
+            "🔐 <b>需要两步验证。</b>\n\n📁 会话: <code>{session_id}</code>"
+            "登录受两步密码保护，无法读取 OTP。"
+        ),
+        "error_invalid": (
+            "❌ <b>无效/损坏的会话。</b>\n\n📁 会话: <code>{session_id}</code>"
+            "会话数据库损坏，无法读取 OTP。"
+        ),
+        "error_inconclusive": (
+            "⚠️ <b>无法读取 OTP。</b>\n\n📁 会话: <code>{session_id}</code>"
+            "发生连接错误（网络超时或凭据问题）。"
+        ),
+        "no_api_credentials": (
+            "⚠️ <b>无法读取 OTP。</b>\n\n📁 会话:"
+            " <code>{session_id}</code>\n"
+            "该机器人未配置任何 API 凭据，因此无法从 Telegram 读取 OTP 消息。"
+        ),
+        "logout_failed": (
+            "🚪 <b>登出失败。</b>\n\n📁 会话: <code>{session_id}</code>\n"
+            "无法登出会话（未配置 API 凭据、会话未授权或连接错误）。"
+        ),
     },
 }
 
@@ -3140,42 +3448,28 @@ CHECK_CONTACTS_PROMPTS = {
 
 CHECK_CONTACTS_MESSAGES = {
     "bn": {
-        "done": (
-            "✅ সম্পন্ন — {checked} পরীক্ষা করা হয়েছে | ✅ {ok} সঠিক | ❌ {error} ত্রুটি"
-        ),
-        "checked": "🔨 পরীক্ষা করা হয়েছে",
-        "ok": "🔨 সঠিক",
-        "error": "🔨 ত্রুটি",
+        "checking": "⏳ কন্টাক্ট পরীক্ষা চলছে...",
+        "cancelled": "কন্টাক্ট পরীক্ষা বাতিল করা হয়েছে।",
     },
     "en": {
-        "done": ("✅ Done — {checked} checked | ✅ {ok} ok | ❌ {error} error"),
-        "checked": "🔨 Checked",
-        "ok": "🔨 OK",
-        "error": "🔨 Error",
+        "checking": "⏳ Checking contacts...",
+        "cancelled": "Contact check cancelled.",
     },
     "hi": {
-        "done": ("✅ पूर्ण — {checked} जांचे गए | ✅ {ok} सही | ❌ {error} त्रुटि"),
-        "checked": "🔨 जांचे गए",
-        "ok": "🔨 सही",
-        "error": "🔨 त्रुटि",
+        "checking": "⏳ कॉन्ट्रैक्ट्स जांच हो रही है...",
+        "cancelled": "कॉन्ट्रैक्ट्स जांच रद्द कर दी गई।",
     },
     "ur": {
-        "done": ("✅ مکمل — {checked} چیک کیے | ✅ {ok} ٹھیک | ❌ {error} خرابی"),
-        "checked": "🔨 چیک کیے",
-        "ok": "🔨 ٹھیک",
-        "error": "🔨 خرابی",
+        "checking": "⏳ رابطوں کی جانچ ہو رہی ہے...",
+        "cancelled": "رابطوں کی جانچ منسوخ کر دی گئی۔",
     },
     "ar": {
-        "done": ("✅ تم — {checked} تم تفحصه | ✅ {ok} ناجح | ❌ {error} خطأ"),
-        "checked": "🔨 تم تفحصه",
-        "ok": "🔨 ناجح",
-        "error": "🔨 خطأ",
+        "checking": "⏳ جارٍ فحص جهات الاتصال...",
+        "cancelled": "تم إلغاء فحص جهات الاتصال.",
     },
     "zh": {
-        "done": ("✅ 完成 — {checked} 已检查 | ✅ {ok} 成功 | ❌ {error} 错误"),
-        "checked": "🔨 已检查",
-        "ok": "🔨 成功",
-        "error": "🔨 错误",
+        "checking": "⏳ 正在检查联系人...",
+        "cancelled": "联系人检查已取消。",
     },
 }
 
@@ -3211,31 +3505,169 @@ SESSION_TO_TDATA_MESSAGES = {
         "converting": "⏳ Converting session to Tdata...",
         "done": ("✅ <b>Conversion completed!</b>\n\nConverted: {converted}/{total}"),
         "no_valid_sessions": "❌ No valid .session files found for conversion.",
+        "title": "🎯 <b>Session → Tdata Report</b>",
+        "summary": "📦 Total: {total} | ✅ Converted: {converted} | ❌ Failed: {failed}",
+        "stats": (
+            "🎊 <b>Conversion complete!</b>\n\n"
+            "📊 <b>Conversion Stats</b>\n"
+            "· Total: {total}\n"
+            "· ✅ Success: {converted} ({pct_converted}%)\n"
+            "· ❌ Failed: {failed} ({pct_failed}%)\n"
+            "· ⏱️ Duration: {duration}\n"
+            "· 🚀 Avg speed: {speed}/sec"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>Unverified:</b> no API credentials configured — this result is"
+            " based on local file processing only, not live Telegram verification."
+        ),
+        "btn_total": "Total",
+        "btn_converted": "Converted",
+        "btn_failed": "Failed",
+        "btn_retry": "Run Again",
+        "btn_home": "Home",
+        "caption": "🎯 Converted Tdata",
+        "cancelled": "🚫 Conversion cancelled.",
+        "more": "\n<i>... and {count} more</i>",
     },
     "bn": {
         "converting": "⏳ সেশন Tdata তে রূপান্তর করা হচ্ছে...",
         "done": ("✅ <b>রূপান্তর সম্পূর্ণ হয়েছে!</b>\n\nরূপান্তরিত: {converted}/{total}"),
         "no_valid_sessions": ("❌ রূপান্তরের জন্য কোনো বৈধ .session ফাইল পাওয়া যায়নি।"),
+        "title": "🎯 <b>সেশন → Tdata রিপোর্ট</b>",
+        "summary": "📦 মোট: {total} | ✅ রূপান্তরিত: {converted} | ❌ ব্যর্থ: {failed}",
+        "stats": (
+            "🎉 <b>রূপান্তর সম্পূর্ণ হয়েছে!</b>\n\n"
+            "📊 <b>রূপান্তর পরিসংখ্যান</b>\n"
+            "· মোট: {total}\n"
+            "· ✅ সফল: {converted} ({pct_converted}%)\n"
+            "· ❌ ব্যর্থ: {failed} ({pct_failed}%)\n"
+            "· ⏱️ সময়: {duration}\n"
+            "· 🚀 গতি: {speed}/সেকেন্ড"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>অযাচাই:</b> কোনো API ক্রেডেনশিয়াল কনফিগার করা নেই — এই ফলাফল কেবল"
+            " স্থানীয় ফাইল প্রসেসিংয়ের ভিত্তিতে, লাইভ টেলিগ্রাম যাচাই নয়।"
+        ),
+        "btn_total": "মোট",
+        "btn_converted": "রূপান্তরিত",
+        "btn_failed": "ব্যর্থ",
+        "btn_retry": "আবার চালান",
+        "btn_home": "হোম",
+        "caption": "🎯 রূপান্তরিত Tdata",
+        "cancelled": "🚫 রূপান্তর বাতিল করা হয়েছে।",
+        "more": "\n<i>... এবং আরও {count}টি</i>",
     },
     "hi": {
         "converting": "⏳ सेशन Tdata में बदला जा रहा है...",
         "done": ("✅ <b>रूपांतरण पूरा हुआ!</b>\n\nरूपांतरित: {converted}/{total}"),
         "no_valid_sessions": ("❌ रूपांतरण के लिए कोई मान्य .session फ़ाइल नहीं मिली।"),
+        "title": "🎯 <b>सेशन → Tdata रिपोर्ट</b>",
+        "summary": "📦 कुल: {total} | ✅ रूपांतरित: {converted} | ❌ विफल: {failed}",
+        "stats": (
+            "🎉 <b>रूपांतरण पूरा हुआ!</b>\n\n"
+            "📊 <b>रूपांतरण आँकड़े</b>\n"
+            "· कुल: {total}\n"
+            "· ✅ सफल: {converted} ({pct_converted}%)\n"
+            "· ❌ विफल: {failed} ({pct_failed}%)\n"
+            "· ⏱️ अवधि: {duration}\n"
+            "· 🚀 औसत गति: {speed}/सेकंड"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>असत्यापित:</b> कोई API क्रेडेंशियल कॉन्फ़िगर नहीं है — यह परिणाम केवल"
+            " स्थानीय फ़ाइल प्रोसेसिंग पर आधारित है, लाइव Telegram सत्यापन नहीं।"
+        ),
+        "btn_total": "कुल",
+        "btn_converted": "रूपांतरित",
+        "btn_failed": "विफल",
+        "btn_retry": "फिर चलाएँ",
+        "btn_home": "होम",
+        "caption": "🎯 रूपांतरित Tdata",
+        "cancelled": "🚫 रूपांतरण रद्द कर दिया गया।",
+        "more": "\n<i>... और {count} और</i>",
     },
     "ur": {
         "converting": "⏳ سیشن Tdata میں تبدیل ہو رہا ہے...",
         "done": ("✅ <b>تبدیلی مکمل ہو گئی!</b>\n\nتبدیل شدہ: {converted}/{total}"),
-        "no_valid_sessions": ("❌ تبدیلی کے لیے کوئی درست .session فائل نہیں ملی।"),
+        "no_valid_sessions": ("❌ تبدیلی کے لیے کوئی درست .session فائل نہیں ملی۔"),
+        "title": "🎯 <b>سیشن → Tdata رپورٹ</b>",
+        "summary": "📦 کل: {total} | ✅ تبدیل شدہ: {converted} | ❌ ناکام: {failed}",
+        "stats": (
+            "🎉 <b>تبدیلی مکمل ہو گئی!</b>\n\n"
+            "📊 <b>تبدیلی کے اعداد و شمار</b>\n"
+            "· کل: {total}\n"
+            "· ✅ کامیاب: {converted} ({pct_converted}%)\n"
+            "· ❌ ناکام: {failed} ({pct_failed}%)\n"
+            "· ⏱️ دورانیہ: {duration}\n"
+            "· 🚀 اوسط رفتار: {speed}/سیکنڈ"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>غیر تصدیق شدہ:</b> کوئی API اسناد ترتیب نہیں دی گئیں — یہ نتیجہ صرف"
+            " مقامی فائل پروسیسنگ پر مبنی ہے، لائیو ٹیلیگرام تصدیق نہیں۔"
+        ),
+        "btn_total": "کل",
+        "btn_converted": "تبدیل شدہ",
+        "btn_failed": "ناکام",
+        "btn_retry": "دوبارہ چلائیں",
+        "btn_home": "ہوم",
+        "caption": "🎯 تبدیل شدہ Tdata",
+        "cancelled": "🚫 تبدیلی منسوخ کر دی گئی۔",
+        "more": "\n<i>... اور مزید {count}</i>",
     },
     "ar": {
         "converting": "⏳ جاري تحويل الجلسة إلى Tdata...",
         "done": ("✅ <b>اكتمل التحويل!</b>\n\nتم تحويل: {converted}/{total}"),
         "no_valid_sessions": ("❌ لم يتم العثور على ملفات .session صالحة للتحويل."),
+        "title": "🎯 <b>تقرير الجلسة → Tdata</b>",
+        "summary": "📦 الإجمالي: {total} | ✅ محوّل: {converted} | ❌ فشل: {failed}",
+        "stats": (
+            "🎉 <b>اكتمل التحويل!</b>\n\n"
+            "📊 <b>إحصائيات التحويل</b>\n"
+            "· الإجمالي: {total}\n"
+            "· ✅ ناجح: {converted} ({pct_converted}%)\n"
+            "· ❌ فشل: {failed} ({pct_failed}%)\n"
+            "· ⏱️ المدة: {duration}\n"
+            "· 🚀 متوسط السرعة: {speed}/ثانية"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>غير مُتحقق:</b> لا توجد بيانات اعتماد API مُهيأة — هذه النتيجة مبنية"
+            " على المعالجة المحلية للملفات فقط، وليست تحققًا مباشرًا من تيليجرام."
+        ),
+        "btn_total": "الإجمالي",
+        "btn_converted": "محوّل",
+        "btn_failed": "فشل",
+        "btn_retry": "إعادة تشغيل",
+        "btn_home": "الرئيسية",
+        "caption": "🎯 Tdata المحوّل",
+        "cancelled": "🚫 تم إلغاء التحويل.",
+        "more": "\n<i>... و {count} أخرى</i>",
     },
     "zh": {
         "converting": "⏳ 正在将会话转换为 Tdata...",
         "done": ("✅ <b>转换完成！</b>\n\n已转换：{converted}/{total}"),
         "no_valid_sessions": ("❌ 未找到可用于转换的有效 .session 文件。"),
+        "title": "🎯 <b>会话 → Tdata 报告</b>",
+        "summary": "📦 总计: {total} | ✅ 已转换: {converted} | ❌ 失败: {failed}",
+        "stats": (
+            "🎉 <b>转换完成！</b>\n\n"
+            "📊 <b>转换统计</b>\n"
+            "· 总计: {total}\n"
+            "· ✅ 成功: {converted} ({pct_converted}%)\n"
+            "· ❌ 失败: {failed} ({pct_failed}%)\n"
+            "· ⏱️ 耗时: {duration}\n"
+            "· 🚀 平均速度: {speed}/秒"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>未验证：</b>未配置任何 API 凭据 — 此结果仅基于本地文件处理，"
+            "并非实时 Telegram 验证。"
+        ),
+        "btn_total": "总计",
+        "btn_converted": "已转换",
+        "btn_failed": "失败",
+        "btn_retry": "再次运行",
+        "btn_home": "首页",
+        "caption": "🎯 已转换的 Tdata",
+        "cancelled": "🚫 转换已取消。",
+        "more": "\n<i>... 还有 {count} 个</i>",
     },
 }
 
@@ -3264,31 +3696,169 @@ TDATA_TO_SESSION_MESSAGES = {
         "converting": "⏳ Converting Tdata to session...",
         "done": ("✅ <b>Conversion completed!</b>\n\nConverted: {converted}/{total}"),
         "no_valid_tdata": "❌ No valid tdata folders found for conversion.",
+        "title": "🔄 <b>Tdata → Session Report</b>",
+        "summary": "📦 Total: {total} | ✅ Converted: {converted} | ❌ Failed: {failed}",
+        "stats": (
+            "🎉 <b>Conversion complete!</b>\n\n"
+            "📊 <b>Conversion Stats</b>\n"
+            "· Total: {total}\n"
+            "· ✅ Success: {converted} ({pct_converted}%)\n"
+            "· ❌ Failed: {failed} ({pct_failed}%)\n"
+            "· ⏱️ Duration: {duration}\n"
+            "· 🚀 Avg speed: {speed}/sec"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>Unverified:</b> no API credentials configured — this result is"
+            " based on local file processing only, not live Telegram verification."
+        ),
+        "btn_total": "Total",
+        "btn_converted": "Converted",
+        "btn_failed": "Failed",
+        "btn_retry": "Run Again",
+        "btn_home": "Home",
+        "caption": "🔄 Converted Sessions",
+        "cancelled": "🚫 Conversion cancelled.",
+        "more": "\n<i>... and {count} more</i>",
     },
     "bn": {
         "converting": "⏳ Tdata সেশনে রূপান্তর করা হচ্ছে...",
         "done": ("✅ <b>রূপান্তর সম্পূর্ণ হয়েছে!</b>\n\nরূপান্তরিত: {converted}/{total}"),
         "no_valid_tdata": ("❌ রূপান্তরের জন্য কোনো বৈধ tdata ফোল্ডার পাওয়া যায়নি।"),
+        "title": "🔄 <b>Tdata → সেশন রিপোর্ট</b>",
+        "summary": "📦 মোট: {total} | ✅ রূপান্তরিত: {converted} | ❌ ব্যর্থ: {failed}",
+        "stats": (
+            "🎉 <b>রূপান্তর সম্পূর্ণ হয়েছে!</b>\n\n"
+            "📊 <b>রূপান্তর পরিসংখ্যান</b>\n"
+            "· মোট: {total}\n"
+            "· ✅ সফল: {converted} ({pct_converted}%)\n"
+            "· ❌ ব্যর্থ: {failed} ({pct_failed}%)\n"
+            "· ⏱️ সময়: {duration}\n"
+            "· 🚀 গতি: {speed}/সেকেন্ড"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>অযাচাই:</b> কোনো API ক্রেডেনশিয়াল কনফিগার করা নেই — এই ফলাফল কেবল"
+            " স্থানীয় ফাইল প্রসেসিংয়ের ভিত্তিতে, লাইভ টেলিগ্রাম যাচাই নয়।"
+        ),
+        "btn_total": "মোট",
+        "btn_converted": "রূপান্তরিত",
+        "btn_failed": "ব্যর্থ",
+        "btn_retry": "আবার চালান",
+        "btn_home": "হোম",
+        "caption": "🔄 রূপান্তরিত সেশন",
+        "cancelled": "🚫 রূপান্তর বাতিল করা হয়েছে।",
+        "more": "\n<i>... এবং আরও {count}টি</i>",
     },
     "hi": {
         "converting": "⏳ Tdata सेशन में बदला जा रहा है...",
         "done": ("✅ <b>रूपांतरण पूरा हुआ!</b>\n\nरूपांतरित: {converted}/{total}"),
         "no_valid_tdata": ("❌ रूपांतरण के लिए कोई मान्य tdata फ़ोल्डर नहीं मिला।"),
+        "title": "🔄 <b>Tdata → सेशन रिपोर्ट</b>",
+        "summary": "📦 कुल: {total} | ✅ रूपांतरित: {converted} | ❌ विफल: {failed}",
+        "stats": (
+            "🎉 <b>रूपांतरण पूरा हुआ!</b>\n\n"
+            "📊 <b>रूपांतरण आँकड़े</b>\n"
+            "· कुल: {total}\n"
+            "· ✅ सफल: {converted} ({pct_converted}%)\n"
+            "· ❌ विफल: {failed} ({pct_failed}%)\n"
+            "· ⏱️ अवधि: {duration}\n"
+            "· 🚀 औसत गति: {speed}/सेकंड"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>असत्यापित:</b> कोई API क्रेडेंशियल कॉन्फ़िगर नहीं है — यह परिणाम केवल"
+            " स्थानीय फ़ाइल प्रोसेसिंग पर आधारित है, लाइव Telegram सत्यापन नहीं।"
+        ),
+        "btn_total": "कुल",
+        "btn_converted": "रूपांतरित",
+        "btn_failed": "विफल",
+        "btn_retry": "फिर चलाएँ",
+        "btn_home": "होम",
+        "caption": "🔄 रूपांतरित सेशन",
+        "cancelled": "🚫 रूपांतरण रद्द कर दिया गया।",
+        "more": "\n<i>... और {count} और</i>",
     },
     "ur": {
         "converting": "⏳ Tdata سیشن میں تبدیل ہو رہا ہے...",
         "done": ("✅ <b>تبدیلی مکمل ہو گئی!</b>\n\nتبدیل شدہ: {converted}/{total}"),
-        "no_valid_tdata": ("❌ تبدیلی کے لیے کوئی درست tdata فولڈر نہیں ملا।"),
+        "no_valid_tdata": ("❌ تبدیلی کے لیے کوئی درست tdata فولڈر نہیں ملا۔"),
+        "title": "🔄 <b>Tdata → سیشن رپورٹ</b>",
+        "summary": "📦 کل: {total} | ✅ تبدیل شدہ: {converted} | ❌ ناکام: {failed}",
+        "stats": (
+            "🎉 <b>تبدیلی مکمل ہو گئی!</b>\n\n"
+            "📊 <b>تبدیلی کے اعداد و شمار</b>\n"
+            "· کل: {total}\n"
+            "· ✅ کامیاب: {converted} ({pct_converted}%)\n"
+            "· ❌ ناکام: {failed} ({pct_failed}%)\n"
+            "· ⏱️ دورانیہ: {duration}\n"
+            "· 🚀 اوسط رفتار: {speed}/سیکنڈ"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>غیر تصدیق شدہ:</b> کوئی API اسناد ترتیب نہیں دی گئیں — یہ نتیجہ صرف"
+            " مقامی فائل پروسیسنگ پر مبنی ہے، لائیو ٹیلیگرام تصدیق نہیں۔"
+        ),
+        "btn_total": "کل",
+        "btn_converted": "تبدیل شدہ",
+        "btn_failed": "ناکام",
+        "btn_retry": "دوبارہ چلائیں",
+        "btn_home": "ہوم",
+        "caption": "🔄 تبدیل شدہ سیشن",
+        "cancelled": "🚫 تبدیلی منسوخ کر دی گئی۔",
+        "more": "\n<i>... اور مزید {count}</i>",
     },
     "ar": {
         "converting": "⏳ جاري تحويل Tdata إلى جلسة...",
         "done": ("✅ <b>اكتمل التحويل!</b>\n\nتم تحويل: {converted}/{total}"),
         "no_valid_tdata": ("❌ لم يتم العثور على مجلدات tdata صالحة للتحويل."),
+        "title": "🔄 <b>تقرير Tdata → الجلسة</b>",
+        "summary": "📦 الإجمالي: {total} | ✅ محوّل: {converted} | ❌ فشل: {failed}",
+        "stats": (
+            "🎉 <b>اكتمل التحويل!</b>\n\n"
+            "📊 <b>إحصائيات التحويل</b>\n"
+            "· الإجمالي: {total}\n"
+            "· ✅ ناجح: {converted} ({pct_converted}%)\n"
+            "· ❌ فشل: {failed} ({pct_failed}%)\n"
+            "· ⏱️ المدة: {duration}\n"
+            "· 🚀 متوسط السرعة: {speed}/ثانية"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>غير مُتحقق:</b> لا توجد بيانات اعتماد API مُهيأة — هذه النتيجة مبنية"
+            " على المعالجة المحلية للملفات فقط، وليست تحققًا مباشرًا من تيليجرام."
+        ),
+        "btn_total": "الإجمالي",
+        "btn_converted": "محوّل",
+        "btn_failed": "فشل",
+        "btn_retry": "إعادة تشغيل",
+        "btn_home": "الرئيسية",
+        "caption": "🔄 الجلسات المحوّلة",
+        "cancelled": "🚫 تم إلغاء التحويل.",
+        "more": "\n<i>... و {count} أخرى</i>",
     },
     "zh": {
         "converting": "⏳ 正在将 Tdata 转换为会话...",
         "done": ("✅ <b>转换完成！</b>\n\n已转换：{converted}/{total}"),
         "no_valid_tdata": "❌ 未找到可用于转换的有效 tdata 文件夹。",
+        "title": "🔄 <b>Tdata → 会话 报告</b>",
+        "summary": "📦 总计: {total} | ✅ 已转换: {converted} | ❌ 失败: {failed}",
+        "stats": (
+            "🎉 <b>转换完成！</b>\n\n"
+            "📊 <b>转换统计</b>\n"
+            "· 总计: {total}\n"
+            "· ✅ 成功: {converted} ({pct_converted}%)\n"
+            "· ❌ 失败: {failed} ({pct_failed}%)\n"
+            "· ⏱️ 耗时: {duration}\n"
+            "· 🚀 平均速度: {speed}/秒"
+        ),
+        "stats_unverified": (
+            "⚠️ <b>未验证：</b>未配置任何 API 凭据 — 此结果仅基于本地文件处理，"
+            "并非实时 Telegram 验证。"
+        ),
+        "btn_total": "总计",
+        "btn_converted": "已转换",
+        "btn_failed": "失败",
+        "btn_retry": "再次运行",
+        "btn_home": "首页",
+        "caption": "🔄 已转换的会话",
+        "cancelled": "🚫 转换已取消。",
+        "more": "\n<i>... 还有 {count} 个</i>",
     },
 }
 
@@ -3307,54 +3877,84 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "title": "📄 <b>Account → Txt Report</b>",
         "summary": "📦 Total: {total} | ✅ Active: {active} | ⚠️ Invalid(converted): {invalid} | ❌ Failed: {failed}",
         "no_output": "❌ No account TXT files could be created.",
-        "btn_total": "🔨 Total",
-        "btn_converted": "🔨 Converted",
-        "btn_failed": "🔨 Failed",
+        "btn_total": "Total",
+        "btn_converted": "Converted",
+        "btn_failed": "Failed",
+        "btn_retry": "Run Again",
+        "btn_home": "Home",
+        "caption": "📄 Account TXT Files",
+        "cancelled": "🚫 Conversion cancelled.",
+        "more": "\n<i>... and {count} more</i>",
     },
     "bn": {
         "converting": "⏳ অ্যাকাউন্ট TXT ফাইল তৈরি হচ্ছে...",
         "title": "📄 <b>অ্যাকাউন্ট → Txt রিপোর্ট</b>",
         "summary": "📦 মোট: {total} | ✅ সক্রিয়: {active} | ⚠️ অবৈধ(রূপান্তরিত): {invalid} | ❌ ব্যর্থ: {failed}",
         "no_output": "❌ কোনো অ্যাকাউন্ট TXT ফাইল তৈরি করা যায়নি।",
-        "btn_total": "🔨 মোট",
-        "btn_converted": "🔨 রূপান্তরিত",
-        "btn_failed": "🔨 ব্যর্থ",
+        "btn_total": "মোট",
+        "btn_converted": "রূপান্তরিত",
+        "btn_failed": "ব্যর্থ",
+        "btn_retry": "আবার চালান",
+        "btn_home": "হোম",
+        "caption": "📄 অ্যাকাউন্ট TXT ফাইল",
+        "cancelled": "🚫 রূপান্তর বাতিল করা হয়েছে।",
+        "more": "\n<i>... এবং আরও {count}টি</i>",
     },
     "hi": {
         "converting": "⏳ अकाउंट TXT फ़ाइलें बनाई जा रही हैं...",
         "title": "📄 <b>अकाउंट → Txt रिपोर्ट</b>",
         "summary": "📦 कुल: {total} | ✅ सक्रिय: {active} | ⚠️ अमान्य(परिवर्तित): {invalid} | ❌ विफल: {failed}",
         "no_output": "❌ कोई अकाउंट TXT फ़ाइल नहीं बनाई जा सकी।",
-        "btn_total": "🔨 कुल",
-        "btn_converted": "🔨 परिवर्तित",
-        "btn_failed": "🔨 विफल",
+        "btn_total": "कुल",
+        "btn_converted": "परिवर्तित",
+        "btn_failed": "विफल",
+        "btn_retry": "फिर चलाएँ",
+        "btn_home": "होम",
+        "caption": "📄 अकाउंट TXT फ़ाइलें",
+        "cancelled": "🚫 रूपांतरण रद्द कर दिया गया।",
+        "more": "\n<i>... और {count} और</i>",
     },
     "ur": {
         "converting": "⏳ اکاؤنٹ TXT فائلیں بن رہی ہیں...",
         "title": "📄 <b>اکاؤنٹ → Txt رپورٹ</b>",
         "summary": "📦 کل: {total} | ✅ فعال: {active} | ⚠️ غلط(تبدیل شدہ): {invalid} | ❌ ناکام: {failed}",
         "no_output": "❌ کوئی اکاؤنٹ TXT فائل نہیں بن سکی۔",
-        "btn_total": "🔨 کل",
-        "btn_converted": "🔨 تبدیل شدہ",
-        "btn_failed": "🔨 ناکام",
+        "btn_total": "کل",
+        "btn_converted": "تبدیل شدہ",
+        "btn_failed": "ناکام",
+        "btn_retry": "دوبارہ چلائیں",
+        "btn_home": "ہوم",
+        "caption": "📄 اکاؤنٹ TXT فائلیں",
+        "cancelled": "🚫 تبدیلی منسوخ کر دی گئی۔",
+        "more": "\n<i>... اور مزید {count}</i>",
     },
     "ar": {
         "converting": "⏳ جارٍ إنشاء ملفات TXT للحسابات...",
         "title": "📄 <b>تقرير الحساب → Txt</b>",
         "summary": "📦 الإجمالي: {total} | ✅ نشط: {active} | ⚠️ غير صالح(محوّل): {invalid} | ❌ فشل: {failed}",
         "no_output": "❌ تعذر إنشاء أي ملفات TXT للحسابات.",
-        "btn_total": "🔨 الإجمالي",
-        "btn_converted": "🔨 محوّل",
-        "btn_failed": "🔨 فشل",
+        "btn_total": "الإجمالي",
+        "btn_converted": "محوّل",
+        "btn_failed": "فشل",
+        "btn_retry": "إعادة تشغيل",
+        "btn_home": "الرئيسية",
+        "caption": "📄 ملفات TXT للحسابات",
+        "cancelled": "🚫 تم إلغاء التحويل.",
+        "more": "\n<i>... و {count} أخرى</i>",
     },
     "zh": {
         "converting": "⏳ 正在创建账户 TXT 文件...",
         "title": "📄 <b>账户 → Txt 报告</b>",
         "summary": "📦 总计: {total} | ✅ 活跃: {active} | ⚠️ 无效(已转换): {invalid} | ❌ 失败: {failed}",
         "no_output": "❌ 无法创建账户 TXT 文件。",
-        "btn_total": "🔨 总计",
-        "btn_converted": "🔨 已转换",
-        "btn_failed": "🔨 失败",
+        "btn_total": "总计",
+        "btn_converted": "已转换",
+        "btn_failed": "失败",
+        "btn_retry": "再次运行",
+        "btn_home": "首页",
+        "caption": "📄 账户 TXT 文件",
+        "cancelled": "🚫 转换已取消。",
+        "more": "\n<i>... 还有 {count} 个</i>",
     },
 }
 
@@ -3373,54 +3973,84 @@ SESSION_TO_JSON_MESSAGES = {
         "title": "📝 <b>Session → Json Report</b>",
         "summary": "📦 Total: {total} | ✅ Active: {active} | ⚠️ Invalid(converted): {invalid} | ❌ Failed: {failed}",
         "no_output": "❌ No session JSON files could be created.",
-        "btn_total": "🔨 Total",
-        "btn_converted": "🔨 Converted",
-        "btn_failed": "🔨 Failed",
+        "btn_total": "Total",
+        "btn_converted": "Converted",
+        "btn_failed": "Failed",
+        "btn_retry": "Run Again",
+        "btn_home": "Home",
+        "caption": "📝 Session JSON Files",
+        "cancelled": "🚫 Conversion cancelled.",
+        "more": "\n<i>... and {count} more</i>",
     },
     "bn": {
         "converting": "⏳ সেশন JSON ফাইল তৈরি হচ্ছে...",
         "title": "📝 <b>সেশন → Json রিপোর্ট</b>",
         "summary": "📦 মোট: {total} | ✅ সক্রিয়: {active} | ⚠️ অবৈধ(রূপান্তরিত): {invalid} | ❌ ব্যর্থ: {failed}",
         "no_output": "❌ কোনো সেশন JSON ফাইল তৈরি করা যায়নি।",
-        "btn_total": "🔨 মোট",
-        "btn_converted": "🔨 রূপান্তরিত",
-        "btn_failed": "🔨 ব্যর্থ",
+        "btn_total": "মোট",
+        "btn_converted": "রূপান্তরিত",
+        "btn_failed": "ব্যর্থ",
+        "btn_retry": "আবার চালান",
+        "btn_home": "হোম",
+        "caption": "📝 সেশন JSON ফাইল",
+        "cancelled": "🚫 রূপান্তর বাতিল করা হয়েছে।",
+        "more": "\n<i>... এবং আরও {count}টি</i>",
     },
     "hi": {
         "converting": "⏳ सेशन JSON फ़ाइलें बनाई जा रही हैं...",
         "title": "📝 <b>सेशन → Json रिपोर्ट</b>",
         "summary": "📦 कुल: {total} | ✅ सक्रिय: {active} | ⚠️ अमान्य(परिवर्तित): {invalid} | ❌ विफल: {failed}",
         "no_output": "❌ कोई सेशन JSON फ़ाइल नहीं बनाई जा सकी।",
-        "btn_total": "🔨 कुल",
-        "btn_converted": "🔨 परिवर्तित",
-        "btn_failed": "🔨 विफल",
+        "btn_total": "कुल",
+        "btn_converted": "परिवर्तित",
+        "btn_failed": "विफल",
+        "btn_retry": "फिर चलाएँ",
+        "btn_home": "होम",
+        "caption": "📝 सेशन JSON फ़ाइलें",
+        "cancelled": "🚫 रूपांतरण रद्द कर दिया गया।",
+        "more": "\n<i>... और {count} और</i>",
     },
     "ur": {
         "converting": "⏳ سیشن JSON فائلیں بن رہی ہیں...",
         "title": "📝 <b>سیشن → Json رپورٹ</b>",
         "summary": "📦 کل: {total} | ✅ فعال: {active} | ⚠️ غلط(تبدیل شدہ): {invalid} | ❌ ناکام: {failed}",
         "no_output": "❌ کوئی سیشن JSON فائل نہیں بن سکی۔",
-        "btn_total": "🔨 کل",
-        "btn_converted": "🔨 تبدیل شدہ",
-        "btn_failed": "🔨 ناکام",
+        "btn_total": "کل",
+        "btn_converted": "تبدیل شدہ",
+        "btn_failed": "ناکام",
+        "btn_retry": "دوبارہ چلائیں",
+        "btn_home": "ہوم",
+        "caption": "📝 سیشن JSON فائلیں",
+        "cancelled": "🚫 تبدیلی منسوخ کر دی گئی۔",
+        "more": "\n<i>... اور مزید {count}</i>",
     },
     "ar": {
         "converting": "⏳ جارٍ إنشاء ملفات JSON للجلسات...",
         "title": "📝 <b>تقرير الجلسة → Json</b>",
         "summary": "📦 الإجمالي: {total} | ✅ نشط: {active} | ⚠️ غير صالح(محوّل): {invalid} | ❌ فشل: {failed}",
         "no_output": "❌ تعذر إنشاء أي ملفات JSON للجلسات.",
-        "btn_total": "🔨 الإجمالي",
-        "btn_converted": "🔨 محوّل",
-        "btn_failed": "🔨 فشل",
+        "btn_total": "الإجمالي",
+        "btn_converted": "محوّل",
+        "btn_failed": "فشل",
+        "btn_retry": "إعادة تشغيل",
+        "btn_home": "الرئيسية",
+        "caption": "📝 ملفات JSON للجلسات",
+        "cancelled": "🚫 تم إلغاء التحويل.",
+        "more": "\n<i>... و {count} أخرى</i>",
     },
     "zh": {
         "converting": "⏳ 正在创建会话 JSON 文件...",
         "title": "📝 <b>会话 → Json 报告</b>",
         "summary": "📦 总计: {total} | ✅ 活跃: {active} | ⚠️ 无效(已转换): {invalid} | ❌ 失败: {failed}",
         "no_output": "❌ 无法创建会话 JSON 文件。",
-        "btn_total": "🔨 总计",
-        "btn_converted": "🔨 已转换",
-        "btn_failed": "🔨 失败",
+        "btn_total": "总计",
+        "btn_converted": "已转换",
+        "btn_failed": "失败",
+        "btn_retry": "再次运行",
+        "btn_home": "首页",
+        "caption": "📝 会话 JSON 文件",
+        "cancelled": "🚫 转换已取消。",
+        "more": "\n<i>... 还有 {count} 个</i>",
     },
 }
 
@@ -3452,93 +4082,93 @@ FILE_MERGE_PROMPTS = {
 FILE_MERGE_MESSAGES = {
     "en": {
         "choose_type": "🔀 <b>Choose file merge type</b>\n\n📦 Found <b>{count}</b> sessions",
-        "btn_multi_type": "📦 Merge Multi-Type",
-        "btn_session_json_tdata": "📦 Merge Session+Json+Tdata",
-        "btn_cancel": "❌ Cancel",
+        "btn_multi_type": "Merge Multi-Type",
+        "btn_session_json_tdata": "Merge Session+Json+Tdata",
+        "btn_cancel": "Cancel",
         "multi_type_done": "✅ <b>Merge complete!</b>\n\n📦 Merged <code>{merged}</code> sessions",
         "session_json_tdata_done": "📦 <b>Merge Session+Json+Tdata Report</b>\n\n✅ Success: {success} ❌ Failed: {failed}",
         "caption_multi_type": "🔀 Merged Sessions",
         "caption_session_json_tdata": "📦 Session+Json+Tdata",
         "no_sessions": "❌ No valid session or tdata files found.",
         "processing": "⏳ Processing file merge...",
-        "btn_total": "⛏️ Total",
-        "btn_merged": "⛏️ Merged",
-        "btn_error": "⛏️ Error",
+        "btn_total": "Total",
+        "btn_merged": "Merged",
+        "btn_error": "Error",
     },
     "bn": {
         "choose_type": "🔀 <b>ফাইল একত্রীকরণের ধরন চয়ন করুন</b>\n\n📦 পাওয়া গেছে <b>{count}</b> সেশন",
-        "btn_multi_type": "📦 Merge Multi-Type",
-        "btn_session_json_tdata": "📦 Merge Session+Json+Tdata",
-        "btn_cancel": "❌ বাতিল",
+        "btn_multi_type": "Merge Multi-Type",
+        "btn_session_json_tdata": "Merge Session+Json+Tdata",
+        "btn_cancel": "বাতিল",
         "multi_type_done": "✅ <b>একত্রীকরণ সম্পন্ন!</b>\n\n📦 একত্রীভূত <code>{merged}</code> সেশন",
         "session_json_tdata_done": "📦 <b>Merge Session+Json+Tdata রিপোর্ট</b>\n\n✅ সফল: {success} ❌ ব্যর্থ: {failed}",
         "caption_multi_type": "🔀 Merged Sessions",
         "caption_session_json_tdata": "📦 Session+Json+Tdata",
         "no_sessions": "❌ কোনো বৈধ সেশন বা tdata ফাইল পাওয়া যায়নি।",
         "processing": "⏳ ফাইল একত্রীকরণ প্রক্রিয়াকরণ চলছে...",
-        "btn_total": "⛏️ মোট",
-        "btn_merged": "⛏️ একত্রীভূত",
-        "btn_error": "⛏️ ত্রুটি",
+        "btn_total": "মোট",
+        "btn_merged": "একত্রীভূত",
+        "btn_error": "ত্রুটি",
     },
     "hi": {
         "choose_type": "🔀 <b>फ़ाइल विलय प्रकार चुनें</b>\n\n📦 मिले <b>{count}</b> सेशन",
-        "btn_multi_type": "📦 Merge Multi-Type",
-        "btn_session_json_tdata": "📦 Merge Session+Json+Tdata",
-        "btn_cancel": "❌ रद्द करें",
+        "btn_multi_type": "Merge Multi-Type",
+        "btn_session_json_tdata": "Merge Session+Json+Tdata",
+        "btn_cancel": "रद्द करें",
         "multi_type_done": "✅ <b>विलय पूर्ण!</b>\n\n📦 विलीन <code>{merged}</code> सेशन",
         "session_json_tdata_done": "📦 <b>Merge Session+Json+Tdata रिपोर्ट</b>\n\n✅ सफल: {success} ❌ विफल: {failed}",
         "caption_multi_type": "🔀 Merged Sessions",
         "caption_session_json_tdata": "📦 Session+Json+Tdata",
         "no_sessions": "❌ कोई वैध सेशन या tdata फ़ाइल नहीं मिली।",
         "processing": "⏳ फ़ाइल विलय संसाधित हो रहा है...",
-        "btn_total": "⛏️ कुल",
-        "btn_merged": "⛏️ विलीन",
-        "btn_error": "⛏️ त्रुटि",
+        "btn_total": "कुल",
+        "btn_merged": "विलीन",
+        "btn_error": "त्रुटि",
     },
     "ur": {
         "choose_type": "🔀 <b>فائل ضم کی قسم منتخب کریں</b>\n\n📦 مل گئے <b>{count}</b> سیشن",
-        "btn_multi_type": "📦 Merge Multi-Type",
-        "btn_session_json_tdata": "📦 Merge Session+Json+Tdata",
-        "btn_cancel": "❌ منسوخ کریں",
+        "btn_multi_type": "Merge Multi-Type",
+        "btn_session_json_tdata": "Merge Session+Json+Tdata",
+        "btn_cancel": "منسوخ کریں",
         "multi_type_done": "✅ <b>ضم مکمل!</b>\n\n📦 ضم شدہ <code>{merged}</code> سیشن",
         "session_json_tdata_done": "📦 <b>Merge Session+Json+Tdata رپورٹ</b>\n\n✅ کامیاب: {success} ❌ ناکام: {failed}",
         "caption_multi_type": "🔀 Merged Sessions",
         "caption_session_json_tdata": "📦 Session+Json+Tdata",
         "no_sessions": "❌ کوئی بھی درست سیشن یا tdata فائل نہیں ملی۔",
         "processing": "⏳ فائل ضم عمل جاری ہے...",
-        "btn_total": "⛏️ کل",
-        "btn_merged": "⛏️ ضم شدہ",
-        "btn_error": "⛏️ خرابی",
+        "btn_total": "کل",
+        "btn_merged": "ضم شدہ",
+        "btn_error": "خرابی",
     },
     "ar": {
         "choose_type": "🔀 <b>اختر نوع دمج الملفات</b>\n\n📦 تم العثور على <b>{count}</b> جلسة",
-        "btn_multi_type": "📦 Merge Multi-Type",
-        "btn_session_json_tdata": "📦 Merge Session+Json+Tdata",
-        "btn_cancel": "❌ إلغاء",
+        "btn_multi_type": "Merge Multi-Type",
+        "btn_session_json_tdata": "Merge Session+Json+Tdata",
+        "btn_cancel": "إلغاء",
         "multi_type_done": "✅ <b>اكتمل الدمج!</b>\n\n📦 تم دمج <code>{merged}</code> جلسات",
         "session_json_tdata_done": "📦 <b>تقرير Merge Session+Json+Tdata</b>\n\n✅ نجاح: {success} ❌ فشل: {failed}",
         "caption_multi_type": "🔀 Merged Sessions",
         "caption_session_json_tdata": "📦 Session+Json+Tdata",
         "no_sessions": "❌ لم يتم العثور على ملفات جلسات أو tdata صالحة.",
         "processing": "⏳ جارٍ معالجة دمج الملفات...",
-        "btn_total": "⛏️ الإجمالي",
-        "btn_merged": "⛏️ المدمجة",
-        "btn_error": "⛏️ الخطأ",
+        "btn_total": "الإجمالي",
+        "btn_merged": "المدمجة",
+        "btn_error": "الخطأ",
     },
     "zh": {
         "choose_type": "🔀 <b>选择文件合并类型</b>\n\n📦 找到 <b>{count}</b> 个会话",
-        "btn_multi_type": "📦 Merge Multi-Type",
-        "btn_session_json_tdata": "📦 Merge Session+Json+Tdata",
-        "btn_cancel": "❌ 取消",
+        "btn_multi_type": "Merge Multi-Type",
+        "btn_session_json_tdata": "Merge Session+Json+Tdata",
+        "btn_cancel": "取消",
         "multi_type_done": "✅ <b>合并完成！</b>\n\n📦 已合并 <code>{merged}</code> 个会话",
         "session_json_tdata_done": "📦 <b>Merge Session+Json+Tdata 报告</b>\n\n✅ 成功: {success} ❌ 失败: {failed}",
         "caption_multi_type": "🔀 Merged Sessions",
         "caption_session_json_tdata": "📦 Session+Json+Tdata",
         "no_sessions": "❌ 未找到有效的会话或 tdata 文件。",
         "processing": "⏳ 正在处理文件合并...",
-        "btn_total": "⛏️ 总计",
-        "btn_merged": "⛏️ 已合并",
-        "btn_error": "⛏️ 错误",
+        "btn_total": "总计",
+        "btn_merged": "已合并",
+        "btn_error": "错误",
     },
 }
 
@@ -3602,6 +4232,9 @@ MASS_MESSAGE_MESSAGES = {
         "no_sessions": "❌ No valid session files found.",
         "no_recipients": "❌ No valid recipients found in the file or contacts.",
         "export_caption": "📊 Mass Message Summary Report",
+        "already_active": "⚠️ You already have an active mass messaging job running.",
+        "not_paused": "❌ This job is not paused anymore.",
+        "sessions_missing": "❌ Session files are missing; the job remains paused.",
     },
     "bn": {
         "upload_recipients": "👥 <b>প্রাপকদের উৎস নির্বাচন করুন</b>\n\nব্যবহারকারীর নাম, আইডি বা ফোন নম্বর সম্বলিত TXT বা CSV ফাইল পাঠান বা পরিচিতি নির্বাচন করুন।",
@@ -3634,6 +4267,9 @@ MASS_MESSAGE_MESSAGES = {
         "no_sessions": "❌ কোনো বৈধ সেশন ফাইল পাওয়া যায়নি।",
         "no_recipients": "❌ কোনো বৈধ প্রাপক পাওয়া যায়নি।",
         "export_caption": "📊 গণ বার্তার সারাংশ রিপোর্ট",
+        "already_active": "⚠️ আপনার একটি সক্রিয় গণ বার্তা কাজ চলছে।",
+        "not_paused": "❌ এই কাজটি আর স্থগিত নেই।",
+        "sessions_missing": "❌ সেশন ফাইল পাওয়া যায়নি; কাজটি স্থগিত থাকবে।",
     },
     "hi": {
         "upload_recipients": "👥 <b>प्राप्तकर्ता स्रोत चुनें</b>\n\nउपयोगकर्ता नाम, आईडी या फोन नंबर वाली TXT या CSV फ़ाइल भेजें या सहेजे गए संपर्कों को चुनें।",
@@ -3666,6 +4302,9 @@ MASS_MESSAGE_MESSAGES = {
         "no_sessions": "❌ कोई वैध सत्र फ़ाइल नहीं मिली।",
         "no_recipients": "❌ कोई वैध प्राप्तकर्ता नहीं मिला।",
         "export_caption": "📊 सामूहिक संदेश सारांश रिपोर्ट",
+        "already_active": "⚠️ आपके पास पहले से ही एक सक्रिय कार्य चल रहा है।",
+        "not_paused": "❌ यह कार्य अब रुका हुआ नहीं है।",
+        "sessions_missing": "❌ सत्र फ़ाइलें नहीं मिलीं; कार्य रुका रहेगा।",
     },
     "ur": {
         "upload_recipients": "👥 <b>وصول کنندگان کا ذریعہ منتخب کریں</b>\n\nیوزر نیم، آئی ڈی یا فون نمبر والی TXT یا CSV فائل بھیجیں یا محفوظ شدہ رابطے منتخب کریں۔",
@@ -3698,6 +4337,9 @@ MASS_MESSAGE_MESSAGES = {
         "no_sessions": "❌ کوئی درست سیشن فائل نہیں ملی۔",
         "no_recipients": "❌ کوئی درست وصول کنندہ نہیں ملا۔",
         "export_caption": "📊 ماس میسج خلاصہ رپورٹ",
+        "already_active": "⚠️ آپ کا ایک فعال کام پہلے سے چل رہا ہے۔",
+        "not_paused": "❌ یہ کام اب روکا ہوا نہیں ہے۔",
+        "sessions_missing": "❌ سیشن فائلیں نہیں ملیں؛ کام روکا رہے گا۔",
     },
     "ar": {
         "upload_recipients": "👥 <b>اختر مصدر المستلمين</b>\n\nأرسل ملف TXT أو CSV يحتوي على أسماء المستخدمين أو المعرفات أو أرقام الهواتف.",
@@ -3730,6 +4372,9 @@ MASS_MESSAGE_MESSAGES = {
         "no_sessions": "❌ لم يتم العثور على ملفات جلسات صالحة.",
         "no_recipients": "❌ لم يتم العثور على مستلمين صالحين.",
         "export_caption": "📊 تقرير ملخص الرسائل الجماعية",
+        "already_active": "⚠️ لديك مهمة نشطة قيد التشغيل بالفعل.",
+        "not_paused": "❌ هذه المهمة لم تعد متوقفة.",
+        "sessions_missing": "❌ ملفات الجلسة مفقودة؛ ستبقى المهمة متوقفة.",
     },
     "zh": {
         "upload_recipients": "👥 <b>选择接收者来源</b>\n\n发送包含用户名、用户 ID 或电话号码的 TXT 或 CSV 文件，或选择保存的联系人。",
@@ -3762,6 +4407,9 @@ MASS_MESSAGE_MESSAGES = {
         "no_sessions": "❌ 未找到有效的会话文件。",
         "no_recipients": "❌ 未找到有效的接收者。",
         "export_caption": "📊 群发消息摘要报告",
+        "already_active": "⚠️ 您已有一个运行中的任务。",
+        "not_paused": "❌ 该任务不再处于暂停状态。",
+        "sessions_missing": "❌ 会话文件缺失；任务保持暂停。",
     },
 }
 
@@ -3976,5 +4624,485 @@ VIP_PAYMENT_SUBMITTED_MESSAGES = {
     "zh": (
         "✅ <b>支付订单 #{id} 已提交！</b>\n\n"
         "我们的管理团队正在审核您的交易。一旦批准，您将立即收到通知。"
+    ),
+}
+
+VIP_PAYMENT_METHOD_MESSAGES = {
+    "en": (
+        "💳 💰 <b>Make Payment</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>Package:</b> {name}\n"
+        "💵 <b>Amount:</b> {price} {currency} $\n\n"
+        "👇 <b>Choose your payment method:</b>"
+    ),
+    "bn": (
+        "💳 💰 <b>পেমেন্ট করুন</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>প্যাকেজ:</b> {name}\n"
+        "💵 <b>পরিমাণ:</b> {price} {currency} $\n\n"
+        "👇 <b>আপনার পেমেন্ট পদ্ধতি বেছে নিন:</b>"
+    ),
+    "hi": (
+        "💳 💰 <b>भुगतान करें</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>पैकेज:</b> {name}\n"
+        "💵 <b>राशि:</b> {price} {currency} $\n\n"
+        "👇 <b>अपना भुगतान तरीका चुनें:</b>"
+    ),
+    "ur": (
+        "💳 💰 <b>ادائیگی کریں</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>پیکیج:</b> {name}\n"
+        "💵 <b>رقم:</b> {price} {currency} $\n\n"
+        "👇 <b>اپنے ادائیگی کا طریقہ منتخب کریں:</b>"
+    ),
+    "ar": (
+        "💳 💰 <b>إجراء الدفع</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>الباقة:</b> {name}\n"
+        "💵 <b>المبلغ:</b> {price} {currency} $\n\n"
+        "👇 <b>اختر طريقة الدفع الخاصة بك:</b>"
+    ),
+    "zh": (
+        "💳 💰 <b>立即付款</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>套餐：</b> {name}\n"
+        "💵 <b>金额：</b> {price} {currency} $\n\n"
+        "👇 <b>请选择您的支付方式：</b>"
+    ),
+}
+
+PAYMENT_FLOW_LABELS = {
+    "en": {
+        "manual": "💳 Manual Payment",
+        "auto": "🤖 Auto Payment",
+        "send_screenshot": "📸 Send Screenshot",
+        "check_payment": "🔄 Check Payment",
+        "chain_trc20": "Auto TRC20 USDT",
+        "chain_bep20": "Auto BEP20 USDT (BSC)",
+    },
+    "bn": {
+        "manual": "💳 ম্যানুয়াল পেমেন্ট",
+        "auto": "🤖 অটো পেমেন্ট",
+        "send_screenshot": "📸 স্ক্রিনশট পাঠান",
+        "check_payment": "🔄 পেমেন্ট চেক করুন",
+        "chain_trc20": "অটো TRC20 USDT",
+        "chain_bep20": "অটো BEP20 USDT (BSC)",
+    },
+    "hi": {
+        "manual": "💳 मैनुअल भुगतान",
+        "auto": "🤖 ऑटो भुगतान",
+        "send_screenshot": "📸 स्क्रीनशॉट भेजें",
+        "check_payment": "🔄 भुगतान जांचें",
+        "chain_trc20": "ऑटो TRC20 USDT",
+        "chain_bep20": "ऑटो BEP20 USDT (BSC)",
+    },
+    "ur": {
+        "manual": "💳 دستی ادائیگی",
+        "auto": "🤖 آٹو ادائیگی",
+        "send_screenshot": "📸 اسکرین شاٹ بھیجیں",
+        "check_payment": "🔄 ادائیگی چیک کریں",
+        "chain_trc20": "آٹو TRC20 USDT",
+        "chain_bep20": "آٹو BEP20 USDT (BSC)",
+    },
+    "ar": {
+        "manual": "💳 دفع يدوي",
+        "auto": "🤖 دفع تلقائي",
+        "send_screenshot": "📸 إرسال لقطة شاشة",
+        "check_payment": "🔄 التحقق من الدفع",
+        "chain_trc20": "TRC20 USDT تلقائي",
+        "chain_bep20": "BEP20 USDT تلقائي (BSC)",
+    },
+    "zh": {
+        "manual": "💳 手动支付",
+        "auto": "🤖 自动支付",
+        "send_screenshot": "📸 发送截图",
+        "check_payment": "🔄 检查付款",
+        "chain_trc20": "自动 TRC20 USDT",
+        "chain_bep20": "自动 BEP20 USDT (BSC)",
+    },
+}
+
+MANUAL_PAYMENT_MESSAGES = {
+    "en": (
+        "💳 💰 <b>Make Payment</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>Package:</b> {name}\n"
+        "💵 <b>Amount:</b> {price} {currency} $\n\n"
+        "╔══ 📋 MANUAL PAYMENT ══╗\n\n"
+        "💳 <b>Binance ID:</b>\n"
+        "<code>{binance}</code>\n\n"
+        "💳 <b>TRC20</b> | <code>{trc20}</code>\n\n"
+        "💳 <b>BEP20</b> | <code>{bep20}</code>\n\n"
+        "After payment, click the button below.\n"
+        "╚══════════════════════╝\n\n"
+        "📸 <b>Send Screenshot</b>\n\n"
+        "Please send your payment screenshot.\n\n"
+        "⚠️ Only send a Photo — text messages are not accepted.\n\n"
+        "📦 Package: {name}\n\n"
+        "cancel."
+    ),
+    "bn": (
+        "💳 💰 <b>পেমেন্ট করুন</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>প্যাকেজ:</b> {name}\n"
+        "💵 <b>পরিমাণ:</b> {price} {currency} $\n\n"
+        "╔══ 📋 ম্যানুয়াল পেমেন্ট ══╗\n\n"
+        "💳 <b>Binance ID:</b>\n"
+        "<code>{binance}</code>\n\n"
+        "💳 <b>TRC20</b> | <code>{trc20}</code>\n\n"
+        "💳 <b>BEP20</b> | <code>{bep20}</code>\n\n"
+        "পেমেন্টের পর নিচের বাটনে ক্লিক করুন।\n"
+        "╚══════════════════════╝\n\n"
+        "📸 <b>স্ক্রিনশট পাঠান</b>\n\n"
+        "আপনার পেমেন্ট স্ক্রিনশট পাঠান।\n\n"
+        "⚠️ শুধুমাত্র একটি ছবি পাঠান — টেক্সট মেসেজ গ্রহণ করা হয় না।\n\n"
+        "📦 প্যাকেজ: {name}\n\n"
+        "বাতিল।"
+    ),
+    "hi": (
+        "💳 💰 <b>भुगतान करें</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>पैकेज:</b> {name}\n"
+        "💵 <b>राशि:</b> {price} {currency} $\n\n"
+        "╔══ 📋 मैनुअल भुगतान ══╗\n\n"
+        "💳 <b>Binance ID:</b>\n"
+        "<code>{binance}</code>\n\n"
+        "💳 <b>TRC20</b> | <code>{trc20}</code>\n\n"
+        "💳 <b>BEP20</b> | <code>{bep20}</code>\n\n"
+        "भुगतान के बाद नीचे बटन पर क्लिक करें।\n"
+        "╚══════════════════════╝\n\n"
+        "📸 <b>स्क्रीनशॉट भेजें</b>\n\n"
+        "कृपया अपना भुगतान स्क्रीनशॉट भेजें।\n\n"
+        "⚠️ केवल एक फोटो भेजें — टेक्स्ट संदेश स्वीकार नहीं किए जाते।\n\n"
+        "📦 पैकेज: {name}\n\n"
+        "रद्द करें।"
+    ),
+    "ur": (
+        "💳 💰 <b>ادائیگی کریں</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>پیکیج:</b> {name}\n"
+        "💵 <b>رقم:</b> {price} {currency} $\n\n"
+        "╔══ 📋 دستی ادائیگی ══╗\n\n"
+        "💳 <b>Binance ID:</b>\n"
+        "<code>{binance}</code>\n\n"
+        "💳 <b>TRC20</b> | <code>{trc20}</code>\n\n"
+        "💳 <b>BEP20</b> | <code>{bep20}</code>\n\n"
+        "ادائیگی کے بعد نیچے بٹن پر کلک کریں۔\n"
+        "╚══════════════════════╝\n\n"
+        "📸 <b>اسکرین شاٹ بھیجیں</b>\n\n"
+        "براہ کرم اپنی ادائیگی کا اسکرین شاٹ بھیجیں۔\n\n"
+        "⚠️ صرف ایک تصویر بھیجیں — ٹیکسٹ میسج قبول نہیں کئے جاتے۔\n\n"
+        "📦 پیکیج: {name}\n\n"
+        "منسوخ کریں۔"
+    ),
+    "ar": (
+        "💳 💰 <b>إجراء الدفع</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>الباقة:</b> {name}\n"
+        "💵 <b>المبلغ:</b> {price} {currency} $\n\n"
+        "╔══ 📋 دفع يدوي ══╗\n\n"
+        "💳 <b>Binance ID:</b>\n"
+        "<code>{binance}</code>\n\n"
+        "💳 <b>TRC20</b> | <code>{trc20}</code>\n\n"
+        "💳 <b>BEP20</b> | <code>{bep20}</code>\n\n"
+        "بعد الدفع، انقر على الزر أدناه.\n"
+        "╚══════════════════════╝\n\n"
+        "📸 <b>إرسال لقطة شاشة</b>\n\n"
+        "يرجى إرسال لقطة شاشة الدفع الخاصة بك.\n\n"
+        "⚠️ أرسل صورة فقط — لا يتم قبول الرسائل النصية.\n\n"
+        "📦 الباقة: {name}\n\n"
+        "إلغاء."
+    ),
+    "zh": (
+        "💳 💰 <b>立即付款</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>套餐：</b> {name}\n"
+        "💵 <b>金额：</b> {price} {currency} $\n\n"
+        "╔══ 📋 手动支付 ══╗\n\n"
+        "💳 <b>Binance ID：</b>\n"
+        "<code>{binance}</code>\n\n"
+        "💳 <b>TRC20</b> | <code>{trc20}</code>\n\n"
+        "💳 <b>BEP20</b> | <code>{bep20}</code>\n\n"
+        "付款后，请点击下方按钮。\n"
+        "╚══════════════════════╝\n\n"
+        "📸 <b>发送截图</b>\n\n"
+        "请发送您的付款截图。\n\n"
+        "⚠️ 仅发送照片 — 文字消息不被接受。\n\n"
+        "📦 套餐：{name}\n\n"
+        "取消。"
+    ),
+}
+
+RECEIPT_PROMPT_MESSAGES = {
+    "en": (
+        "📸 <b>Send Screenshot</b>\n\n"
+        "Please send your payment screenshot.\n\n"
+        "⚠️ Only send a <b>Photo</b> — text messages are not accepted.\n\n"
+        "📦 Package: {name}\n\n"
+        "cancel."
+    ),
+    "bn": (
+        "📸 <b>স্ক্রিনশট পাঠান</b>\n\n"
+        "আপনার পেমেন্ট স্ক্রিনশট পাঠান।\n\n"
+        "⚠️ শুধুমাত্র একটি <b>ছবি</b> পাঠান — টেক্সট মেসেজ গ্রহণ করা হয় না।\n\n"
+        "📦 প্যাকেজ: {name}\n\n"
+        "বাতিল।"
+    ),
+    "hi": (
+        "📸 <b>स्क्रीनशॉट भेजें</b>\n\n"
+        "कृपया अपना भुगतान स्क्रीनशॉट भेजें।\n\n"
+        "⚠️ केवल एक <b>फोटो</b> भेजें — टेक्स्ट संदेश स्वीकार नहीं किए जाते।\n\n"
+        "📦 पैकेज: {name}\n\n"
+        "रद्द करें।"
+    ),
+    "ur": (
+        "📸 <b>اسکرین شاٹ بھیجیں</b>\n\n"
+        "براہ کرم اپنی ادائیگی کا اسکرین شاٹ بھیجیں۔\n\n"
+        "⚠️ صرف ایک <b>تصویر</b> بھیجیں — ٹیکسٹ میسج قبول نہیں کئے جاتے۔\n\n"
+        "📦 پیکیج: {name}\n\n"
+        "منسوخ کریں۔"
+    ),
+    "ar": (
+        "📸 <b>إرسال لقطة شاشة</b>\n\n"
+        "يرجى إرسال لقطة شاشة الدفع الخاصة بك.\n\n"
+        "⚠️ أرسل <b>صورة</b> فقط — لا يتم قبول الرسائل النصية.\n\n"
+        "📦 الباقة: {name}\n\n"
+        "إلغاء."
+    ),
+    "zh": (
+        "📸 <b>发送截图</b>\n\n"
+        "请发送您的付款截图。\n\n"
+        "⚠️ 仅发送<b>照片</b> — 不接受文字消息。\n\n"
+        "📦 套餐：{name}\n\n"
+        "取消。"
+    ),
+}
+
+RECEIPT_INVALID_MESSAGES = {
+    "en": (
+        "⚠️ Only a <b>Photo</b> is accepted for payment confirmation.\n\n"
+        "Please send your payment screenshot as an image — text messages are not accepted."
+    ),
+    "bn": (
+        "⚠️ পেমেন্ট নিশ্চিত করার জন্য শুধুমাত্র একটি <b>ছবি</b> গ্রহণ করা হয়।\n\n"
+        "আপনার পেমেন্ট স্ক্রিনশট ছবি হিসেবে পাঠান — টেক্সট মেসেজ গ্রহণ করা হয় না।"
+    ),
+    "hi": (
+        "⚠️ भुगतान की पुष्टि के लिए केवल एक <b>फोटो</b> स्वीकार की जाती है।\n\n"
+        "कृपया अपना भुगतान स्क्रीनशॉट छवि के रूप में भेजें — टेक्स्ट संदेश स्वीकार नहीं किए जाते।"
+    ),
+    "ur": (
+        "⚠️ ادائیگی کی تصدیق کے لیے صرف ایک <b>تصویر</b> قبول کی جاتی ہے۔\n\n"
+        "براہ کرم اپنی ادائیگی کا اسکرین شاٹ تصویر کے طور پر بھیجیں — ٹیکسٹ میسج قبول نہیں کئے جاتے۔"
+    ),
+    "ar": (
+        "⚠️ يتم قبول <b>صورة</b> فقط للتأكد من الدفع.\n\n"
+        "يرجى إرسال لقطة شاشة الدفع كصورة — لا يتم قبول الرسائل النصية."
+    ),
+    "zh": (
+        "⚠️ 仅接受<b>照片</b>作为付款确认。\n\n"
+        "请以图片形式发送您的付款截图 — 不接受文字消息。"
+    ),
+}
+
+AUTO_PAYMENT_HEADER_MESSAGES = {
+    "en": (
+        "🤖 💰 <b>Make Payment</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>Package:</b> {name}\n"
+        "💵 <b>Base price:</b> {price} {currency} $\n"
+        "⚠️ Send the <b>exact chain amount</b> shown below — the base price alone may not match\n\n"
+        "╔══ 🤖 AUTO PAY SYSTEM ══╗\n"
+        "{chains}"
+        "╚═══════════════════════╝"
+    ),
+    "bn": (
+        "🤖 💰 <b>পেমেন্ট করুন</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>প্যাকেজ:</b> {name}\n"
+        "💵 <b>ভিত্তি মূল্য:</b> {price} {currency} $\n"
+        "👆 নীচে দেখানো <b>সঠিক চেইন পরিমাণ</b> পাঠান — শুধু ভিত্তি মূল্য মিলবে না\n\n"
+        "╔══ 🤖 অটো পেমেন্ট সিস্টেম ══╗\n"
+        "{chains}"
+        "╚═══════════════════════╝"
+    ),
+    "hi": (
+        "🤖 💰 <b>भुगतान करें</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>पैकेज:</b> {name}\n"
+        "💵 <b>आधार मूल्य:</b> {price} {currency} $\n"
+        "👉 नीचे दिखाई गई <b>सटीक चेन राशि</b> भेजें — सिर्फ़ आधार मूल्य मेल नहीं खाएगा\n\n"
+        "╔══ 🤖 ऑटो भुगतान प्रणाली ══╗\n"
+        "{chains}"
+        "╚═══════════════════════╝"
+    ),
+    "ur": (
+        "🤖 💰 <b>ادائیگی کریں</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>پیکیج:</b> {name}\n"
+        "💵 <b>بنیادی قیمت:</b> {price} {currency} $\n"
+        "👉 نیچے دی گئی <b>صحیح چین رقم</b> بھیجیں – صرف بنیادی قیمت مماثل نہیں ہوگی\n\n"
+        "╔══ 🤖 آٹو ادائیگی نظام ══╗\n"
+        "{chains}"
+        "╚═══════════════════════╝"
+    ),
+    "ar": (
+        "🤖 💰 <b>إجراء الدفع</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>الباقة:</b> {name}\n"
+        "💵 <b>السعر الأساسي:</b> {price} {currency} $\n"
+        "👈 أرسل <b>المبلغ الدقيق للسلسلة</b> الموضح أدناه — السعر الأساسي وحده لن يطابق\n\n"
+        "╔══ 🤖 نظام الدفع التلقائي ══╗\n"
+        "{chains}"
+        "╚═══════════════════════╝"
+    ),
+    "zh": (
+        "🤖 💰 <b>立即付款</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>套餐：</b> {name}\n"
+        "💵 <b>基础价格：</b> {price} {currency} $\n"
+        "👇 请发送下方显示的<b>准确链上金额</b>——仅基础价格不匹配\n\n"
+        "╔══ 🤖 自动支付系统 ══╗\n"
+        "{chains}"
+        "╚═══════════════════════╝"
+    ),
+}
+
+AUTO_PAYMENT_CHAIN_MESSAGES = {
+    "en": (
+        "🔵 {chain}\n"
+        "📋 <b>Wallet:</b>\n"
+        "<code>{wallet}</code>\n\n"
+        "💵 Send EXACTLY: <code>{amount} USDT</code>\n"
+        "⚡ Bot auto-detects within 30 seconds!\n"
+        "🔖 Order: <code>{order}</code> | ⏰ {hours} hours"
+    ),
+    "bn": (
+        "🔵 {chain}\n"
+        "📋 <b>ওয়ালেট:</b>\n"
+        "<code>{wallet}</code>\n\n"
+        "💵 ঠিকভাবে পাঠান: <code>{amount} USDT</code>\n"
+        "⚡ বট ৩০ সেকেন্ডের মধ্যে অটো-ডিটেক্ট করবে!\n"
+        "🔖 অর্ডার: <code>{order}</code> | ⏰ {hours} ঘণ্টা"
+    ),
+    "hi": (
+        "🔵 {chain}\n"
+        "📋 <b>वॉलेट:</b>\n"
+        "<code>{wallet}</code>\n\n"
+        "💵 बिल्कुल इतना भेजें: <code>{amount} USDT</code>\n"
+        "⚡ बॉट 30 सेकंड के भीतर स्वतः पहचान लेगा!\n"
+        "🔖 ऑर्डर: <code>{order}</code> | ⏰ {hours} घंटे"
+    ),
+    "ur": (
+        "🔵 {chain}\n"
+        "📋 <b>والیٹ:</b>\n"
+        "<code>{wallet}</code>\n\n"
+        "💵 بالکل اتنے بھیجیں: <code>{amount} USDT</code>\n"
+        "⚡ بوٹ 30 سیکنڈ کے اندر خود بخود پہچان لے گا!\n"
+        "🔖 آرڈر: <code>{order}</code> | ⏰ {hours} گھنٹے"
+    ),
+    "ar": (
+        "🔵 {chain}\n"
+        "📋 <b>المحفظة:</b>\n"
+        "<code>{wallet}</code>\n\n"
+        "💵 أرسل المبلغ المحدد بالضبط: <code>{amount} USDT</code>\n"
+        "⚡ يكتشف البوت تلقائياً خلال 30 ثانية!\n"
+        "🔖 الطلب: <code>{order}</code> | ⏰ {hours} ساعة"
+    ),
+    "zh": (
+        "🔵 {chain}\n"
+        "📋 <b>钱包：</b>\n"
+        "<code>{wallet}</code>\n\n"
+        "💵 请发送准确的金额：<code>{amount} USDT</code>\n"
+        "⚡ 机器人会在30秒内自动检测！\n"
+        "🔖 订单：<code>{order}</code> | ⏰ {hours} 小时"
+    ),
+}
+
+PAYMENT_CONFIRMED_MESSAGES = {
+    "en": (
+        "✅ <b>Payment Received!</b>\n\n"
+        "💎 VIP activated!\n"
+        "📦 Plan: {plan}\n"
+        "⏳ Expires: {date}\n\n"
+        "Thank you for your purchase! 🎉"
+    ),
+    "bn": (
+        "✅ <b>পেমেন্ট প্রাপ্ত হয়েছে!</b>\n\n"
+        "💎 VIP সক্রিয় হয়েছে!\n"
+        "📦 প্ল্যান: {plan}\n"
+        "⏳ মেয়াদ শেষ: {date}\n\n"
+        "আপনার কেনাকাটার জন্য ধন্যবাদ! 🎉"
+    ),
+    "hi": (
+        "✅ <b>भुगतान प्राप्त हुआ!</b>\n\n"
+        "💎 VIP सक्रिय हो गया!\n"
+        "📦 प्लान: {plan}\n"
+        "⏳ समाप्ति: {date}\n\n"
+        "आपकी खरीदारी के लिए धन्यवाद! 🎉"
+    ),
+    "ur": (
+        "✅ <b>ادائیگی موصول ہوگئی!</b>\n\n"
+        "💎 VIP فعال ہو گیا!\n"
+        "📦 پلان: {plan}\n"
+        "⏳ ختم ہونے کی تاریخ: {date}\n\n"
+        "آپ کی خریداری کے لیے شکریہ! 🎉"
+    ),
+    "ar": (
+        "✅ <b>تم استلام الدفع!</b>\n\n"
+        "💎 تم تفعيل VIP!\n"
+        "📦 الخطة: {plan}\n"
+        "⏳ تنتهي في: {date}\n\n"
+        "شكراً لشرائك! 🎉"
+    ),
+    "zh": (
+        "✅ <b>已收到付款！</b>\n\n"
+        "💎 VIP 已激活！\n"
+        "📦 套餐：{plan}\n"
+        "⏳ 到期时间：{date}\n\n"
+        "感谢您的购买！🎉"
+    ),
+}
+
+PAYMENT_NOT_DETECTED_MESSAGES = {
+    "en": (
+        "⏳ Payment not detected yet. Double-check the amount and wallet address, then press the button again in a moment."
+    ),
+    "bn": (
+        "⏳ পেমেন্ট এখনো শনাক্ত হয়নি। পরিমাণ এবং ওয়ালেট ঠিকানা আবার যাচাই করুন, তারপর একটু পরে আবার বাটনটি চাপুন।"
+    ),
+    "hi": (
+        "⏳ अभी तक भुगतान का पता नहीं चला। राशि और वॉलेट पता दोबारा जाँचें, फिर कुछ देर बाद फिर से बटन दबाएँ।"
+    ),
+    "ur": (
+        "⏳ ابھی تک ادائیگی کا پتہ نہیں چلا۔ رقم اور والیٹ پتہ دوبارہ چیک کریں، پھر ایک لمحے کے بعد دوبارہ بٹن دبائیں۔"
+    ),
+    "ar": (
+        "⏳ لم يتم اكتشف الدفع بعد. تأكد من المبلغ وعنوان المحفظة، ثم اضغط على الزر مرة أخرى بعد قليل."
+    ),
+    "zh": (
+        "⏳ 尚未检测到付款。请再次核对金额和钱包地址，稍后再按一次按钮。"
+    ),
+}
+
+PAYMENT_METHOD_UNAVAILABLE_MESSAGES = {
+    "en": (
+        "❌ This payment method is currently unavailable. Please choose another one."
+    ),
+    "bn": (
+        "❌ এই পেমেন্ট পদ্ধতিটি বর্তমানে অনুপলব্ধ। অনুগ্রহ করে অন্য একটি বেছে নিন।"
+    ),
+    "hi": (
+        "❌ यह भुगतान विधि अभी उपलब्ध नहीं है। कृपया कोई दूसरी विधि चुनें।"
+    ),
+    "ur": (
+        "❌ ادائیگی کا یہ طریقہ فی الحال دستیاب نہیں ہے۔ براہ کرم کوئی اور طریقہ منتخب کریں۔"
+    ),
+    "ar": (
+        "❌ هذه طريقة الدفع غير متاحة حالياً. يرجى اختيار طريقة أخرى."
+    ),
+    "zh": (
+        "❌ 该支付方式当前不可用。请选择其他方式。"
     ),
 }

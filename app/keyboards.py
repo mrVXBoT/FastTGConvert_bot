@@ -10,7 +10,6 @@ from app.locales import (
     ACCOUNT_TO_TXT_MESSAGES,
     BACK_LABELS,
     CANCEL_LABELS,
-    CHECK_CONTACTS_MESSAGES,
     CLEAN_CHAT_MESSAGES,
     CLEAN_CHAT_MODE_LABELS,
     CLEAN_CHAT_SELECTION_ACTIONS,
@@ -20,11 +19,14 @@ from app.locales import (
     HELP_BUTTON_LABELS,
     KILL_SESSIONS_MESSAGES,
     LANGUAGES,
+    PAYMENT_FLOW_LABELS,
     PRIVACY_SETTINGS_MESSAGES,
     PROFILE_SETUP_MESSAGES,
     READ_OTP_MESSAGES,
     SESSION_TO_JSON_MESSAGES,
+    SESSION_TO_TDATA_MESSAGES,
     SPLIT_MESSAGES,
+    TDATA_TO_SESSION_MESSAGES,
     get_locale,
     menu_labels,
 )
@@ -38,13 +40,14 @@ def button(
     emoji_key: str | None = None,
     is_vip: bool = False,
 ) -> InlineKeyboardButton:
-    btn_text = f"💎 {text}" if is_vip else text
+    custom_emoji_id = EmojiRegistry.get_custom_emoji_id("VIP") if is_vip else None
+    btn_text = f"💎 {text}" if (is_vip and not custom_emoji_id) else text
     return Button.create(
         text=btn_text,
         callback_data=action,
         style=style,
-        emoji_key=emoji_key,
-        custom_emoji_id="5260398020549197682" if is_vip else None,
+        emoji_key=emoji_key or ("VIP" if is_vip else None),
+        custom_emoji_id=custom_emoji_id,
     )
 
 
@@ -60,7 +63,14 @@ def _main_menu(
     label = iter(menu_labels(language))
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SEARCH")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SEARCH",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -93,7 +103,14 @@ def _main_menu(
                     is_vip=is_vip("check_contacts"),
                 ),
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="CONVERT")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONVERT",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -126,7 +143,14 @@ def _main_menu(
                     is_vip=is_vip("account_to_txt"),
                 ),
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SPLIT")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SPLIT",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -143,7 +167,14 @@ def _main_menu(
                     is_vip=is_vip("file_merge"),
                 ),
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SECURITY")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SECURITY",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -169,7 +200,14 @@ def _main_menu(
                     is_vip=is_vip("reset_2fa"),
                 )
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="BROADCAST")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BROADCAST",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -186,7 +224,14 @@ def _main_menu(
                     is_vip=is_vip("leave_channel"),
                 ),
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="USERS")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="USERS",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -230,7 +275,14 @@ def _main_menu(
                     is_vip=is_vip("account_age"),
                 )
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="STATS")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="STATS",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -265,7 +317,14 @@ def _main_menu(
                     is_vip=is_vip("list_checker"),
                 )
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SECURITY")],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SECURITY",
+                )
+            ],
             [
                 button(
                     next(label),
@@ -275,11 +334,34 @@ def _main_menu(
                     is_vip=is_vip("privacy_settings"),
                 )
             ],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.SUCCESS, emoji_key="VIP")],
-            [button(next(label), "menu:plan", style=ButtonStyle.SUCCESS, emoji_key="VIP")],
-            [button(f"━━ {next(label)} ━━", "section:noop", style=ButtonStyle.PRIMARY, emoji_key="SETTINGS")],
             [
-                button(next(label), "menu:help", style=ButtonStyle.PRIMARY, emoji_key="SUPPORT"),
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="VIP",
+                )
+            ],
+            [
+                button(
+                    next(label), "menu:plan", style=ButtonStyle.SUCCESS, emoji_key="VIP"
+                )
+            ],
+            [
+                button(
+                    f"━━ {next(label)} ━━",
+                    "section:noop",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SETTINGS",
+                )
+            ],
+            [
+                button(
+                    next(label),
+                    "menu:help",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SUPPORT",
+                ),
                 button(
                     get_locale(language).language_name.split(maxsplit=1)[-1]
                     if EmojiRegistry.get_custom_emoji_id(f"FLAG_{language.upper()}")
@@ -376,9 +458,20 @@ def help_support_menu(support_id: str, language: str = "en") -> InlineKeyboardMa
     if contact is not None:
         display, url = contact
         label = HELP_BUTTON_LABELS.get(language, HELP_BUTTON_LABELS["en"])
-        rows.append([InlineKeyboardButton(text=f"💬 {label} {display}", url=url)])
+        rows.append(
+            [
+                Button.create(
+                    text=f"{label} {display}",
+                    url=url,
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="MESSAGE",
+                )
+            ]
+        )
     back = BACK_LABELS.get(language, BACK_LABELS["en"])
-    rows.append([button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK")])
+    rows.append(
+        [button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -406,7 +499,7 @@ def file_split_choice_menu(language: str = "en") -> InlineKeyboardMarkup:
                     text=messages["btn_country"],
                     action="split_type:country",
                     style=ButtonStyle.PRIMARY,
-                    emoji_key="SPLIT",
+                    emoji_key="SPLIT_COUNTRY",
                 )
             ],
             [
@@ -414,7 +507,7 @@ def file_split_choice_menu(language: str = "en") -> InlineKeyboardMarkup:
                     text=messages["btn_quantity"],
                     action="split_type:quantity",
                     style=ButtonStyle.PRIMARY,
-                    emoji_key="SPLIT",
+                    emoji_key="SPLIT_QUANTITY",
                 )
             ],
             [
@@ -446,15 +539,15 @@ def file_split_result_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button(messages["btn_total"], "split:result:noop"),
+                button(messages["btn_total"], "split:result:noop", emoji_key="TOTAL"),
                 button(str(total), "split:result:noop"),
             ],
             [
-                button(messages["btn_split"], "split:result:noop"),
+                button(messages["btn_split"], "split:result:noop", emoji_key="SPLIT"),
                 button(str(split), "split:result:noop"),
             ],
             [
-                button(messages["btn_failed"], "split:result:noop"),
+                button(messages["btn_failed"], "split:result:noop", emoji_key="FAILED"),
                 button(str(failed), "split:result:noop"),
             ],
         ]
@@ -468,21 +561,27 @@ def file_merge_choice_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
+                button(
                     text=msgs["btn_multi_type"],
-                    callback_data="merge_type:multi_type",
+                    action="merge_type:multi_type",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="MERGE_MULTI_TYPE",
                 )
             ],
             [
-                InlineKeyboardButton(
+                button(
                     text=msgs["btn_session_json_tdata"],
-                    callback_data="merge_type:session_json_tdata",
+                    action="merge_type:session_json_tdata",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="MERGE_JSON_TDATA",
                 )
             ],
             [
-                InlineKeyboardButton(
+                button(
                     text=msgs["btn_cancel"],
-                    callback_data="action:cancel",
+                    action="action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
                 )
             ],
         ]
@@ -498,15 +597,15 @@ def file_merge_result_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button(f"{msgs['btn_total']}", "file_merge:noop"),
+                button(msgs["btn_total"], "file_merge:noop", emoji_key="TOTAL"),
                 button(f"{total}", "file_merge:noop"),
             ],
             [
-                button(f"{msgs['btn_merged']}", "file_merge:noop"),
+                button(msgs["btn_merged"], "file_merge:noop", emoji_key="CONVERTED"),
                 button(f"{merged}", "file_merge:noop"),
             ],
             [
-                button(f"{msgs['btn_error']}", "file_merge:noop"),
+                button(msgs["btn_error"], "file_merge:noop", emoji_key="FAILED"),
                 button(f"{error}", "file_merge:noop"),
             ],
         ]
@@ -526,15 +625,15 @@ def two_factor_result_menu(
     msgs = TWO_FACTOR_MESSAGES.get(language, TWO_FACTOR_MESSAGES["en"])
     rows = [
         [
-            button(f"🔨 {msgs['btn_total']}", "two_factor:noop"),
+            button(msgs["btn_total"], "two_factor:noop", emoji_key="TOTAL"),
             button(str(total), "two_factor:noop"),
         ],
         [
-            button(f"🔨 {msgs['btn_success']}", "two_factor:noop"),
+            button(msgs["btn_success"], "two_factor:noop", emoji_key="CONVERTED"),
             button(str(success), "two_factor:noop"),
         ],
         [
-            button(f"🔨 {msgs['btn_failed']}", "two_factor:noop"),
+            button(msgs["btn_failed"], "two_factor:noop", emoji_key="FAILED"),
             button(str(failed), "two_factor:noop"),
         ],
     ]
@@ -542,32 +641,53 @@ def two_factor_result_menu(
         rows.insert(
             2,
             [
-                button(f"⏳ {msgs['btn_pending']}", "two_factor:noop"),
+                button(msgs["btn_pending"], "two_factor:noop", emoji_key="LOADING"),
                 button(str(pending), "two_factor:noop"),
             ],
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def channel_result_menu(
-    total: int, success: int, failed: int, language: str = "en"
+def two_factor_cancel_menu(
+    language: str = "en", tool: str = "change"
 ) -> InlineKeyboardMarkup:
-    from app.locales import CHANNEL_MESSAGES
-
-    msgs = CHANNEL_MESSAGES.get(language, CHANNEL_MESSAGES["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button(f"🔨 {msgs['btn_total']}", "channel:noop"),
+                button(
+                    text=CANCEL_LABELS.get(language, CANCEL_LABELS["en"]),
+                    action=f"two_factor:cancel:{tool}",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ]
+        ]
+    )
+
+
+def channel_result_menu(
+    total: int, success: int, failed: int, language: str = "en"
+) -> InlineKeyboardMarkup:
+    from app.locales import BACK_LABELS, CHANNEL_MESSAGES
+
+    msgs = CHANNEL_MESSAGES.get(language, CHANNEL_MESSAGES["en"])
+    back = BACK_LABELS.get(language, BACK_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(msgs['btn_total'], "channel:noop", emoji_key="TOTAL"),
                 button(str(total), "channel:noop"),
             ],
             [
-                button(f"🔨 {msgs['btn_success']}", "channel:noop"),
+                button(msgs['btn_success'], "channel:noop", emoji_key="CONVERTED"),
                 button(str(success), "channel:noop"),
             ],
             [
-                button(f"🔨 {msgs['btn_failed']}", "channel:noop"),
+                button(msgs['btn_failed'], "channel:noop", emoji_key="FAILED"),
                 button(str(failed), "channel:noop"),
+            ],
+            [
+                button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"),
             ],
         ]
     )
@@ -597,55 +717,111 @@ def language_menu(selected_language: str | None = None) -> InlineKeyboardMarkup:
         if selected_language in LANGUAGES
         else "language:start"
     )
-    rows.append([InlineKeyboardButton(text="🚀 /start", callback_data=start_cb)])
+    rows.append(
+        [
+            Button.create(
+                text="🚀 /start",
+                callback_data=start_cb,
+                style=ButtonStyle.SUCCESS,
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def membership_menu(
-    channels: tuple[str, ...], language: str = "en"
+    channels: tuple[str, ...],
+    language: str = "en",
+    invite_links: dict[str, str] | None = None,
 ) -> InlineKeyboardMarkup:
+    """Join/Verify keyboard. Public channels link to t.me; private channels
+    (no username) fall back to their stored invite link when available."""
     locale = get_locale(language)
+    links = invite_links or {}
     rows = []
     for index, channel in enumerate(channels, start=1):
-        if channel.startswith("@"):
+        url = (
+            f"https://t.me/{channel[1:]}"
+            if channel.startswith("@")
+            else links.get(channel)
+        )
+        if url:
             rows.append(
                 [
-                    InlineKeyboardButton(
+                    Button.create(
                         text=(
                             locale.join_channel
                             if len(channels) == 1
                             else f"{locale.join_channel} {index}"
                         ),
-                        url=f"https://t.me/{channel[1:]}",
+                        url=url,
+                        style=ButtonStyle.PRIMARY,
+                        emoji_key="FORCE_JOIN",
                     ),
-                    InlineKeyboardButton(
+                    Button.create(
                         text=locale.joined,
                         callback_data=f"membership:check:{language}",
+                        style=ButtonStyle.SUCCESS,
+                        emoji_key="SUCCESS",
                     ),
                 ]
             )
     if not rows:
         rows.append(
             [
-                InlineKeyboardButton(
+                Button.create(
                     text=locale.joined,
                     callback_data=f"membership:check:{language}",
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="SUCCESS",
                 )
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _icon_button(
+    label: str,
+    action: str,
+    emoji_key: str,
+    style: ButtonStyle | str | None = None,
+) -> InlineKeyboardButton:
+    """OTP view button with a premium custom-emoji icon when configured.
+
+    When the registry has a custom_emoji_id for *emoji_key*, the leading
+    unicode emoji is stripped from the label and the premium icon is attached
+    instead; otherwise the label (with its unicode emoji) is kept unchanged.
+    """
+    custom_id = EmojiRegistry.get_custom_emoji_id(emoji_key)
+    if custom_id:
+        head, sep, rest = label.partition(" ")
+        if sep and not head.isalnum():
+            label = rest
+        return InlineKeyboardButton(
+            text=label,
+            callback_data=action,
+            icon_custom_emoji_id=custom_id,
+            **({"style": style.value if isinstance(style, ButtonStyle) else style} if style else {}),
+        )
+    return Button.create(
+        text=label, callback_data=action, emoji_key=emoji_key, style=style
+    )
+
+
 def otp_initial_menu(language: str = "en") -> InlineKeyboardMarkup:
     msgs = READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=msgs["btn_check"], callback_data="otp:check")],
-            [InlineKeyboardButton(text=msgs["btn_skip"], callback_data="otp:skip")],
+            [_icon_button(msgs["btn_check"], "otp:check", "CHECK", style=ButtonStyle.PRIMARY)],
+            [_icon_button(msgs["btn_skip"], "otp:skip", "SKIP", style=ButtonStyle.PRIMARY)],
             [
-                InlineKeyboardButton(
-                    text=CANCEL_LABELS.get(language, CANCEL_LABELS["en"]),
+                Button.create(
+                    text=cancel_label,
                     callback_data="action:cancel",
+                    emoji_key="CANCEL",
+                    style=ButtonStyle.DANGER,
+                    include_emoji=False,
                 )
             ],
         ]
@@ -654,53 +830,19 @@ def otp_initial_menu(language: str = "en") -> InlineKeyboardMarkup:
 
 def otp_checked_menu(language: str = "en") -> InlineKeyboardMarkup:
     msgs = READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [_icon_button(msgs["btn_check_again"], "otp:check_again", "REFRESH", style=ButtonStyle.PRIMARY)],
+            [_icon_button(msgs["btn_skip"], "otp:skip", "SKIP", style=ButtonStyle.PRIMARY)],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_check_again"], callback_data="otp:check_again"
-                )
-            ],
-            [
-                InlineKeyboardButton(text=msgs["btn_skip"], callback_data="otp:skip"),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=CANCEL_LABELS.get(language, CANCEL_LABELS["en"]),
+                Button.create(
+                    text=cancel_label,
                     callback_data="action:cancel",
+                    emoji_key="CANCEL",
+                    style=ButtonStyle.DANGER,
+                    include_emoji=False,
                 )
-            ],
-        ]
-    )
-
-
-def contacts_result_menu(
-    checked: int, ok: int, error: int, language: str = "en"
-) -> InlineKeyboardMarkup:
-    msgs = CHECK_CONTACTS_MESSAGES.get(language, CHECK_CONTACTS_MESSAGES["en"])
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=msgs["checked"], callback_data="contacts_stat:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(checked), callback_data="contacts_stat:noop"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=msgs["ok"], callback_data="contacts_stat:noop"
-                ),
-                InlineKeyboardButton(text=str(ok), callback_data="contacts_stat:noop"),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=msgs["error"], callback_data="contacts_stat:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(error), callback_data="contacts_stat:noop"
-                ),
             ],
         ]
     )
@@ -713,26 +855,20 @@ def account_txt_result_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="account_txt:noop"
-                ),
-                InlineKeyboardButton(text=str(total), callback_data="account_txt:noop"),
+                button(msgs["btn_total"], "account_txt:noop", emoji_key="TOTAL"),
+                button(str(total), "account_txt:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_converted"], callback_data="account_txt:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(converted), callback_data="account_txt:noop"
-                ),
+                button(msgs["btn_converted"], "account_txt:noop", emoji_key="CONVERTED"),
+                button(str(converted), "account_txt:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="account_txt:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(failed), callback_data="account_txt:noop"
-                ),
+                button(msgs["btn_failed"], "account_txt:noop", emoji_key="FAILED"),
+                button(str(failed), "account_txt:noop"),
+            ],
+            [
+                button(msgs["btn_retry"], "account_txt:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
+                button(msgs["btn_home"], "account_txt:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
             ],
         ]
     )
@@ -745,28 +881,72 @@ def session_json_result_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="session_json:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(total), callback_data="session_json:noop"
-                ),
+                button(msgs["btn_total"], "session_json:noop", emoji_key="TOTAL"),
+                button(str(total), "session_json:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_converted"], callback_data="session_json:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(converted), callback_data="session_json:noop"
-                ),
+                button(msgs["btn_converted"], "session_json:noop", emoji_key="CONVERTED"),
+                button(str(converted), "session_json:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="session_json:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(failed), callback_data="session_json:noop"
-                ),
+                button(msgs["btn_failed"], "session_json:noop", emoji_key="FAILED"),
+                button(str(failed), "session_json:noop"),
+            ],
+            [
+                button(msgs["btn_retry"], "session_json:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
+                button(msgs["btn_home"], "session_json:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
+            ],
+        ]
+    )
+
+
+def session_to_tdata_result_menu(
+    total: int, converted: int, failed: int, language: str = "en"
+) -> InlineKeyboardMarkup:
+    msgs = SESSION_TO_TDATA_MESSAGES.get(language, SESSION_TO_TDATA_MESSAGES["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(msgs["btn_total"], "session_tdata:noop", emoji_key="TOTAL"),
+                button(str(total), "session_tdata:noop"),
+            ],
+            [
+                button(msgs["btn_converted"], "session_tdata:noop", emoji_key="CONVERTED"),
+                button(str(converted), "session_tdata:noop"),
+            ],
+            [
+                button(msgs["btn_failed"], "session_tdata:noop", emoji_key="FAILED"),
+                button(str(failed), "session_tdata:noop"),
+            ],
+            [
+                button(msgs["btn_retry"], "session_tdata:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
+                button(msgs["btn_home"], "session_tdata:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
+            ],
+        ]
+    )
+
+
+def tdata_to_session_result_menu(
+    total: int, converted: int, failed: int, language: str = "en"
+) -> InlineKeyboardMarkup:
+    msgs = TDATA_TO_SESSION_MESSAGES.get(language, TDATA_TO_SESSION_MESSAGES["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(msgs["btn_total"], "tdata_session:noop", emoji_key="TOTAL"),
+                button(str(total), "tdata_session:noop"),
+            ],
+            [
+                button(msgs["btn_converted"], "tdata_session:noop", emoji_key="CONVERTED"),
+                button(str(converted), "tdata_session:noop"),
+            ],
+            [
+                button(msgs["btn_failed"], "tdata_session:noop", emoji_key="FAILED"),
+                button(str(failed), "tdata_session:noop"),
+            ],
+            [
+                button(msgs["btn_retry"], "tdata_session:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
+                button(msgs["btn_home"], "tdata_session:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
             ],
         ]
     )
@@ -776,31 +956,23 @@ def clear_contacts_result_menu(
     total: int, cleared: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = CLEAR_CONTACTS_MESSAGES.get(language, CLEAR_CONTACTS_MESSAGES["en"])
+    back = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="clear_contact:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(total), callback_data="clear_contact:noop"
-                ),
+                button(msgs["btn_total"], "clear_contact:noop", emoji_key="TOTAL"),
+                button(str(total), "clear_contact:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_success"], callback_data="clear_contact:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(cleared), callback_data="clear_contact:noop"
-                ),
+                button(msgs["btn_success"], "clear_contact:noop", emoji_key="CONVERTED"),
+                button(str(cleared), "clear_contact:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="clear_contact:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(failed), callback_data="clear_contact:noop"
-                ),
+                button(msgs["btn_failed"], "clear_contact:noop", emoji_key="FAILED"),
+                button(str(failed), "clear_contact:noop"),
+            ],
+            [
+                button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"),
             ],
         ]
     )
@@ -812,16 +984,17 @@ def kill_sessions_confirm_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["confirm_btn"],
-                    callback_data="kill_sess:confirm",
+                _premium_icon_button(
+                    msgs["confirm_btn"],
+                    "kill_sess:confirm",
+                    "KILL",
+                    style=ButtonStyle.DANGER,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="menu:back",
-                )
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
+                ),
             ],
         ]
     )
@@ -831,43 +1004,32 @@ def kill_sessions_result_menu(
     total: int, killed: int, fresh: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = KILL_SESSIONS_MESSAGES.get(language, KILL_SESSIONS_MESSAGES["en"])
+    back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="kill_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(total), callback_data="kill_sess:noop"
-                ),
+                button(msgs["btn_total"], "kill_sess:noop", emoji_key="TOTAL"),
+                button(str(total), "kill_sess:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_killed"], callback_data="kill_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(killed), callback_data="kill_sess:noop"
-                ),
+                button(msgs["btn_killed"], "kill_sess:noop", emoji_key="CONVERTED"),
+                button(str(killed), "kill_sess:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_fresh"], callback_data="kill_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(fresh), callback_data="kill_sess:noop"
-                ),
+                button(msgs["btn_fresh"], "kill_sess:noop", emoji_key="SKIP"),
+                button(str(fresh), "kill_sess:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="kill_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(failed), callback_data="kill_sess:noop"
+                button(msgs["btn_failed"], "kill_sess:noop", emoji_key="FAILED"),
+                button(str(failed), "kill_sess:noop"),
+            ],
+            [
+                button(
+                    back_label, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"
                 ),
             ],
         ]
     )
-
 
 
 def fresh_session_2fa_menu(language: str = "en") -> InlineKeyboardMarkup:
@@ -876,16 +1038,15 @@ def fresh_session_2fa_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["skip_2fa"],
-                    callback_data="fresh_sess:skip_2fa",
+                _premium_icon_button(
+                    msgs["skip_2fa"], "fresh_sess:skip_2fa", "SKIP",
+                    style=ButtonStyle.PRIMARY,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="menu:back",
-                )
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
+                ),
             ],
         ]
     )
@@ -897,16 +1058,17 @@ def fresh_session_confirm_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["confirm_btn"],
-                    callback_data="fresh_sess:confirm",
+                _premium_icon_button(
+                    msgs["confirm_btn"],
+                    "fresh_sess:confirm",
+                    "CONVERT",
+                    style=ButtonStyle.SUCCESS,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="menu:back",
-                )
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
+                ),
             ],
         ]
     )
@@ -916,34 +1078,52 @@ def fresh_session_result_menu(
     total: int, succeeded: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = FRESH_SESSION_MESSAGES.get(language, FRESH_SESSION_MESSAGES["en"])
+    back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="fresh_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(total), callback_data="fresh_sess:noop"
-                ),
+                button(msgs["btn_total"], "fresh_sess:noop", emoji_key="TOTAL"),
+                button(str(total), "fresh_sess:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_ok"], callback_data="fresh_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(succeeded), callback_data="fresh_sess:noop"
-                ),
+                button(msgs["btn_ok"], "fresh_sess:noop", emoji_key="CONVERTED"),
+                button(str(succeeded), "fresh_sess:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="fresh_sess:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(failed), callback_data="fresh_sess:noop"
+                button(msgs["btn_failed"], "fresh_sess:noop", emoji_key="FAILED"),
+                button(str(failed), "fresh_sess:noop"),
+            ],
+            [
+                button(
+                    back_label, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"
                 ),
             ],
         ]
     )
+
+
+def _premium_icon_button(
+    label: str,
+    callback_data: str,
+    emoji_key: str,
+    style: ButtonStyle | str | None = None,
+) -> InlineKeyboardButton:
+    """Build a button like other premium sections: when a custom emoji ID is
+    registered for emoji_key, the leading unicode emoji is stripped from the
+    label and the premium icon is attached instead; otherwise the label (with
+    its unicode emoji) is kept unchanged."""
+    kwargs: dict[str, str | None] = {
+        "text": label,
+        "callback_data": callback_data,
+    }
+    if style:
+        kwargs["style"] = style.value if isinstance(style, ButtonStyle) else style
+    custom_id = EmojiRegistry.get_custom_emoji_id(emoji_key)
+    if custom_id:
+        clean_label = label.split(" ", 1)[1] if " " in label else label
+        kwargs["text"] = clean_label
+        kwargs["icon_custom_emoji_id"] = custom_id
+    return InlineKeyboardButton(**kwargs)  # type: ignore[arg-type]
 
 
 def clean_chat_choice_menu(
@@ -956,11 +1136,31 @@ def clean_chat_choice_menu(
     cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     selected_set = set(selected)
     categories = ("dms", "bots", "groups", "channels")
+    category_emoji_keys = {
+        "dms": "DM",
+        "bots": "BOT",
+        "groups": "GROUP",
+        "channels": "CHANNEL",
+    }
 
     def category_button(index: int) -> InlineKeyboardButton:
         category = categories[index]
-        marker = "✅" if category in selected_set else "▫️"
-        return button(f"{marker} {labels[index]}", f"clean_chat_toggle:{category}")
+        marker = "☑️" if category in selected_set else "▫️"
+        custom_id = EmojiRegistry.get_custom_emoji_id(category_emoji_keys[category])
+        if custom_id:
+            label = labels[index]
+            clean_label = label.split(" ", 1)[1] if " " in label else label
+            return InlineKeyboardButton(
+                text=f"{marker} {clean_label}",
+                callback_data=f"clean_chat_toggle:{category}",
+                icon_custom_emoji_id=custom_id,
+                style=ButtonStyle.PRIMARY.value,
+            )
+        return button(
+            f"{marker} {labels[index]}",
+            f"clean_chat_toggle:{category}",
+            style=ButtonStyle.PRIMARY,
+        )
 
     all_selected = selected_set == set(categories)
     return InlineKeyboardMarkup(
@@ -971,10 +1171,25 @@ def clean_chat_choice_menu(
                 button(
                     actions["clear_all"] if all_selected else actions["select_all"],
                     "clean_chat_toggle:all",
+                    style=ButtonStyle.PRIMARY,
                 )
             ],
-            [button(actions["confirm"], "clean_chat_confirm")],
-            [button(cancel_label, "action:cancel")],
+            [
+                _premium_icon_button(
+                    actions["confirm"],
+                    "clean_chat_confirm",
+                    "CONFIRM",
+                    style=ButtonStyle.DANGER,
+                )
+            ],
+            [
+                button(
+                    cancel_label,
+                    "action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ],
         ]
     )
 
@@ -983,27 +1198,23 @@ def clean_chat_result_menu(
     total: int, cleaned: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = CLEAN_CHAT_MESSAGES.get(language, CLEAN_CHAT_MESSAGES["en"])
+    back = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="clean_chat:noop"
-                ),
-                InlineKeyboardButton(text=str(total), callback_data="clean_chat:noop"),
+                button(msgs["btn_total"], "clean_chat:noop", emoji_key="TOTAL"),
+                button(str(total), "clean_chat:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_success"], callback_data="clean_chat:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(cleaned), callback_data="clean_chat:noop"
-                ),
+                button(msgs["btn_success"], "clean_chat:noop", emoji_key="CONVERTED"),
+                button(str(cleaned), "clean_chat:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="clean_chat:noop"
-                ),
-                InlineKeyboardButton(text=str(failed), callback_data="clean_chat:noop"),
+                button(msgs["btn_failed"], "clean_chat:noop", emoji_key="FAILED"),
+                button(str(failed), "clean_chat:noop"),
+            ],
+            [
+                button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"),
             ],
         ]
     )
@@ -1030,7 +1241,11 @@ def delete_contact_selection_menu(
     for c in page_contacts:
         uid = c["user_id"]
         is_selected = uid in selected_ids
-        prefix = "☑️" if is_selected else "◻️"
+        prefix = (
+            EmojiRegistry.format_text_emoji("CHECKBOX")
+            if is_selected
+            else "◻️"
+        )
         first = c.get("first_name") or ""
         last = c.get("last_name") or ""
         phone = c.get("phone") or ""
@@ -1043,24 +1258,30 @@ def delete_contact_selection_menu(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=display_str, callback_data=f"del_cnt_toggle:{uid}"
+                    text=display_str,
+                    callback_data=f"del_cnt_toggle:{uid}",
+                    style=ButtonStyle.PRIMARY.value,
                 )
             ]
         )
 
     # Navigation row
     prev_btn = InlineKeyboardButton(
-        text="⬅️" if page > 0 else " ",
+        text=EmojiRegistry.format_text_emoji("BACK") if page > 0 else " ",
         callback_data=f"del_cnt_page:{page - 1}" if page > 0 else "del_cnt:noop",
+        style=ButtonStyle.PRIMARY.value,
     )
     page_indicator = InlineKeyboardButton(
         text=f"📄 {page + 1}/{total_pages}", callback_data="del_cnt:noop"
     )
     next_btn = InlineKeyboardButton(
-        text="➡️" if page < total_pages - 1 else " ",
+        text=EmojiRegistry.format_text_emoji("NEXT")
+        if page < total_pages - 1
+        else " ",
         callback_data=f"del_cnt_page:{page + 1}"
         if page < total_pages - 1
         else "del_cnt:noop",
+        style=ButtonStyle.PRIMARY.value,
     )
     rows.append([prev_btn, page_indicator, next_btn])
 
@@ -1068,10 +1289,14 @@ def delete_contact_selection_menu(
     rows.append(
         [
             InlineKeyboardButton(
-                text=msgs["select_all"], callback_data="del_cnt_action:select_all"
+                text=msgs["select_all"],
+                callback_data="del_cnt_action:select_all",
+                style=ButtonStyle.PRIMARY.value,
             ),
             InlineKeyboardButton(
-                text=msgs["deselect_all"], callback_data="del_cnt_action:deselect_all"
+                text=msgs["deselect_all"],
+                callback_data="del_cnt_action:deselect_all",
+                style=ButtonStyle.PRIMARY.value,
             ),
         ]
     )
@@ -1086,12 +1311,15 @@ def delete_contact_selection_menu(
                 callback_data="del_cnt_action:confirm"
                 if selected_count > 0
                 else "del_cnt_action:noop_empty",
+                style=ButtonStyle.DANGER.value,
             )
         ]
     )
 
     # Cancel row
-    rows.append([button(cancel_label, "action:cancel")])
+    rows.append(
+        [button(cancel_label, "action:cancel", style=ButtonStyle.DANGER)]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1100,25 +1328,23 @@ def delete_contact_result_menu(
     total: int, deleted: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = DELETE_CONTACT_MESSAGES.get(language, DELETE_CONTACT_MESSAGES["en"])
+    back = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="del_cnt:noop"
-                ),
-                InlineKeyboardButton(text=str(total), callback_data="del_cnt:noop"),
+                button(msgs["btn_total"], "del_cnt:noop", emoji_key="TOTAL"),
+                button(str(total), "del_cnt:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_deleted"], callback_data="del_cnt:noop"
-                ),
-                InlineKeyboardButton(text=str(deleted), callback_data="del_cnt:noop"),
+                button(msgs["btn_deleted"], "del_cnt:noop", emoji_key="DELETE"),
+                button(str(deleted), "del_cnt:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="del_cnt:noop"
-                ),
-                InlineKeyboardButton(text=str(failed), callback_data="del_cnt:noop"),
+                button(msgs["btn_failed"], "del_cnt:noop", emoji_key="FAILED"),
+                button(str(failed), "del_cnt:noop"),
+            ],
+            [
+                button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"),
             ],
         ]
     )
@@ -1132,21 +1358,56 @@ def profile_setup_account_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button(msgs["btn_edit_name"], "prof_setup:edit_name"),
-                button(msgs["btn_edit_username"], "prof_setup:edit_username"),
+                button(
+                    msgs["btn_edit_name"],
+                    "prof_setup:edit_name",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="EDIT",
+                ),
+                button(
+                    msgs["btn_edit_username"],
+                    "prof_setup:edit_username",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="USERNAME",
+                ),
             ],
             [
-                button(msgs["btn_edit_about"], "prof_setup:edit_about"),
-                button(msgs["btn_set_photo"], "prof_setup:set_photo"),
+                button(
+                    msgs["btn_edit_about"],
+                    "prof_setup:edit_about",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="MESSAGE",
+                ),
+                button(
+                    msgs["btn_set_photo"],
+                    "prof_setup:set_photo",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="PHOTO",
+                ),
             ],
             [
-                button(msgs["btn_apply"], "prof_setup:apply"),
+                button(
+                    msgs["btn_apply"],
+                    "prof_setup:apply",
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="SUCCESS",
+                ),
             ],
             [
-                button(msgs["btn_skip"], "prof_setup:skip"),
+                button(
+                    msgs["btn_skip"],
+                    "prof_setup:skip",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SKIP",
+                ),
             ],
             [
-                button(cancel_label, "flow:cancel"),
+                button(
+                    cancel_label,
+                    "flow:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                ),
             ],
         ]
     )
@@ -1156,35 +1417,27 @@ def profile_setup_result_menu(
     total: int, modified: int, skipped: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = PROFILE_SETUP_MESSAGES.get(language, PROFILE_SETUP_MESSAGES["en"])
+    back = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_total"], callback_data="prof_setup:noop"
-                ),
-                InlineKeyboardButton(text=str(total), callback_data="prof_setup:noop"),
+                button(msgs["btn_total"], "prof_setup:noop", emoji_key="TOTAL"),
+                button(str(total), "prof_setup:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_modified"], callback_data="prof_setup:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(modified), callback_data="prof_setup:noop"
-                ),
+                button(msgs["btn_modified"], "prof_setup:noop", emoji_key="CONVERTED"),
+                button(str(modified), "prof_setup:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_skipped"], callback_data="prof_setup:noop"
-                ),
-                InlineKeyboardButton(
-                    text=str(skipped), callback_data="prof_setup:noop"
-                ),
+                button(msgs["btn_skipped"], "prof_setup:noop", emoji_key="SKIP"),
+                button(str(skipped), "prof_setup:noop"),
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_failed"], callback_data="prof_setup:noop"
-                ),
-                InlineKeyboardButton(text=str(failed), callback_data="prof_setup:noop"),
+                button(msgs["btn_failed"], "prof_setup:noop", emoji_key="FAILED"),
+                button(str(failed), "prof_setup:noop"),
+            ],
+            [
+                button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"),
             ],
         ]
     )
@@ -1200,24 +1453,26 @@ def account_age_result_menu(
     total_pages: int = 1,
 ) -> InlineKeyboardMarkup:
     msgs = ACCOUNT_AGE_MESSAGES.get(language, ACCOUNT_AGE_MESSAGES["en"])
+    back = BACK_LABELS.get(language, BACK_LABELS["en"])
     rows: list[list[InlineKeyboardButton]] = []
 
     if total_pages > 1:
         nav_row: list[InlineKeyboardButton] = []
-        if total_pages > 5:
-            nav_row.append(
-                InlineKeyboardButton(
-                    text="⏮" if page > 0 else " ",
-                    callback_data="acc_age_page:0" if page > 0 else "acc_age:noop",
-                )
+        nav_row.append(
+            InlineKeyboardButton(
+                text="⏮" if page > 0 else " ",
+                callback_data="acc_age_page:0" if page > 0 else "acc_age:noop",
+                style=ButtonStyle.PRIMARY.value,
             )
+        )
 
         nav_row.append(
             InlineKeyboardButton(
-                text="◀️ Prev" if page > 0 else " ",
+                text=msgs["btn_prev"] if page > 0 else " ",
                 callback_data=f"acc_age_page:{page - 1}"
                 if page > 0
                 else "acc_age:noop",
+                style=ButtonStyle.PRIMARY.value,
             )
         )
 
@@ -1230,10 +1485,11 @@ def account_age_result_menu(
 
         nav_row.append(
             InlineKeyboardButton(
-                text="Next ▶️" if page < total_pages - 1 else " ",
+                text=msgs["btn_next"] if page < total_pages - 1 else " ",
                 callback_data=f"acc_age_page:{page + 1}"
                 if page < total_pages - 1
                 else "acc_age:noop",
+                style=ButtonStyle.PRIMARY.value,
             )
         )
 
@@ -1244,6 +1500,7 @@ def account_age_result_menu(
                     callback_data=f"acc_age_page:{total_pages - 1}"
                     if page < total_pages - 1
                     else "acc_age:noop",
+                    style=ButtonStyle.PRIMARY.value,
                 )
             )
 
@@ -1251,22 +1508,25 @@ def account_age_result_menu(
 
     rows.append(
         [
-            InlineKeyboardButton(text=msgs["btn_total"], callback_data="acc_age:noop"),
-            InlineKeyboardButton(text=str(total), callback_data="acc_age:noop"),
+            button(msgs["btn_total"], "acc_age:noop", emoji_key="TOTAL"),
+            button(str(total), "acc_age:noop"),
         ]
     )
     rows.append(
         [
-            InlineKeyboardButton(
-                text=msgs["btn_checked"], callback_data="acc_age:noop"
-            ),
-            InlineKeyboardButton(text=str(checked), callback_data="acc_age:noop"),
+            button(msgs["btn_checked"], "acc_age:noop", emoji_key="CHECK"),
+            button(str(checked), "acc_age:noop"),
         ]
     )
     rows.append(
         [
-            InlineKeyboardButton(text=msgs["btn_failed"], callback_data="acc_age:noop"),
-            InlineKeyboardButton(text=str(failed), callback_data="acc_age:noop"),
+            button(msgs["btn_failed"], "acc_age:noop", emoji_key="FAILED"),
+            button(str(failed), "acc_age:noop"),
+        ]
+    )
+    rows.append(
+        [
+            button(back, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"),
         ]
     )
 
@@ -1281,15 +1541,16 @@ def mass_message_recipients_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_use_contacts"],
-                    callback_data="mass_msg_recipients:contacts",
+                _premium_icon_button(
+                    msgs["btn_use_contacts"],
+                    "mass_msg_recipients:contacts",
+                    "CARD",
+                    style=ButtonStyle.PRIMARY,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="action:cancel",
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
                 )
             ],
         ]
@@ -1304,27 +1565,26 @@ def mass_message_delay_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_delay_fast"],
-                    callback_data="mass_msg_delay:10_20",
+                _premium_icon_button(
+                    msgs["btn_delay_fast"], "mass_msg_delay:10_20", "FAST",
+                    style=ButtonStyle.PRIMARY,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_delay_balanced"],
-                    callback_data="mass_msg_delay:20_60",
+                _premium_icon_button(
+                    msgs["btn_delay_balanced"], "mass_msg_delay:20_60", "BALANCED",
+                    style=ButtonStyle.PRIMARY,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_delay_safe"],
-                    callback_data="mass_msg_delay:60_120",
+                _premium_icon_button(
+                    msgs["btn_delay_safe"], "mass_msg_delay:60_120", "SPAM",
+                    style=ButtonStyle.PRIMARY,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="action:cancel",
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
                 )
             ],
         ]
@@ -1339,15 +1599,16 @@ def mass_message_confirm_menu(language: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_start"],
-                    callback_data="mass_msg_action:start",
+                _premium_icon_button(
+                    msgs["btn_start"],
+                    "mass_msg_action:start",
+                    "CONFIRM",
+                    style=ButtonStyle.SUCCESS,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="action:cancel",
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
                 )
             ],
         ]
@@ -1361,26 +1622,27 @@ def mass_message_live_menu(
 
     msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
     pause_resume_btn = (
-        InlineKeyboardButton(
-            text=msgs["btn_resume"],
-            callback_data="mass_msg_ctrl:resume",
+        _premium_icon_button(
+            msgs["btn_resume"],
+            "mass_msg_ctrl:resume",
+            "NEXT_PAGE",
+            style=ButtonStyle.SUCCESS,
         )
         if is_paused
-        else InlineKeyboardButton(
-            text=msgs["btn_pause"],
-            callback_data="mass_msg_ctrl:pause",
+        else _premium_icon_button(
+            msgs["btn_pause"],
+            "mass_msg_ctrl:pause",
+            "PAUSE",
+            style=ButtonStyle.PRIMARY,
         )
     )
-    stop_btn = InlineKeyboardButton(
-        text=msgs["btn_stop"],
-        callback_data="mass_msg_ctrl:stop",
+    stop_btn = _premium_icon_button(
+        msgs["btn_stop"], "mass_msg_ctrl:stop", "STOP", style=ButtonStyle.DANGER
     )
     return InlineKeyboardMarkup(inline_keyboard=[[pause_resume_btn, stop_btn]])
 
 
-def mass_message_paused_menu(
-    job_id: str, language: str = "en"
-) -> InlineKeyboardMarkup:
+def mass_message_paused_menu(job_id: str, language: str = "en") -> InlineKeyboardMarkup:
     from app.locales import MASS_MESSAGE_MESSAGES
 
     msgs = MASS_MESSAGE_MESSAGES.get(language, MASS_MESSAGE_MESSAGES["en"])
@@ -1388,16 +1650,17 @@ def mass_message_paused_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=msgs["btn_resume"],
-                    callback_data=f"resume_job:{job_id}",
+                _premium_icon_button(
+                    msgs["btn_resume"],
+                    f"resume_job:{job_id}",
+                    "NEXT_PAGE",
+                    style=ButtonStyle.SUCCESS,
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text=cancel_label,
-                    callback_data="menu:back",
-                )
+                _premium_icon_button(
+                    cancel_label, "menu:back", "CANCEL", style=ButtonStyle.DANGER
+                ),
             ],
         ]
     )
@@ -1406,41 +1669,83 @@ def mass_message_paused_menu(
 def list_checker_cancel_menu(language: str = "en") -> InlineKeyboardMarkup:
     cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=cancel_label, callback_data="action:cancel")]]
+        inline_keyboard=[
+            [
+                button(
+                    cancel_label,
+                    "action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ]
+        ]
     )
 
 
 def list_checker_result_menu(
     tdata: int, session: int, json_cnt: int, total: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
+    back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button("📁 Tdata", "list_check:noop"),
+                button("Tdata", "list_check:noop", emoji_key="CONTACTS"),
                 button(str(tdata), "list_check:noop"),
             ],
             [
-                button("🔑 Session", "list_check:noop"),
+                button("Session", "list_check:noop", emoji_key="SESSION"),
                 button(str(session), "list_check:noop"),
             ],
             [
-                button("📄 JSON", "list_check:noop"),
+                button("JSON", "list_check:noop", emoji_key="EXPORT"),
                 button(str(json_cnt), "list_check:noop"),
             ],
             [
-                button("✅ Total", "list_check:noop"),
+                button("Total", "list_check:noop", emoji_key="TOTAL"),
                 button(str(total), "list_check:noop"),
+            ],
+            [
+                button(
+                    back_label, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"
+                ),
             ],
         ]
     )
+
+
+# Semantic emoji key per privacy rule (resolves to env premium IDs when configured)
+PRIVACY_RULE_EMOJI_KEYS: dict[str, str] = {
+    "last_seen": "VIEW",
+    "phone_number": "PHONE",
+    "profile_photo": "PHOTO",
+    "forwarded_messages": "MESSAGE",
+    "calls": "CALLS",
+    "p2p_calls": "LINK",
+    "group_invites": "GROUP",
+    "voice_messages": "VOICE",
+}
 
 
 def privacy_2fa_menu(language: str = "en") -> InlineKeyboardMarkup:
     cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [button("⏩ Skip", "privacy:skip_2fa")],
-            [button(cancel_label, "action:cancel")],
+            [
+                button(
+                    "Skip",
+                    "privacy:skip_2fa",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SKIP",
+                )
+            ],
+            [
+                button(
+                    cancel_label,
+                    "action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ],
         ]
     )
 
@@ -1450,9 +1755,30 @@ def privacy_mode_menu(language: str = "en") -> InlineKeyboardMarkup:
     cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [button(msgs["btn_preset"], "privacy:mode:preset")],
-            [button(msgs["btn_custom"], "privacy:mode:custom")],
-            [button(cancel_label, "action:cancel")],
+            [
+                button(
+                    msgs["btn_preset"],
+                    "privacy:mode:preset",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="STATS",
+                )
+            ],
+            [
+                button(
+                    msgs["btn_custom"],
+                    "privacy:mode:custom",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SETTINGS",
+                )
+            ],
+            [
+                button(
+                    cancel_label,
+                    "action:cancel",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ],
         ]
     )
 
@@ -1463,10 +1789,38 @@ def privacy_presets_menu(language: str = "en") -> InlineKeyboardMarkup:
     back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [button(presets["maximum"], "privacy:preset:maximum")],
-            [button(presets["medium"], "privacy:preset:medium")],
-            [button(presets["open"], "privacy:preset:open")],
-            [button(back_label, "privacy:back_mode")],
+            [
+                button(
+                    presets["maximum"],
+                    "privacy:preset:maximum",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DANGER",
+                )
+            ],
+            [
+                button(
+                    presets["medium"],
+                    "privacy:preset:medium",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="FROZEN",
+                )
+            ],
+            [
+                button(
+                    presets["open"],
+                    "privacy:preset:open",
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="ACTIVE",
+                )
+            ],
+            [
+                button(
+                    back_label,
+                    "privacy:back_mode",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BACK",
+                )
+            ],
         ]
     )
 
@@ -1484,23 +1838,80 @@ def privacy_custom_menu(
     for key, name in rules_dict.items():
         val = rules_state.get(key, "nobody")
         val_name = values_dict.get(val, val)
-        rows.append([button(f"{name}: {val_name}", f"privacy:rule:{key}")])
+        rows.append(
+            [
+                button(
+                    f"{name}: {val_name}",
+                    f"privacy:rule:{key}",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key=PRIVACY_RULE_EMOJI_KEYS.get(key),
+                )
+            ]
+        )
 
-    rows.append([button(msgs["btn_apply_custom"], "privacy:apply_custom")])
-    rows.append([button(back_label, "privacy:back_mode")])
+    rows.append(
+        [
+            button(
+                msgs["btn_apply_custom"],
+                "privacy:apply_custom",
+                style=ButtonStyle.SUCCESS,
+                emoji_key="SUCCESS",
+            )
+        ]
+    )
+    rows.append(
+        [
+            button(
+                back_label,
+                "privacy:back_mode",
+                style=ButtonStyle.PRIMARY,
+                emoji_key="BACK",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def privacy_value_menu(language: str = "en", rule_key: str = "") -> InlineKeyboardMarkup:
+def privacy_value_menu(
+    language: str = "en", rule_key: str = ""
+) -> InlineKeyboardMarkup:
     msgs = PRIVACY_SETTINGS_MESSAGES.get(language, PRIVACY_SETTINGS_MESSAGES["en"])
     values_dict = msgs["values"]
     back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
 
     rows = [
-        [button(values_dict["everybody"], f"privacy:val:{rule_key}:everybody")],
-        [button(values_dict["contacts"], f"privacy:val:{rule_key}:contacts")],
-        [button(values_dict["nobody"], f"privacy:val:{rule_key}:nobody")],
-        [button(back_label, "privacy:back_custom")],
+        [
+            button(
+                values_dict["everybody"],
+                f"privacy:val:{rule_key}:everybody",
+                style=ButtonStyle.PRIMARY,
+                emoji_key="WORLD",
+            )
+        ],
+        [
+            button(
+                values_dict["contacts"],
+                f"privacy:val:{rule_key}:contacts",
+                style=ButtonStyle.PRIMARY,
+                emoji_key="CONTACTS",
+            )
+        ],
+        [
+            button(
+                values_dict["nobody"],
+                f"privacy:val:{rule_key}:nobody",
+                style=ButtonStyle.DANGER,
+                emoji_key="BANNED",
+            )
+        ],
+        [
+            button(
+                back_label,
+                "privacy:back_custom",
+                style=ButtonStyle.PRIMARY,
+                emoji_key="BACK",
+            )
+        ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1512,15 +1923,15 @@ def privacy_result_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button(msgs["btn_total"], "privacy:noop"),
+                button(msgs["btn_total"], "privacy:noop", emoji_key="TOTAL"),
                 button(str(total), "privacy:noop"),
             ],
             [
-                button(msgs["btn_ok"], "privacy:noop"),
+                button(msgs["btn_ok"], "privacy:noop", emoji_key="CONVERTED"),
                 button(str(succeeded), "privacy:noop"),
             ],
             [
-                button(msgs["btn_failed"], "privacy:noop"),
+                button(msgs["btn_failed"], "privacy:noop", emoji_key="FAILED"),
                 button(str(failed), "privacy:noop"),
             ],
         ]
@@ -1568,12 +1979,16 @@ def proxy_menu(has_proxy: bool = False, language: str = "en") -> InlineKeyboardM
     }
     l = labels.get(language, labels["en"])
     rows = [
-        [button(l["set"], "proxy:set")],
-        [button(l["view"], "proxy:view")],
+        [button(l["set"], "proxy:set", style=ButtonStyle.PRIMARY, emoji_key="SETTINGS")],
+        [button(l["view"], "proxy:view", style=ButtonStyle.PRIMARY, emoji_key="SEARCH")],
     ]
     if has_proxy:
-        rows.append([button(l["remove"], "proxy:remove")])
-    rows.append([button(l["back"], "menu:back")])
+        rows.append(
+            [button(l["remove"], "proxy:remove", style=ButtonStyle.DANGER, emoji_key="DELETE")]
+        )
+    rows.append(
+        [button(l["back"], "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1629,5 +2044,90 @@ def vip_checkout_menu(language: str = "en") -> InlineKeyboardMarkup:
     )
 
 
+def vip_payment_method_menu(
+    language: str = "en",
+    manual_enabled: bool = True,
+    auto_enabled: bool = True,
+) -> InlineKeyboardMarkup:
+    """Generate VIP checkout payment-method choice keyboard (manual + auto)."""
+    labels = PAYMENT_FLOW_LABELS.get(language, PAYMENT_FLOW_LABELS["en"])
+    back_lbl = BACK_LABELS.get(language, BACK_LABELS["en"])
+    cancel_lbl = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    method_buttons = []
+    if manual_enabled:
+        method_buttons.append(
+            _premium_icon_button(
+                labels["manual"],
+                "pay_method:manual",
+                "PAYMENT",
+                style=ButtonStyle.SUCCESS,
+            )
+        )
+    if auto_enabled:
+        method_buttons.append(
+            _premium_icon_button(
+                labels["auto"],
+                "pay_method:auto",
+                "BOT",
+                style=ButtonStyle.PRIMARY,
+            )
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            method_buttons,
+            [
+                _premium_icon_button(
+                    back_lbl, "menu:plan", "BACK", style=ButtonStyle.PRIMARY
+                ),
+                _premium_icon_button(
+                    cancel_lbl, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
+                ),
+            ],
+        ]
+    )
 
 
+def manual_payment_done_menu(language: str = "en") -> InlineKeyboardMarkup:
+    """Generate manual-payment screen keyboard with send-screenshot & cancel."""
+    labels = PAYMENT_FLOW_LABELS.get(language, PAYMENT_FLOW_LABELS["en"])
+    cancel_lbl = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                _premium_icon_button(
+                    labels["send_screenshot"],
+                    "pay:manual_screenshot",
+                    "PHOTO",
+                    style=ButtonStyle.SUCCESS,
+                )
+            ],
+            [
+                _premium_icon_button(
+                    cancel_lbl, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
+                )
+            ],
+        ]
+    )
+
+
+def auto_payment_control_menu(language: str = "en") -> InlineKeyboardMarkup:
+    """Generate auto-payment keyboard with check-payment & cancel buttons."""
+    labels = PAYMENT_FLOW_LABELS.get(language, PAYMENT_FLOW_LABELS["en"])
+    cancel_lbl = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                _premium_icon_button(
+                    labels["check_payment"],
+                    "pay:auto_check",
+                    "REFRESH",
+                    style=ButtonStyle.PRIMARY,
+                )
+            ],
+            [
+                _premium_icon_button(
+                    cancel_lbl, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
+                )
+            ],
+        ]
+    )

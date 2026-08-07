@@ -19,12 +19,13 @@ class Button:
     @staticmethod
     def create(
         text: str,
-        callback_data: str,
+        callback_data: str | None = None,
         *,
         style: ButtonStyle | str | None = None,
         emoji_key: str | None = None,
         include_emoji: bool = True,
         custom_emoji_id: str | None = None,
+        url: str | None = None,
     ) -> InlineKeyboardButton:
         """Create a styled InlineKeyboardButton.
 
@@ -56,8 +57,11 @@ class Button:
 
         kwargs: dict[str, str | None] = {
             "text": btn_text,
-            "callback_data": callback_data,
         }
+        if url:
+            kwargs["url"] = url
+        elif callback_data:
+            kwargs["callback_data"] = callback_data
 
         if style_val:
             kwargs["style"] = style_val

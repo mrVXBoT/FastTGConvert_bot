@@ -70,6 +70,7 @@ def test_session_and_spam_result_rendering_all_languages() -> None:
         session_text = render_session_result(res, language=lang)
         assert str(res.checked) in session_text
         assert str(res.active) in session_text
+        assert str(res.spam) in session_text
         assert str(res.frozen) in session_text
         assert str(res.invalid) in session_text
 
@@ -79,7 +80,7 @@ def test_session_and_spam_result_rendering_all_languages() -> None:
         assert str(res.invalid) in spam_text
 
         menu = session_result_menu(res, language=lang)
-        assert len(menu.inline_keyboard) == 4
+        assert len(menu.inline_keyboard) == 7
 
 
 def test_action_messages_all_languages() -> None:

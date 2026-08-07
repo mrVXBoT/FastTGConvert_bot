@@ -8,6 +8,7 @@ from app.admin.handlers import (
     force_join,
     language,
     panel,
+    referral,
     stats,
     support,
     users,
@@ -28,5 +29,6 @@ admin_router.include_routers(
     force_join.router,
     support.router,
     vip.router,
+    referral.router,
     language.router,
 )

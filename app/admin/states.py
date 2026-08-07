@@ -34,4 +34,8 @@ class AddVIPPlanState(StatesGroup):
 
 
 class PaymentSettingState(StatesGroup):
-    waiting_for_wallets = State()
+    waiting_for_wallet_value = State()
+
+
+class AddReferralTierState(StatesGroup):
+    waiting_for_tier_details = State()  # Refs | Days

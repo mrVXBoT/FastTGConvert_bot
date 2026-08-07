@@ -2,10 +2,15 @@ Metadata-Version: 2.4
 Name: fasttgconvert-bot
 Version: 0.1.0
 Summary: Safe Telegram file analysis and conversion bot
-Requires-Python: >=3.12
+Requires-Python: >=3.10
 Requires-Dist: aiogram<4,>=3.30
 Requires-Dist: SQLAlchemy<2.1,>=2.0.51
 Requires-Dist: pydantic-settings<3,>=2.10
+Requires-Dist: telethon<2,>=1.36
+Requires-Dist: opentele<2,>=1.15
+Requires-Dist: phonenumbers<10,>=9
+Requires-Dist: python-socks<3,>=2.0
+Requires-Dist: cryptography<51,>=42.0
 Provides-Extra: dev
 Requires-Dist: pytest<9,>=8.4; extra == "dev"
 Requires-Dist: pytest-asyncio<2,>=1.1; extra == "dev"

@@ -31,6 +31,21 @@ async def main() -> None:
     settings = get_settings()
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
 
+    logger = logging.getLogger(__name__)
+    if not settings.proxy_encryption_key:
+        logger.warning(
+            "PROXY_ENCRYPTION_KEY is not set. Proxy passwords supplied by users "
+            "will NOT be encrypted (stored in plaintext). Authenticated proxies "
+            "require this key — set it to a Fernet-compatible secret before "
+            "going to production."
+        )
+    if settings.metrics_enabled and not settings.metrics_auth_token:
+        logger.warning(
+            "METRICS_AUTH_TOKEN is not set while metrics are enabled. The "
+            "Prometheus /metrics endpoint is exposed WITHOUT authentication — "
+            "keep metrics_host bound to 127.0.0.1.",
+        )
+
     engine = build_engine(settings.database_url)
     session_factory = build_session_factory(engine)
     create_schema(engine)
@@ -43,6 +58,19 @@ async def main() -> None:
         logger.info(
             "Recovered %d interrupted mass-message jobs into paused state",
             len(recovered_jobs),
+        )
+
+    from app.services.broadcast import BROADCAST_WORKER
+
+    with session_factory() as broadcast_session:
+        restored_broadcasts = await BROADCAST_WORKER.restore_unprocessed_jobs(
+            broadcast_session
+        )
+    if restored_broadcasts:
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Restored %d unfinished broadcast jobs from database",
+            len(restored_broadcasts),
         )
 
     # Auto-register the system owner (ADMIN_ID from .env) with SUPER_ADMIN role if not already present
@@ -89,9 +117,9 @@ async def main() -> None:
     @bot.session.middleware
     async def emoji_enrich_middleware(make_request, b_inst, method):
         if isinstance(method, (SendMessage, EditMessageText)) and method.text:
-            method.text = EmojiRegistry.enrich_text(method.text)
+            method.text = EmojiRegistry.enrich_flags(EmojiRegistry.enrich_text(method.text))
         elif isinstance(method, (SendDocument, SendPhoto, EditMessageCaption)) and method.caption:
-            method.caption = EmojiRegistry.enrich_text(method.caption)
+            method.caption = EmojiRegistry.enrich_flags(EmojiRegistry.enrich_text(method.caption))
         return await make_request(b_inst, method)
 
     dispatcher = Dispatcher(storage=MemoryStorage())
@@ -100,17 +128,40 @@ async def main() -> None:
     from app.admin.handlers import admin_router
     dispatcher.include_router(admin_router)
     dispatcher.include_router(build_router())
-    cleanup_task = asyncio.create_task(cleanup_loop(session_factory))
+    cleanup_task = asyncio.create_task(
+        cleanup_loop(
+            session_factory,
+            payment_expiry_grace_seconds=settings.payment_expiry_grace_seconds,
+            storage_dir=settings.storage_dir,
+            staged_session_max_age_minutes=max(settings.retention_minutes, 360),
+        )
+    )
+
+    from app.services.payments import payment_polling_loop
+
+    payment_task = asyncio.create_task(
+        payment_polling_loop(session_factory, bot, settings)
+    )
 
     metrics_server = None
     if settings.metrics_enabled:
         from app.core.metrics_server import start_metrics_server
 
-        metrics_server = await start_metrics_server(
-            host=settings.metrics_host,
-            port=settings.metrics_port,
-            auth_token=settings.metrics_auth_token,
-        )
+        try:
+            metrics_server = await start_metrics_server(
+                host=settings.metrics_host,
+                port=settings.metrics_port,
+                auth_token=settings.metrics_auth_token,
+            )
+        except OSError as exc:
+            logger.warning(
+                "Metrics server could not bind to %s:%d (%s). Continuing "
+                "without metrics — the bot itself is unaffected.",
+                settings.metrics_host,
+                settings.metrics_port,
+                exc,
+            )
+            metrics_server = None
 
     try:
         await bot.delete_webhook(drop_pending_updates=False)
@@ -128,12 +179,15 @@ async def main() -> None:
         cleanup_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await cleanup_task
+        payment_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await payment_task
         await bot.session.close()
         
         # Graceful Shutdown Database Backup
-        from app.db.backup import perform_database_backup
+        from app.db.backup import perform_database_backup, sqlite_db_path_from_url
 
-        perform_database_backup()
+        perform_database_backup(db_path=sqlite_db_path_from_url(settings.database_url))
         engine.dispose()
 
 

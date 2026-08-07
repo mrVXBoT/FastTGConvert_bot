@@ -10,6 +10,7 @@ from app.keyboards import main_menu, session_json_result_menu
 from app.locales import LANGUAGES, SESSION_TO_JSON_MESSAGES, SESSION_TO_JSON_PROMPTS
 from app.services.account_to_txt import AccountProfile
 from app.services.session_to_json import process_session_to_json, render_session_json
+from app.ui import EmojiRegistry
 
 
 def _make_session(path: Path, dc_id: int = 2) -> None:
@@ -31,6 +32,9 @@ def test_render_session_json_matches_reference_schema() -> None:
         full_name="Echo > Null",
         user_id=1234567890,
         premium=True,
+        dc_id=2,
+        two_fa=True,
+        registered="2023-05-01",
     )
     payload = json.loads(
         render_session_json(
@@ -50,6 +54,8 @@ def test_render_session_json_matches_reference_schema() -> None:
         "dc_id",
         "server_address",
         "authorized",
+        "two_fa",
+        "registered",
     ]
     assert payload == {
         "name": "573118508561",
@@ -61,6 +67,8 @@ def test_render_session_json_matches_reference_schema() -> None:
         "dc_id": 2,
         "server_address": "149.154.167.50",
         "authorized": True,
+        "two_fa": True,
+        "registered": "2023-05-01",
     }
 
 
@@ -78,7 +86,7 @@ async def test_process_single_session_creates_reference_json(tmp_path: Path) -> 
     )
     with patch(
         "app.services.session_to_json.fetch_account_profile",
-        new=AsyncMock(return_value=("active", profile)),
+        new=AsyncMock(return_value=("active", profile, "")),
     ):
         result = await process_session_to_json(
             uploaded,
@@ -100,6 +108,8 @@ async def test_process_single_session_creates_reference_json(tmp_path: Path) -> 
         assert payload["authorized"] is True
         assert payload["premium"] is True
         assert payload["dc_id"] == 2
+        assert payload["two_fa"] is None
+        assert payload["registered"] == "N/A"
 
 
 @pytest.mark.asyncio
@@ -116,12 +126,13 @@ async def test_process_zip_counts_all_statuses(tmp_path: Path) -> None:
             archive.write(path, arcname=path.name)
 
     responses = [
-        ("active", AccountProfile("1111111", "+1111111", "@one", "One", 1)),
+        ("active", AccountProfile("1111111", "+1111111", "@one", "One", 1), ""),
         (
             "invalid",
             AccountProfile("2222222", "+2222222", "N/A", "N/A", 0),
+            "unauthorized",
         ),
-        ("failed", None),
+        ("failed", None, "no_credentials"),
     ]
     with patch(
         "app.services.session_to_json.fetch_account_profile",
@@ -134,12 +145,41 @@ async def test_process_zip_counts_all_statuses(tmp_path: Path) -> None:
     assert result.total == 3
     assert result.active == 1
     assert result.invalid_converted == 1
-    assert result.converted == 2
+    assert result.converted == 1
     assert result.failed == 1
-    assert [entry.authorized for entry in result.entries] == [True, False]
+    assert [entry.authorized for entry in result.entries] == [True, False, False]
+    assert result.entries[2].reason == "no_credentials"
     assert result.output_zip_path is not None
     with zipfile.ZipFile(result.output_zip_path) as archive:
-        assert sorted(archive.namelist()) == ["1111111.json", "2222222.json"]
+        assert sorted(archive.namelist()) == ["1111111.json", "Invalid/2222222.json"]
+        payload = json.loads(archive.read("Invalid/2222222.json"))
+        assert payload["authorized"] is False
+
+
+def test_result_menu_uses_custom_emoji_ids() -> None:
+    EmojiRegistry.set_custom_emoji("TOTAL", "5821421565174092291")
+    EmojiRegistry.set_custom_emoji("CONVERTED", "5940635490645449104")
+    EmojiRegistry.set_custom_emoji("FAILED", "5940804914220372462")
+    EmojiRegistry.set_custom_emoji("REFRESH", "5465144931230190889")
+    EmojiRegistry.set_custom_emoji("CONTACTS", "5343909794149310690")
+    menu = session_json_result_menu(3, 2, 1, "en")
+    rows = menu.inline_keyboard
+    assert rows[0][0].icon_custom_emoji_id == "5821421565174092291"
+    assert rows[1][0].icon_custom_emoji_id == "5940635490645449104"
+    assert rows[2][0].icon_custom_emoji_id == "5940804914220372462"
+    assert rows[0][0].text == "Total"
+    assert "📦" not in rows[0][0].text
+    assert rows[3][0].icon_custom_emoji_id is not None
+    assert "🔄" not in rows[3][0].text
+    assert rows[3][1].icon_custom_emoji_id is not None
+    assert "🏠" not in rows[3][1].text
+
+
+def test_enrich_report_uses_custom_emoji_ids() -> None:
+    EmojiRegistry.set_custom_emoji("INVALID", "5821328845420106343")
+    text = EmojiRegistry.enrich_report("📦 Total: 1 | ⚠️ Invalid(converted): 0")
+    assert 'emoji-id="5821328845420106343"' in text
+    assert "<tg-emoji" in text
 
 
 def test_session_json_locales_and_keyboards() -> None:
@@ -156,10 +196,15 @@ def test_session_json_locales_and_keyboards() -> None:
                 "btn_total",
                 "btn_converted",
                 "btn_failed",
+                "btn_retry",
+                "btn_home",
+                "caption",
+                "cancelled",
+                "more",
             )
         )
         menu = session_json_result_menu(3, 2, 1, language)
-        assert [row[1].text for row in menu.inline_keyboard] == ["3", "2", "1"]
+        assert [row[1].text for row in menu.inline_keyboard[:3]] == ["3", "2", "1"]
 
     callbacks = [
         button.callback_data

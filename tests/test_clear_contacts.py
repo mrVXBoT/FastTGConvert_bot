@@ -216,4 +216,4 @@ def test_clear_contacts_locales_and_keyboards():
 
     kb = clear_contacts_result_menu(10, 8, 2, "en")
     assert kb is not None
-    assert len(kb.inline_keyboard) == 3
+    assert len(kb.inline_keyboard) == 4

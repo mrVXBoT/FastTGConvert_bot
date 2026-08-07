@@ -22,12 +22,21 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.spam import SpamStatus, _parse_spambot_reply
+from app.services.spam import (
+    SpamStatus,
+    _looks_like_greeting,
+    _parse_spambot_reply,
+    _spambot_status_reply,
+)
 from app.session_checker import (
+    SessionCheckEntry,
     _classify_session_file,
     _collect_offline_statuses,
     _summarize,
+    build_status_zips,
     check_sessions,
+    check_sessions_detailed,
+    SessionProgress,
 )
 from app.session_results import SessionCheckResult
 
@@ -70,7 +79,13 @@ def _make_zip(
 class TestSessionCheckResultInvariant:
     def test_valid_result(self) -> None:
         r = SessionCheckResult(
-            checked=5, active=2, frozen=1, banned=1, invalid=1, inconclusive=0
+            checked=5,
+            active=2,
+            spam=0,
+            frozen=1,
+            banned=1,
+            invalid=1,
+            inconclusive=0,
         )
         assert r.checked == 5
 
@@ -80,10 +95,11 @@ class TestSessionCheckResultInvariant:
                 checked=3, active=2, frozen=1, banned=1, invalid=0, inconclusive=0
             )
 
-    def test_default_banned_inconclusive_zero(self) -> None:
+    def test_default_banned_inconclusive_spam_zero(self) -> None:
         r = SessionCheckResult(checked=1, active=1, frozen=0, invalid=0)
         assert r.banned == 0
         assert r.inconclusive == 0
+        assert r.spam == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -96,9 +112,27 @@ class TestParseSpamBotReply:
         "text",
         [
             "Good news, no limits are applied to your account.",
+            (
+                "Good news, no limits are currently applied to your account. "
+                "You're free as a bird!"
+            ),
             "No limits are currently applied.",
             "You can continue using Telegram.",
             "You are not limited.",
+            # Farsi clean reply – must NOT match the Farsi "محدود" spam keyword
+            "خبر خوب، هیچ محدودیتی در حال حاضر برای حساب شما اعمال نشده است.",
+            # Russian clean reply – must NOT match the "ограничен" spam keyword
+            (
+                "Хорошие новости, к вашему аккаунту в данный момент не применяются "
+                "никакие ограничения."
+            ),
+            # Arabic clean reply
+            "أخبار جيدة، لا توجد قيود على حسابك حالياً.",
+            # Spanish / Portuguese / German / French
+            "Buenas noticias, no hay límites aplicados a tu cuenta.",
+            "Boas notícias, não há limites aplicados à sua conta.",
+            "Gute Nachrichten, keine Einschränkungen sind auf Ihr Konto angewandt.",
+            "Bonne nouvelle, aucune restriction n'est appliquée à votre compte.",
         ],
     )
     def test_clean_account_returns_active(self, text: str) -> None:
@@ -109,15 +143,191 @@ class TestParseSpamBotReply:
         [
             "Your account has been limited.",
             "This account is restricted due to spam.",
-            "Your account was limited for sending spam.",
         ],
     )
-    def test_spam_restricted_returns_frozen(self, text: str) -> None:
+    def test_restricted_replies_are_spam_not_frozen(self, text: str) -> None:
+        # A generic limitation (appealable via SpamBot) is SPAM, never the
+        # ToS freeze.  This over-matching was what inflated the frozen bucket.
+        assert _parse_spambot_reply(text) == "spam"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "К сожалению, этот номер телефона ограничен или заблокирован.",
+            "عذراً، رقم الهاتف هذا محدود أو محظور.",
+        ],
+    )
+    def test_blocked_phone_replies_are_frozen(self, text: str) -> None:
+        # These explicitly mention the number being BLOCKED, a strong ToS/
+        # freeze signal, so they remain frozen.
         assert _parse_spambot_reply(text) == "frozen"
 
-    def test_unrecognised_reply_defaults_to_frozen(self) -> None:
-        # Safe default: don't falsely report a restricted account as clean.
-        assert _parse_spambot_reply("Something completely unknown.") == "frozen"
+    def test_phone_limited_or_banned_is_inconclusive(self) -> None:
+        # "limited or banned" is genuinely ambiguous between the two buckets –
+        # do not guess.
+        assert (
+            _parse_spambot_reply("Sorry, this phone number is limited or banned.")
+            == "inconclusive"
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Spam-flagged replies – the "limited by mistake" complaint flow.
+            (
+                "I'm very sorry, but your account was limited by mistake. You "
+                "can submit a complaint to our moderators."
+            ),
+            (
+                "Unfortunately, your account is now limited. You will not be "
+                "able to send messages to people who do not have your number "
+                "in their phone contacts."
+            ),
+            "Your account was limited for sending spam.",
+            "Your account was flagged as spam by other users.",
+            "Your actions were reported as spam.",
+            # Farsi / Russian / Chinese spam-flagged replies
+            "حساب شما به دلیل ارسال اسپم محدود شده است.",
+            "К сожалению, иногда наша антиспам-система излишне сурово реагирует.",
+            "您的账户被误限制。",
+        ],
+    )
+    def test_spam_flagged_returns_spam(self, text: str) -> None:
+        assert _parse_spambot_reply(text) == "spam"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            (
+                "Unfortunately, the phone number that is currently used to operate "
+                "your account has been banned."
+            ),
+            "This phone number is banned.",
+        ],
+    )
+    def test_banned_wording_returns_banned(self, text: str) -> None:
+        assert _parse_spambot_reply(text) == "banned"
+
+    def test_unrecognised_reply_is_inconclusive(self) -> None:
+        # Never guess "frozen" for a reply we cannot read: @SpamBot answers in
+        # the account's interface language, so an unrecognised reply does not
+        # prove the account is restricted.
+        assert _parse_spambot_reply("Something completely unknown.") == "inconclusive"
+
+
+# --------------------------------------------------------------------------- #
+# SpamBot welcome-message handling                                             #
+# --------------------------------------------------------------------------- #
+
+
+class TestSpamBotGreeting:
+    WELCOME = (
+        "Hello! I'm Telegram's official Spam Info Bot. I can help you find out "
+        "if your account was limited. I'll also explain why this happens and "
+        "what you can do to regain the full functionality. I'm sorry in advance "
+        "if I have to talk bluntly sometimes. After all, I'm just a robot."
+    )
+    CLEAN_STATUS = (
+        "Good news, no limits are currently applied to your account. "
+        "You're free as a bird!"
+    )
+    LIMITED_STATUS = (
+        "I'm very sorry that you had to contact me. Unfortunately, some actions "
+        "can trigger a harsh response from our anti-spam systems. This is "
+        "usually not your fault, but the actions were done from your account."
+    )
+    NUMBER_FLAG_STATUS = (
+        "Unfortunately, some phone numbers may trigger a harsh response from our "
+        "anti-spam systems. If you think this is the case with you, you can "
+        "submit a complaint to our moderators or subscribe to Telegram Premium "
+        "to get less strict limits."
+    )
+
+    def test_welcome_message_is_detected(self) -> None:
+        # The welcome message must NOT be treated as an account status – it
+        # literally contains the word "limited".  Upstream the greeting is
+        # filtered out and /start sent again; if it ever reaches the parser it
+        # must classify as inconclusive, never "frozen".
+        assert _looks_like_greeting(self.WELCOME) is True
+        assert _parse_spambot_reply(self.WELCOME) == "inconclusive"
+
+    def test_status_replies_are_not_greetings(self) -> None:
+        assert _looks_like_greeting(self.CLEAN_STATUS) is False
+        assert _looks_like_greeting(self.LIMITED_STATUS) is False
+
+    def test_number_flag_reply_is_active(self) -> None:
+        # "some phone numbers may trigger a harsh response … subscribe to
+        # Telegram Premium to get less strict limits" is SpamBot's generic
+        # number-flag reply – it does NOT say the account is limited.  Live
+        # ground truth (NoRestriction_29.zip) confirms these are CLEAN/active.
+        assert _looks_like_greeting(self.NUMBER_FLAG_STATUS) is False
+        assert _parse_spambot_reply(self.NUMBER_FLAG_STATUS) == "active"
+
+    def test_real_clean_reply_is_active(self) -> None:
+        # Captured verbatim from @SpamBot for the NoRestriction_29.zip set.
+        # Shares the "harsh response / anti-spam systems" wording with the
+        # genuinely-limited reply, but never says the account IS limited.
+        clean = (
+            "Unfortunately, some phone numbers may trigger a harsh response "
+            "from our anti-spam systems. If you think this is the case with "
+            "you, you can submit a complaint to our moderators or subscribe "
+            "to Telegram Premium to get less strict limits."
+        )
+        assert _parse_spambot_reply(clean) == "active"
+
+    def test_limited_by_mistake_reply_is_spam(self) -> None:
+        # The genuinely spam-flagged reply ALSO mentions "anti-spam systems" –
+        # but the explicit "limited by mistake" wording must be classified as
+        # SPAM (spam-flagged, complaint flow), NOT as a freeze.
+        limited = (
+            "Hello +2347047848725!\n\nI'm very sorry that you had to contact me. "
+            "Unfortunately, some actions can trigger a harsh response from our "
+            "anti-spam systems. If you think your account was limited by mistake, "
+            "you can submit a complaint to our moderators. While the account is "
+            "limited, you will not be able to message non-contacts."
+        )
+        assert _parse_spambot_reply(limited) == "spam"
+
+    @pytest.mark.asyncio
+    async def test_fresh_chat_retries_start_and_gets_status(self) -> None:
+        # First attempt's poll only finds the welcome message, the second attempt gets the real status.
+        with patch("app.services.spam._wait_for_spambot_reply") as fake_wait, patch(
+            "app.services.spam._send_start"
+        ) as mock_send_start:
+            mock_send_start.side_effect = [10, 20]
+            fake_wait.side_effect = [self.WELCOME, self.CLEAN_STATUS]
+            reply = await _spambot_status_reply(
+                AsyncMock(), timeout=15, FloodWaitError=Exception
+            )
+
+        assert reply == self.CLEAN_STATUS
+        assert mock_send_start.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_existing_chat_gets_status_after_double_start(self) -> None:
+        # Returning account: the first /start already produces the status, so
+        # the second /start's poll finds it immediately.
+        with patch("app.services.spam._send_start", new=AsyncMock(return_value=5)), patch(
+            "app.services.spam._wait_for_spambot_reply",
+            new=AsyncMock(return_value=self.CLEAN_STATUS),
+        ):
+            reply = await _spambot_status_reply(
+                AsyncMock(), timeout=15, FloodWaitError=Exception
+            )
+        assert reply == self.CLEAN_STATUS
+
+    @pytest.mark.asyncio
+    async def test_only_welcome_messages_is_inconclusive(self) -> None:
+        # If SpamBot keeps answering with the welcome message, we must not
+        # guess a status.
+        with patch("app.services.spam._send_start", new=AsyncMock(return_value=5)), patch(
+            "app.services.spam._wait_for_spambot_reply",
+            new=AsyncMock(return_value=self.WELCOME),
+        ):
+            reply = await _spambot_status_reply(
+                AsyncMock(), timeout=15, FloodWaitError=Exception
+            )
+        assert reply is None
 
 
 # --------------------------------------------------------------------------- #
@@ -268,10 +478,18 @@ class TestZipProcessing:
 
 class TestSummarize:
     def test_all_buckets(self) -> None:
-        statuses: list = ["active", "frozen", "banned", "invalid", "inconclusive"]
+        statuses: list = [
+            "active",
+            "spam",
+            "frozen",
+            "banned",
+            "invalid",
+            "inconclusive",
+        ]
         r = _summarize(statuses)
-        assert r.checked == 5
+        assert r.checked == 6
         assert r.active == 1
+        assert r.spam == 1
         assert r.frozen == 1
         assert r.banned == 1
         assert r.invalid == 1
@@ -281,13 +499,17 @@ class TestSummarize:
         statuses: list = [
             "active",
             "active",
+            "spam",
             "frozen",
             "banned",
             "invalid",
             "inconclusive",
         ]
         r = _summarize(statuses)
-        assert r.checked == r.active + r.frozen + r.banned + r.invalid + r.inconclusive
+        assert (
+            r.checked
+            == r.active + r.spam + r.frozen + r.banned + r.invalid + r.inconclusive
+        )
 
     def test_empty_list(self) -> None:
         r = _summarize([])
@@ -310,7 +532,7 @@ class TestCheckSessionsOffline:
         p = tmp_path / "ok.session"
         _make_session(p, auth_key=b"z" * 256)
         result = await check_sessions(p)
-        assert result == SessionCheckResult(checked=1, active=1, frozen=0, invalid=0)
+        assert result == SessionCheckResult(checked=1, active=0, frozen=0, invalid=0, inconclusive=1)
 
     async def test_single_incomplete_session(self, tmp_path: Path) -> None:
         p = tmp_path / "empty.session"
@@ -342,8 +564,33 @@ class TestCheckSessionsOffline:
         )
         result = await check_sessions(archive)
         assert result.checked == 2
-        assert result.active == 1
+        assert result.inconclusive == 1
         assert result.frozen == 1
+
+    async def test_zip_reports_progress(self, tmp_path: Path) -> None:
+        valid = tmp_path / "v.session"
+        _make_session(valid, auth_key=b"a" * 256)
+        incomplete = tmp_path / "i.session"
+        _make_session(incomplete, auth_key=None)
+        archive = tmp_path / "test.zip"
+        _make_zip(
+            archive,
+            {"v.session": valid.read_bytes(), "i.session": incomplete.read_bytes()},
+        )
+        progress = SessionProgress()
+        await check_sessions_detailed(
+            archive, credentials=[(1, "h")], progress=progress
+        )
+        assert progress.total == 2
+        assert progress.done == 2
+
+    async def test_single_file_reports_progress(self, tmp_path: Path) -> None:
+        p = tmp_path / "ok.session"
+        _make_session(p, auth_key=b"z" * 256)
+        progress = SessionProgress()
+        await check_sessions_detailed(p, progress=progress)
+        assert progress.total == 1
+        assert progress.done == 1
 
     async def test_invariant_always_holds(self, tmp_path: Path) -> None:
         p = tmp_path / "any.session"
@@ -351,6 +598,7 @@ class TestCheckSessionsOffline:
         result = await check_sessions(p)
         total = (
             result.active
+            + result.spam
             + result.frozen
             + result.banned
             + result.invalid
@@ -375,14 +623,23 @@ class TestCheckSessionsLive:
             result = await check_sessions(p, credentials=[(12345, "abc")])
         assert result.active == 1 and result.frozen == 0
 
-    async def test_spam_account_becomes_frozen(self, tmp_path: Path) -> None:
+    async def test_spam_flagged_account_becomes_spam(self, tmp_path: Path) -> None:
         p = tmp_path / "spam.session"
+        _make_session(p, auth_key=b"k" * 256)
+        with patch(
+            "app.session_checker._live_status", new=AsyncMock(return_value="spam")
+        ):
+            result = await check_sessions(p, credentials=[(12345, "abc")])
+        assert result.spam == 1 and result.frozen == 0 and result.active == 0
+
+    async def test_frozen_account_becomes_frozen(self, tmp_path: Path) -> None:
+        p = tmp_path / "frozen.session"
         _make_session(p, auth_key=b"k" * 256)
         with patch(
             "app.session_checker._live_status", new=AsyncMock(return_value="frozen")
         ):
             result = await check_sessions(p, credentials=[(12345, "abc")])
-        assert result.frozen == 1 and result.active == 0
+        assert result.frozen == 1 and result.spam == 0 and result.active == 0
 
     async def test_banned_account_becomes_banned(self, tmp_path: Path) -> None:
         p = tmp_path / "banned.session"
@@ -427,7 +684,7 @@ class TestCheckSessionsLive:
             result = await check_sessions(p, credentials=[(12345, "abc")])
         assert result.frozen == 1
 
-    async def test_live_check_exception_falls_back_to_active(
+    async def test_live_check_exception_falls_back_to_inconclusive(
         self, tmp_path: Path
     ) -> None:
         p = tmp_path / "ok.session"
@@ -437,12 +694,12 @@ class TestCheckSessionsLive:
             new=AsyncMock(side_effect=RuntimeError("unexpected crash")),
         ):
             result = await check_sessions(p, credentials=[(12345, "abc")])
-        assert result.active == 1
+        assert result.inconclusive == 1
 
     async def test_zip_all_buckets_via_live(self, tmp_path: Path) -> None:
-        """ZIP with 3 sessions → active, banned, inconclusive via mocked live check."""
+        """ZIP with 4 sessions → active, spam, banned, inconclusive via mocked live check."""
         sessions: list[bytes] = []
-        for i in range(3):
+        for i in range(4):
             s = tmp_path / f"s{i}.session"
             _make_session(s, auth_key=b"k" * 256)
             sessions.append(s.read_bytes())
@@ -450,16 +707,133 @@ class TestCheckSessionsLive:
         archive = tmp_path / "multi.zip"
         _make_zip(archive, {f"s{i}.session": d for i, d in enumerate(sessions)})
 
-        returns: list[SpamStatus] = ["active", "banned", "inconclusive"]
+        returns: list[SpamStatus] = ["active", "spam", "banned", "inconclusive"]
         with patch(
             "app.session_checker._live_status",
             new=AsyncMock(side_effect=returns),
         ):
             result = await check_sessions(archive, credentials=[(1, "x")])
 
-        assert result.checked == 3
+        assert result.checked == 4
         assert result.active == 1
+        assert result.spam == 1
         assert result.banned == 1
         assert result.inconclusive == 1
         assert result.frozen == 0
         assert result.invalid == 0
+
+
+# --------------------------------------------------------------------------- #
+# check_sessions_detailed + build_status_zips                                  #
+# --------------------------------------------------------------------------- #
+
+
+class TestStatusZipSeparation:
+    async def test_detailed_zip_preserves_member_names(self, tmp_path: Path) -> None:
+        valid = tmp_path / "2348100756846.session"
+        _make_session(valid, auth_key=b"a" * 256)
+        archive = tmp_path / "test.zip"
+        _make_zip(archive, {"2348100756846.session": valid.read_bytes()})
+
+        with patch(
+            "app.session_checker._live_status",
+            new=AsyncMock(return_value="active"),
+        ):
+            result, entries = await check_sessions_detailed(
+                archive, credentials=[(12345, "h")]
+            )
+            assert result.active == 1
+            assert entries == [SessionCheckEntry("2348100756846.session", "active")]
+
+    async def test_detailed_single_file(self, tmp_path: Path) -> None:
+        p = tmp_path / "ok.session"
+        _make_session(p, auth_key=b"z" * 256)
+        with patch(
+            "app.session_checker._live_status",
+            new=AsyncMock(return_value="active"),
+        ):
+            result, entries = await check_sessions_detailed(
+                p, credentials=[(12345, "h")]
+            )
+            assert result.active == 1
+            assert entries == [SessionCheckEntry("ok.session", "active")]
+
+    def test_build_zips_groups_by_status_with_siblings(
+        self, tmp_path: Path
+    ) -> None:
+        # 9 active + 1 spam + 1 frozen, each .session with a sibling .json →
+        # three zips: No_Restriction_9.zip, Spam_1.zip, Frozen_1.zip, with
+        # siblings kept together.
+        archive = tmp_path / "input.zip"
+        members: dict[str, bytes] = {}
+        entries: list[SessionCheckEntry] = []
+        for i in range(9):
+            name = f"234810000000{i}.session"
+            members[name] = b"active-session"
+            members[name.replace(".session", ".json")] = b"{}"
+            entries.append(SessionCheckEntry(name, "active"))
+        members["+2347047848725.session"] = b"spam-session"
+        members["+2347047848725.json"] = b"{}"
+        entries.append(SessionCheckEntry("+2347047848725.session", "spam"))
+        members["+2347055555555.session"] = b"frozen-session"
+        members["+2347055555555.json"] = b"{}"
+        entries.append(SessionCheckEntry("+2347055555555.session", "frozen"))
+        _make_zip(archive, members)
+
+        out = tmp_path / "out"
+        out.mkdir()
+        archives = build_status_zips(archive, entries, out)
+
+        assert sorted(p.name for p, _, _ in archives) == [
+            "Frozen_1.zip",
+            "No_Restriction_9.zip",
+            "Spam_1.zip",
+        ]
+        by_name = {p.name: (p, status, count) for p, status, count in archives}
+        assert by_name["No_Restriction_9.zip"][1:] == ("active", 9)
+        assert by_name["Spam_1.zip"][1:] == ("spam", 1)
+        assert by_name["Frozen_1.zip"][1:] == ("frozen", 1)
+
+        with zipfile.ZipFile(by_name["No_Restriction_9.zip"][0]) as zf:
+            names = set(zf.namelist())
+            assert len(names) == 18
+            assert "2348100000000.session" in names
+            assert "2348100000000.json" in names
+            assert "+2347047848725.session" not in names
+        with zipfile.ZipFile(by_name["Spam_1.zip"][0]) as zf:
+            names = set(zf.namelist())
+            assert names == {"+2347047848725.session", "+2347047848725.json"}
+        with zipfile.ZipFile(by_name["Frozen_1.zip"][0]) as zf:
+            names = set(zf.namelist())
+            assert names == {"+2347055555555.session", "+2347055555555.json"}
+
+    def test_build_zips_single_session_upload(self, tmp_path: Path) -> None:
+        p = tmp_path / "acc.session"
+        p.write_bytes(b"session-data")
+        out = tmp_path / "out"
+        out.mkdir()
+        entries = [SessionCheckEntry("acc.session", "frozen")]
+
+        archives = build_status_zips(p, entries, out)
+
+        assert len(archives) == 1
+        zip_path, status, count = archives[0]
+        assert status == "frozen" and count == 1
+        assert zip_path.name == "Frozen_1.zip"
+        with zipfile.ZipFile(zip_path) as zf:
+            assert zf.namelist() == ["acc.session"]
+            assert zf.read("acc.session") == b"session-data"
+
+    def test_build_zips_skips_empty_buckets(self, tmp_path: Path) -> None:
+        archive = tmp_path / "input.zip"
+        _make_zip(archive, {"a.session": b"data"})
+        out = tmp_path / "out"
+        out.mkdir()
+
+        archives = build_status_zips(
+            archive, [SessionCheckEntry("a.session", "invalid")], out
+        )
+
+        assert len(archives) == 1
+        assert archives[0][1] == "invalid"
+        assert archives[0][2] == 1

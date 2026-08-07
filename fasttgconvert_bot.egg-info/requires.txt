@@ -1,6 +1,11 @@
 aiogram<4,>=3.30
 SQLAlchemy<2.1,>=2.0.51
 pydantic-settings<3,>=2.10
+telethon<2,>=1.36
+opentele<2,>=1.15
+phonenumbers<10,>=9
+python-socks<3,>=2.0
+cryptography<51,>=42.0
 
 [dev]
 pytest<9,>=8.4

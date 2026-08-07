@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import sqlite3
@@ -87,17 +88,21 @@ async def _edit_password(
     *,
     current_password: str,
     new_password: str | None,
+    cancel_event: asyncio.Event | None = None,
 ) -> bool:
     try:
         from telethon import TelegramClient  # type: ignore[import-untyped]
         from telethon.errors import (  # type: ignore[import-untyped]
             ApiIdInvalidError,
+            FloodWaitError,
             RPCError,
         )
     except ModuleNotFoundError:
         return False
 
     for api_id, api_hash in credentials:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
         with tempfile.TemporaryDirectory(prefix="ftgc_2fa_client_") as run_tmp:
             run_session = Path(run_tmp) / "account.session"
             shutil.copy2(session_path, run_session)
@@ -109,18 +114,27 @@ async def _edit_password(
             )
             try:
                 await client.connect()
+                if cancel_event is not None and cancel_event.is_set():
+                    return False
                 if not await client.is_user_authorized():
                     return False
                 changed = await client.edit_2fa(
                     current_password=current_password,
                     new_password=new_password,
                 )
-                if changed is True:
+                if changed:
                     shutil.copy2(run_session, session_path)
                     return True
                 return False
             except ApiIdInvalidError:
                 continue
+            except FloodWaitError as exc:
+                seconds = int(getattr(exc, "seconds", 5))
+                LOGGER.debug("2FA password edit flood-waited %ss", seconds)
+                if seconds <= 10 and (cancel_event is None or not cancel_event.is_set()):
+                    await asyncio.sleep(seconds)
+                    continue
+                return False
             except RPCError as exc:
                 LOGGER.debug("2FA password edit rejected by Telegram: %s", exc)
                 return False
@@ -142,6 +156,7 @@ async def edit_two_factor_session(
     *,
     current_password: str,
     new_password: str | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> bool:
     """Edit 2FA for one staged account using that account's own password."""
     if not _is_valid_session(session_path) or not current_password:
@@ -151,6 +166,7 @@ async def edit_two_factor_session(
         credentials,
         current_password=current_password,
         new_password=new_password,
+        cancel_event=cancel_event,
     )
 
 
@@ -171,6 +187,14 @@ def package_two_factor_batch(
     token = uuid4().hex[:10]
 
     if total == 1 and not force_zip:
+        if success == 0:
+            return TwoFactorResult(
+                total=total,
+                success=success,
+                failed=failed,
+                output_path=None,
+                is_zip=False,
+            )
         output_path = output_dir / f"{title}_{success}_Success_{token}.session"
         shutil.copy2(session_files[0], output_path)
         return TwoFactorResult(
@@ -179,6 +203,15 @@ def package_two_factor_batch(
             failed=failed,
             output_path=output_path,
             is_zip=False,
+        )
+
+    if success == 0:
+        return TwoFactorResult(
+            total=total,
+            success=success,
+            failed=failed,
+            output_path=None,
+            is_zip=True,
         )
 
     output_path = output_dir / f"{title}_{success}_Success_{token}.zip"
@@ -203,7 +236,9 @@ def package_two_factor_batch(
 
 
 async def _reset_password(
-    session_path: Path, credentials: list[tuple[int, str]]
+    session_path: Path,
+    credentials: list[tuple[int, str]],
+    cancel_event: asyncio.Event | None = None,
 ) -> tuple[ResetOutcome, str | None]:
     try:
         from telethon import TelegramClient, functions  # type: ignore[import-untyped]
@@ -219,6 +254,8 @@ async def _reset_password(
         return "failed", "telethon_unavailable"
 
     for api_id, api_hash in credentials:
+        if cancel_event is not None and cancel_event.is_set():
+            return "failed", "cancelled"
         with tempfile.TemporaryDirectory(prefix="ftgc_2fa_reset_client_") as run_tmp:
             run_session = Path(run_tmp) / "account.session"
             shutil.copy2(session_path, run_session)
@@ -230,6 +267,8 @@ async def _reset_password(
             )
             try:
                 await client.connect()
+                if cancel_event is not None and cancel_event.is_set():
+                    return "failed", "cancelled"
                 if not await client.is_user_authorized():
                     return "failed", "unauthorized_session"
                 response = await client(functions.account.ResetPasswordRequest())
@@ -405,6 +444,7 @@ async def process_reset_2fa(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> TwoFactorResult:
     force_zip = Path(original_name or input_path.name).suffix.lower() == ".zip"
     work_dir, session_files = _prepare_sessions(
@@ -416,18 +456,28 @@ async def process_reset_2fa(
         pending = 0
         failure_reasons: list[str] = []
         for session_path in session_files:
+            if cancel_event is not None and cancel_event.is_set():
+                return TwoFactorResult(
+                    total=len(session_files),
+                    success=0,
+                    failed=failed + len(success_files) + 1,
+                    pending=pending,
+                    output_path=None,
+                )
             if not _is_valid_session(session_path):
                 failed += 1
                 failure_reasons.append("invalid_session")
                 continue
-            outcome, reason = await _reset_password(session_path, credentials)
+            outcome, reason = await _reset_password(
+                session_path, credentials, cancel_event
+            )
             if outcome == "success":
                 success_files.append(session_path)
             elif outcome == "pending":
                 pending += 1
             else:
                 failed += 1
-                if reason:
+                if reason and reason != "cancelled":
                     failure_reasons.append(reason)
 
         output_path, is_zip = _package_successes(

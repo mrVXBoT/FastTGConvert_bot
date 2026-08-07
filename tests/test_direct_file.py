@@ -122,9 +122,9 @@ async def test_quick_session_check_executes_and_cleans_input(tmp_path: Path) -> 
     with (
         patch("app.handlers.files.user_language", return_value="en"),
         patch(
-            "app.handlers.files.check_sessions",
+            "app.handlers.files.check_sessions_detailed",
             new_callable=AsyncMock,
-            return_value=result,
+            return_value=(result, []),
         ) as checker,
     ):
         await process_quick_action(

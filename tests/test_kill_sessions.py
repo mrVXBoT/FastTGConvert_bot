@@ -68,6 +68,47 @@ async def test_kill_single_session_success(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_kill_single_session_rpc_error_continues_to_next_credential(
+    tmp_path: Path,
+):
+    fake_sess = tmp_path / "valid.session"
+
+    import sqlite3
+
+    with sqlite3.connect(fake_sess) as conn:
+        conn.execute("CREATE TABLE sessions (auth_key BLOB)")
+        conn.execute("INSERT INTO sessions VALUES (?)", (b"1" * 256,))
+
+    from telethon.errors import RPCError
+
+    async def raise_rpc(*args, **kwargs):
+        raise RPCError(request=None, message="SomeRPCError")
+
+    failing_client = AsyncMock()
+    failing_client.connect = AsyncMock()
+    failing_client.is_user_authorized = AsyncMock(return_value=True)
+    failing_client.side_effect = raise_rpc
+    failing_client.disconnect = AsyncMock()
+
+    ok_client = AsyncMock(return_value=True)
+    ok_client.connect = AsyncMock()
+    ok_client.is_user_authorized = AsyncMock(return_value=True)
+    ok_client.disconnect = AsyncMock()
+
+    with patch("telethon.TelegramClient", side_effect=[failing_client, ok_client]):
+        st, msg = await kill_single_session_others(
+            fake_sess, [(123, "hash1"), (456, "hash2")]
+        )
+        assert st == "ok"
+        assert "Successfully" in msg
+
+    with patch("telethon.TelegramClient", return_value=failing_client):
+        st, msg = await kill_single_session_others(fake_sess, [(123, "hash1")])
+        assert st == "error"
+        assert "RPCError" in msg
+
+
+@pytest.mark.asyncio
 async def test_process_kill_sessions_zip(tmp_path: Path):
     import zipfile
 

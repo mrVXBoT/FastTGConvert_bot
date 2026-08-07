@@ -1,3 +1,4 @@
+import logging
 import shutil
 import urllib.parse
 from pathlib import Path
@@ -40,23 +41,35 @@ from app.locales import (
     PROXY_SUCCESS_MESSAGES,
     PROXY_TESTING_MESSAGES,
     REFERRAL_MESSAGES,
+    REFERRAL_NEXT_TIER_LABELS,
+    REFERRAL_NOTIFY_MESSAGES,
+    REFERRAL_REWARD_LABELS,
+    REFERRAL_TIER_LABELS,
     SUPPORT_UNAVAILABLE,
     action_message,
     get_locale,
     proxy_status_text,
 )
+from app.services.force_join import (
+    get_active_force_join_channels,
+    get_force_join_invite_links,
+)
 from app.services.membership import missing_memberships
 from app.states import AccountAge, ProxyState
 
 router = Router(name="start")
+LOGGER = logging.getLogger(__name__)
 
 
 async def clear_state_and_file(state: FSMContext) -> None:
     data = await state.get_data()
-    for key in ("source_path", "temp_file_path"):
+    for key in ("source_path", "temp_file_path", "file_path"):
         stored_path = data.get(key)
         if stored_path:
             Path(stored_path).unlink(missing_ok=True)
+    temp_dir = data.get("temp_dir")
+    if temp_dir:
+        shutil.rmtree(Path(temp_dir), ignore_errors=True)
     otp_sessions = data.get("otp_sessions", [])
     for sess in otp_sessions:
         sp = sess.get("session_path")
@@ -65,11 +78,20 @@ async def clear_state_and_file(state: FSMContext) -> None:
     otp_work_dir = data.get("otp_work_dir")
     if otp_work_dir:
         shutil.rmtree(Path(otp_work_dir), ignore_errors=True)
+    two_factor_batch_dir = data.get("two_factor_batch_dir")
+    if two_factor_batch_dir:
+        shutil.rmtree(Path(two_factor_batch_dir), ignore_errors=True)
+    for stored in data.get("two_factor_session_files", []):
+        Path(str(stored)).unlink(missing_ok=True)
     await state.clear()
 
 
-async def has_access(bot: Bot, user_id: int, settings: Settings) -> bool:
-    return not await missing_memberships(bot, user_id, settings.required_channel_list)
+async def has_access(
+    bot: Bot, user_id: int, settings: Settings, session_factory: sessionmaker[Session]
+) -> bool:
+    with session_factory() as session:
+        channels = get_active_force_join_channels(session, settings)
+    return not await missing_memberships(bot, user_id, tuple(channels))
 
 
 def user_language(session_factory: sessionmaker[Session], user_id: int) -> str:
@@ -92,20 +114,23 @@ async def command_start(
         user = upsert_user(session, message.from_user.id, message.from_user.username)
         language = user.language
 
+    await process_referral_payload(message, bot, session_factory)
+
     if language not in LANGUAGES:
         await message.answer(LANGUAGE_PROMPT, reply_markup=language_menu())
         return
     locale = get_locale(language)
-    if not await has_access(bot, message.from_user.id, settings):
-        channel_names = "\n".join(
-            f"📢 {channel}" for channel in settings.required_channel_list
-        )
+    with session_factory() as session:
+        required_channels = get_active_force_join_channels(session, settings)
+        invite_links = get_force_join_invite_links(session)
+    if not await has_access(bot, message.from_user.id, settings, session_factory):
+        channel_names = "\n".join(f"📢 {channel}" for channel in required_channels)
         text = locale.join_required
         if channel_names:
             text = f"{text}\n\n{channel_names}"
         await message.answer(
             text,
-            reply_markup=membership_menu(settings.required_channel_list, language),
+            reply_markup=membership_menu(tuple(required_channels), language, invite_links),
         )
         return
     await message.answer(
@@ -127,6 +152,58 @@ async def command_language(
     await message.answer(prompt, reply_markup=language_menu(language))
 
 
+async def process_referral_payload(
+    message: Message, bot: Bot, session_factory: sessionmaker[Session]
+) -> None:
+    """Handle /start ref_<id> payloads: register the referral and notify the referrer."""
+    if message.from_user is None:
+        return
+    args = (message.text or "").split(maxsplit=1)
+    payload = args[1] if len(args) > 1 else ""
+    if not payload.startswith("ref_"):
+        return
+    try:
+        referrer_id = int(payload[4:])
+    except ValueError:
+        return
+    if referrer_id == message.from_user.id:
+        return
+
+    from app.db.repositories import (
+        get_user_language,
+        register_referral,
+    )
+
+    outcome: dict = {}
+    with session_factory() as session:
+        outcome = register_referral(session, referrer_id, message.from_user.id)
+
+    if not outcome.get("ok"):
+        return
+    try:
+        with session_factory() as session:
+            referrer_lang = get_user_language(session, referrer_id)
+        notify_template = REFERRAL_NOTIFY_MESSAGES.get(
+            referrer_lang, REFERRAL_NOTIFY_MESSAGES["en"]
+        )
+        reward_text = ""
+        if outcome.get("granted_days"):
+            reward_label = REFERRAL_REWARD_LABELS.get(
+                referrer_lang, REFERRAL_REWARD_LABELS["en"]
+            )
+            reward_text = reward_label.format(days=outcome["granted_days"])
+        notify_text = notify_template.format(
+            count=outcome.get("referred_count", 0), reward=reward_text
+        )
+        from app.ui import EmojiRegistry
+
+        await bot.send_message(
+            referrer_id, EmojiRegistry.enrich(notify_text), disable_web_page_preview=True
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug("Referrer notification skipped: %s", referrer_id)
+
+
 @router.message(Command("referral"))
 async def command_referral(
     message: Message,
@@ -137,17 +214,54 @@ async def command_referral(
         return
     with session_factory() as session:
         language = get_user_language(session, message.from_user.id)
+        from app.db.repositories import (
+            get_referral_stats,
+            list_referral_tiers,
+        )
+
+        stats = get_referral_stats(session, message.from_user.id)
+        tiers = list_referral_tiers(session, active_only=True)
     bot_info = await bot.get_me()
     bot_username = bot_info.username or "FastTGConvert_bot"
     ref_link = f"https://t.me/{bot_username}?start=ref_{message.from_user.id}"
+
+    tier_lines = []
+    for tier in tiers:
+        tier_lines.append(
+            REFERRAL_TIER_LABELS.get(language, REFERRAL_TIER_LABELS["en"]).format(
+                refs=tier.refs_required, days=tier.reward_days
+            )
+        )
+    tiers_text = "\n".join(tier_lines)
+    if tiers_text:
+        tiers_text += "\n"
+
+    next_line = ""
+    next_tier = stats.get("next_tier")
+    if next_tier:
+        next_line = (
+            REFERRAL_NEXT_TIER_LABELS.get(
+                language, REFERRAL_NEXT_TIER_LABELS["en"]
+            ).format(
+                refs=next_tier["refs"],
+                days=next_tier["days"],
+                remaining=next_tier["refs"] - stats["referred"],
+            )
+            + "\n"
+        )
+
     template = REFERRAL_MESSAGES.get(language, REFERRAL_MESSAGES["en"])
     msg = template.format(
         ref_link=ref_link,
         user_id=message.from_user.id,
-        referred=0,
-        earned_days=0,
+        referred=stats["referred"],
+        earned_days=stats["earned_days"],
+        next_tier=next_line,
+        tiers=tiers_text,
     )
-    await message.answer(msg, disable_web_page_preview=True)
+    from app.ui import EmojiRegistry
+
+    await message.answer(EmojiRegistry.enrich(msg), disable_web_page_preview=True)
 
 
 def validate_proxy_url(proxy_str: str) -> str | None:
@@ -311,16 +425,19 @@ async def choose_language(
             )
         locale = get_locale(language)
         await callback.answer()
-        if not await has_access(bot, callback.from_user.id, settings):
+        with session_factory() as session:
+            required_channels = get_active_force_join_channels(session, settings)
+            invite_links = get_force_join_invite_links(session)
+        if not await has_access(bot, callback.from_user.id, settings, session_factory):
             channel_names = "\n".join(
-                f"📢 {channel}" for channel in settings.required_channel_list
+                f"📢 {channel}" for channel in required_channels
             )
             text = locale.join_required
             if channel_names:
                 text = f"{text}\n\n{channel_names}"
             await callback.message.edit_text(
                 text,
-                reply_markup=membership_menu(settings.required_channel_list, language),
+                reply_markup=membership_menu(tuple(required_channels), language, invite_links),
             )
             return
         await callback.message.edit_text(
@@ -357,8 +474,10 @@ async def check_membership(
         requested_language if requested_language in LANGUAGES else stored_language
     )
     locale = get_locale(language)
+    with session_factory() as session:
+        required_channels = get_active_force_join_channels(session, settings)
     missing = await missing_memberships(
-        bot, callback.from_user.id, settings.required_channel_list
+        bot, callback.from_user.id, tuple(required_channels)
     )
     if missing:
         await callback.answer(locale.membership_incomplete, show_alert=True)
@@ -408,6 +527,22 @@ async def callback_cancel(
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
+    await clear_state_and_file(state)
+    language = user_language(session_factory, callback.from_user.id)
+    await callback.answer(action_message(language, 3))
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            action_message(language, 3), reply_markup=main_menu(language)
+        )
+
+
+@router.callback_query(F.data == "flow:cancel")
+async def callback_flow_cancel(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Generic flow cancel (Profile Setup account menu) — same as action:cancel."""
     await clear_state_and_file(state)
     language = user_language(session_factory, callback.from_user.id)
     await callback.answer(action_message(language, 3))

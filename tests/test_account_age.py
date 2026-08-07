@@ -150,6 +150,48 @@ async def test_process_account_age_check(dummy_session: Path):
 
 
 @pytest.mark.asyncio
+async def test_fetch_single_account_age_rpc_error_retries_next_credential(
+    dummy_session: Path,
+):
+    """RPCError on the first credential must not abort the loop; the next
+    credential pair should still be tried."""
+    from telethon.errors import RPCError
+
+    class DummyMe:
+        id = 350_000_000
+        phone = "989123456789"
+        first_name = "Alice"
+        username = "alicesmith"
+
+    call_count = 0
+
+    def client_factory(*args: object, **kwargs: object):
+        nonlocal call_count
+        call_count += 1
+        client = AsyncMock()
+        if call_count == 1:
+            async def fail_connect():
+                raise RPCError(request=None, message="boom")
+
+            client.connect = fail_connect
+        else:
+            client.is_user_authorized.return_value = True
+            client.get_me.return_value = DummyMe()
+            client.get_messages.return_value = []
+            client.session.dc_id = 2
+        return client
+
+    with patch("telethon.TelegramClient", side_effect=client_factory):
+        info = await fetch_single_account_age(
+            dummy_session, [(111, "hash1"), (222, "hash2")]
+        )
+
+    assert call_count == 2
+    assert info is not None
+    assert info.user_id == 350_000_000
+
+
+@pytest.mark.asyncio
 async def test_account_age_noop_callback():
     cb = AsyncMock(spec=CallbackQuery)
     cb.answer = AsyncMock()
@@ -165,7 +207,7 @@ def test_account_age_locales_and_keyboards():
         assert ACCOUNT_AGE_MESSAGES[lang]["report_title"]
 
     kb = account_age_result_menu(5, 4, 1, "en")
-    assert len(kb.inline_keyboard) == 3
+    assert len(kb.inline_keyboard) == 4
 
 
 def test_format_account_age_report(dummy_session: Path):
@@ -196,6 +238,42 @@ def test_format_account_age_report(dummy_session: Path):
     assert "Community Dataset" in formatted
 
 
+def test_account_age_report_flag_premium_enrichment():
+    from app.services.account_age import AccountAgeInfo, AccountAgeResult
+
+    info = AccountAgeInfo(
+        session_name="s1.session",
+        user_id=8745840188,
+        phone="07047848725",
+        username="",
+        first_name="User",
+        last_name="",
+        is_premium=False,
+        dc_id=4,
+        creation_estimate="~ 2026",
+    )
+    res = AccountAgeResult(total=1, checked=1, failed=0, accounts=(info,))
+    msgs = ACCOUNT_AGE_MESSAGES["en"]
+
+    text = format_account_age_report(res, msgs)
+    assert "🇳🇱 DC4" in text
+
+    from app.ui import EmojiRegistry
+
+    previous_flags = dict(EmojiRegistry._flag_ids)
+    EmojiRegistry.load_flag_pack()
+    try:
+        enriched = EmojiRegistry.enrich_flags(text)
+        assert (
+            '<tg-emoji emoji-id="5294241847445566691">🇳🇱</tg-emoji> DC4'
+            in enriched
+        )
+        again = EmojiRegistry.enrich_flags(enriched)
+        assert again == enriched
+    finally:
+        EmojiRegistry._flag_ids = previous_flags
+
+
 def test_account_age_pagination_keyboard():
     from app.services.account_age import AccountAgeInfo, AccountAgeResult
 
@@ -221,13 +299,13 @@ def test_account_age_pagination_keyboard():
     assert "U2" in p1
 
     kb_small = account_age_result_menu(3, 3, 0, "en", page=1, total_pages=3)
-    assert len(kb_small.inline_keyboard) == 4
+    assert len(kb_small.inline_keyboard) == 5
     nav = kb_small.inline_keyboard[0]
     assert any("Prev" in b.text for b in nav)
     assert any("Next" in b.text for b in nav)
 
     kb_large = account_age_result_menu(10, 10, 0, "en", page=2, total_pages=10)
-    assert len(kb_large.inline_keyboard) == 4
+    assert len(kb_large.inline_keyboard) == 5
     nav_large = kb_large.inline_keyboard[0]
     assert nav_large[0].text == "⏮"
     assert nav_large[-1].text == "⏭"

@@ -227,18 +227,24 @@ async def handle_otp_check(
         return
 
     curr = sessions[index]
-    user_val = curr.get("user", "N/A")
-    phone_val = curr.get("phone", f"+{curr['session_id']}")
-    username_val = curr.get("username", "N/A")
-    codes: list[OTPCode] = []
+    session_id_escaped = html.quote(curr["session_id"])
 
     session_path_str = curr.get("session_path")
     if session_path_str and settings.api_credential_list:
         path = Path(session_path_str)
         user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
-        user_info, live_codes = await read_account_otps(
+        user_info, live_codes, status = await read_account_otps(
             path, settings.api_credential_list, proxy=user_proxy
         )
+        if status != "ok":
+            await callback.answer()
+            if isinstance(callback.message, Message):
+                await edit_if_changed(
+                    callback.message,
+                    read_otp_status_error(status, language, curr),
+                    reply_markup=otp_checked_menu(language),
+                )
+            return
         if user_info.get("user"):
             user_val = user_info["user"]
         if user_info.get("phone"):
@@ -246,6 +252,17 @@ async def handle_otp_check(
         if user_info.get("username"):
             username_val = user_info["username"]
         codes = live_codes
+    else:
+        await callback.answer()
+        if isinstance(callback.message, Message):
+            await edit_if_changed(
+                callback.message,
+                msgs_for(language)["no_api_credentials"].format(
+                    session_id=session_id_escaped
+                ),
+                reply_markup=otp_checked_menu(language),
+            )
+        return
 
     now_iso = datetime.now(UTC).isoformat()
     await state.update_data(last_check_ts=now_iso)
@@ -285,6 +302,7 @@ async def handle_otp_check_again(
         return
 
     curr = sessions[index]
+    session_id_escaped = html.quote(curr["session_id"])
     user_val = curr.get("user", "N/A")
     phone_val = curr.get("phone", f"+{curr['session_id']}")
     username_val = curr.get("username", "N/A")
@@ -300,9 +318,18 @@ async def handle_otp_check_again(
     if session_path_str and settings.api_credential_list:
         path = Path(session_path_str)
         user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
-        user_info, live_codes = await read_account_otps(
+        user_info, live_codes, status = await read_account_otps(
             path, settings.api_credential_list, since_dt=since_dt, proxy=user_proxy
         )
+        if status != "ok":
+            await callback.answer()
+            if isinstance(callback.message, Message):
+                await edit_if_changed(
+                    callback.message,
+                    read_otp_status_error(status, language, curr),
+                    reply_markup=otp_checked_menu(language),
+                )
+            return
         if user_info.get("user"):
             user_val = user_info["user"]
         if user_info.get("phone"):
@@ -310,6 +337,17 @@ async def handle_otp_check_again(
         if user_info.get("username"):
             username_val = user_info["username"]
         codes = live_codes
+    else:
+        await callback.answer()
+        if isinstance(callback.message, Message):
+            await edit_if_changed(
+                callback.message,
+                msgs_for(language)["no_api_credentials"].format(
+                    session_id=session_id_escaped
+                ),
+                reply_markup=otp_checked_menu(language),
+            )
+        return
 
     now_iso = datetime.now(UTC).isoformat()
     await state.update_data(last_check_ts=now_iso)
@@ -344,17 +382,31 @@ async def handle_otp_logout(
     sessions: list[dict[str, str]] = data.get("otp_sessions", [])
     index: int = data.get("otp_index", 0)
 
+    msgs = READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])
+    alert: str
     if sessions and index < len(sessions):
         curr = sessions[index]
         session_path_str = curr.get("session_path")
         if session_path_str and settings.api_credential_list:
             user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
-            await logout_account_session(
-                Path(session_path_str), settings.api_credential_list, proxy=user_proxy
+            logged_out = await logout_account_session(
+                Path(session_path_str),
+                settings.api_credential_list,
+                proxy=user_proxy,
             )
-
-    msgs = READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])
-    await callback.answer(msgs["logged_out"], show_alert=False)
+            if logged_out:
+                alert = msgs["logged_out"]
+            else:
+                alert = msgs["logout_failed"].format(
+                    session_id=html.quote(curr["session_id"])
+                )
+        else:
+            alert = msgs["logout_failed"].format(
+                session_id=html.quote(curr["session_id"])
+            )
+    else:
+        alert = msgs["logged_out"]
+    await callback.answer(alert, show_alert=False)
 
     next_index = index + 1
     total = len(sessions)
@@ -442,3 +494,14 @@ async def handle_invalid_input(
 
 def msgs_for(language: str) -> dict[str, str]:
     return READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])
+
+
+def read_otp_status_error(
+    status: str, language: str, session: dict[str, str]
+) -> str:
+    """Render a proper error message for a failed OTP read (banned/2fa/…)."""
+    msgs = READ_OTP_MESSAGES.get(language, READ_OTP_MESSAGES["en"])
+    session_id = html.quote(session.get("session_id", "N/A"))
+    key = f"error_{status}"
+    template = msgs.get(key, msgs.get("error_inconclusive", ""))
+    return template.format(session_id=session_id)

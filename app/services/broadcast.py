@@ -41,6 +41,7 @@ class BroadcastJob:
     current_index: int = 0
     failed_user_ids: list[int] = field(default_factory=list)
     cancel_requested: bool = False
+    admin_role: str = "ADMIN"
 
 
 class BroadcastQueueWorker:
@@ -204,6 +205,8 @@ class BroadcastQueueWorker:
                 job.sent_count += 1
                 await asyncio.sleep(0.04)
             except TelegramRetryAfter as retry_err:
+                job.failed_count += 1
+                job.failed_user_ids.append(user.telegram_id)
                 await asyncio.sleep(retry_err.retry_after + 1)
             except TelegramUnauthorizedError:
                 user.status = "banned"
@@ -219,6 +222,7 @@ class BroadcastQueueWorker:
                 update_broadcast_job_progress(
                     session=session,
                     job_id=job.job_id,
+                    total_users=job.total_users,
                     sent_count=job.sent_count,
                     failed_count=job.failed_count,
                     current_index=idx,
@@ -231,6 +235,7 @@ class BroadcastQueueWorker:
         update_broadcast_job_progress(
             session=session,
             job_id=job.job_id,
+            total_users=job.total_users,
             sent_count=job.sent_count,
             failed_count=job.failed_count,
             current_index=job.total_users,
@@ -244,37 +249,6 @@ class BroadcastQueueWorker:
             job.status,
             job.sent_count,
             job.failed_count,
-        )
-        return job
-
-    async def retry_failed_messages(self, bot: Bot, session: Session, job: BroadcastJob) -> BroadcastJob:
-        """Retry dispatching to failed user list."""
-        if not job.failed_user_ids:
-            return job
-
-        to_retry = list(job.failed_user_ids)
-        job.failed_user_ids.clear()
-        LOGGER.info("Retrying broadcast job %s for %d failed users...", job.job_id, len(to_retry))
-
-        for telegram_id in to_retry:
-            if job.cancel_requested:
-                break
-            try:
-                if job.text:
-                    await bot.send_message(chat_id=telegram_id, text=job.text)
-                job.sent_count += 1
-                job.failed_count = max(0, job.failed_count - 1)
-                await asyncio.sleep(0.04)
-            except Exception:  # noqa: BLE001
-                job.failed_user_ids.append(telegram_id)
-
-        update_broadcast_job_progress(
-            session=session,
-            job_id=job.job_id,
-            sent_count=job.sent_count,
-            failed_count=job.failed_count,
-            current_index=job.total_users,
-            status=job.status,
         )
         return job
 

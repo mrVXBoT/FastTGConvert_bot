@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -46,6 +47,7 @@ async def clean_session_chats(
     credentials: list[tuple[int, str]],
     mode: str | Collection[str] = "all",
     proxy: tuple | None = None,
+    flood_ceiling: int = 30,
 ) -> bool:
     """
     Connect via Telethon and clean chats for a session account according to mode.
@@ -56,52 +58,103 @@ async def clean_session_chats(
     if not credentials or not session_file.exists():
         return False
 
-    from app.services.telethon_factory import create_telethon_client
+    try:
+        from telethon import TelegramClient  # type: ignore[import-untyped]
+        from telethon.errors import FloodWaitError  # type: ignore[import-untyped]
+    except ModuleNotFoundError:
+        return False
+    from contextlib import suppress
 
     for api_id, api_hash in credentials:
         cleaned = False
         try:
-            async with create_telethon_client(
-                session_file, api_id, api_hash, proxy=proxy
-            ) as client:
-                if not await client.is_user_authorized():  # type: ignore[attr-defined]
-                    continue
+            with tempfile.TemporaryDirectory(prefix="ftgc_clnchat_") as tmp_dir:
+                run_sess = Path(tmp_dir) / session_file.name
+                shutil.copy2(session_file, run_sess)
+                stem = str(run_sess.with_suffix(""))
+                client = TelegramClient(
+                    stem,
+                    api_id,
+                    api_hash,
+                    receive_updates=False,
+                    proxy=proxy,
+                    flood_sleep_threshold=0,
+                )
+                try:
+                    await client.connect()
+                    if not await client.is_user_authorized():  # type: ignore[attr-defined]
+                        continue
 
-                failed_dialogs = 0
-                async for dialog in client.iter_dialogs():  # type: ignore[attr-defined]
-                    is_user = getattr(dialog, "is_user", False)
-                    is_group = getattr(dialog, "is_group", False)
-                    is_channel = getattr(dialog, "is_channel", False)
-                    is_broadcast = bool(
-                        getattr(getattr(dialog, "entity", None), "broadcast", False)
-                    )
-                    is_bot = is_user and bool(
-                        getattr(getattr(dialog, "entity", None), "bot", False)
-                    )
+                    failed_dialogs = 0
+                    async for dialog in client.iter_dialogs():  # type: ignore[attr-defined]
+                        is_user = getattr(dialog, "is_user", False)
+                        is_group = getattr(dialog, "is_group", False)
+                        is_channel = getattr(dialog, "is_channel", False)
+                        is_broadcast = bool(
+                            getattr(getattr(dialog, "entity", None), "broadcast", False)
+                        )
+                        is_bot = is_user and bool(
+                            getattr(getattr(dialog, "entity", None), "bot", False)
+                        )
 
-                    category: str | None = None
-                    if is_user:
-                        category = "bots" if is_bot else "dms"
-                    elif is_channel and is_broadcast:
-                        category = "channels"
-                    elif is_group or is_channel:
-                        category = "groups"
+                        category: str | None = None
+                        if is_user:
+                            category = "bots" if is_bot else "dms"
+                        elif is_channel and is_broadcast:
+                            category = "channels"
+                        elif is_group or is_channel:
+                            category = "groups"
 
-                    should_clean = category in selected_categories
+                        should_clean = category in selected_categories
 
-                    if should_clean:
-                        entity = dialog.entity
-                        try:
-                            await client.delete_dialog(entity, revoke=False)  # type: ignore[attr-defined]
-                        except Exception as exc:  # noqa: BLE001
-                            failed_dialogs += 1
-                            LOGGER.warning(
-                                "Failed cleaning dialog %s: %s",
-                                getattr(entity, "id", entity),
-                                exc,
-                            )
+                        if should_clean:
+                            entity = dialog.entity
+                            try:
+                                await client.delete_dialog(entity, revoke=False)  # type: ignore[attr-defined]
+                            except FloodWaitError as exc:
+                                seconds = max(
+                                    0, int(getattr(exc, "seconds", 0) or 0)
+                                )
+                                if seconds <= flood_ceiling:
+                                    LOGGER.info(
+                                        "Clean chat flood-waiting %ds", seconds
+                                    )
+                                    await asyncio.sleep(seconds)
+                                    try:
+                                        await client.delete_dialog(  # type: ignore[attr-defined]
+                                            entity, revoke=False
+                                        )
+                                    except Exception as exc2:  # noqa: BLE001
+                                        failed_dialogs += 1
+                                        LOGGER.warning(
+                                            "Failed cleaning dialog %s after "
+                                            "flood wait: %s",
+                                            getattr(entity, "id", entity),
+                                            exc2,
+                                        )
+                                else:
+                                    failed_dialogs += 1
+                                    LOGGER.warning(
+                                        "Skipped dialog %s: flood wait %ds "
+                                        "exceeds ceiling %ds",
+                                        getattr(entity, "id", entity),
+                                        seconds,
+                                        flood_ceiling,
+                                    )
+                            except Exception as exc:  # noqa: BLE001
+                                failed_dialogs += 1
+                                LOGGER.warning(
+                                    "Failed cleaning dialog %s: %s",
+                                    getattr(entity, "id", entity),
+                                    exc,
+                                )
 
-                cleaned = failed_dialogs == 0
+                    cleaned = failed_dialogs == 0
+                finally:
+                    with suppress(Exception):
+                        await client.disconnect()
+                if cleaned:
+                    shutil.copy2(run_sess, session_file)
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning(
                 "Clean chat attempt failed with api_id=%d: %s", api_id, exc
@@ -121,8 +174,12 @@ async def process_clean_chat(
     *,
     original_name: str | None = None,
     proxy: tuple | None = None,
+    concurrency: int = 5,
+    flood_ceiling: int = 30,
 ) -> CleanChatResult:
     selected_categories = normalize_clean_chat_selection(mode)
+    if concurrency < 1:
+        raise ValueError("invalid_concurrency")
     _ensure_opentele_patched()
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_dir: tempfile.TemporaryDirectory[str] | None = None
@@ -146,14 +203,22 @@ async def process_clean_chat(
         success_files: list[Path] = []
         failed = 0
 
-        for sess_file in session_files:
-            if not _is_valid_sqlite_session(sess_file):
-                failed += 1
-                continue
+        semaphore = asyncio.Semaphore(concurrency)
 
-            cleaned = await clean_session_chats(
-                sess_file, credentials, mode=selected_categories, proxy=proxy
-            )
+        async def work(sess_file: Path) -> bool:
+            async with semaphore:
+                if not _is_valid_sqlite_session(sess_file):
+                    return False
+                return await clean_session_chats(
+                    sess_file,
+                    credentials,
+                    mode=selected_categories,
+                    proxy=proxy,
+                    flood_ceiling=flood_ceiling,
+                )
+
+        results = await asyncio.gather(*(work(sess) for sess in session_files))
+        for sess_file, cleaned in zip(session_files, results):
             if cleaned:
                 success_files.append(sess_file)
             else:
