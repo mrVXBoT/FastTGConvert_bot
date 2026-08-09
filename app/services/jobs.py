@@ -13,3 +13,16 @@ class JobProgress:
 
     total: int = 0
     done: int = 0
+
+
+@dataclass
+class AutoProfileProgress:
+    """Shared mutable progress state for the auto profile generation job."""
+
+    total: int = 0
+    done: int = 0
+    modified: int = 0
+    failed: int = 0
+    region: str = ""
+    identifier: str = "-"
+    username: str = "-"

@@ -12,6 +12,8 @@ from app.services.account_age import (
     estimate_account_creation,
     fetch_single_account_age,
     format_account_age_report,
+    format_registration_report,
+    format_registration_report_summary,
     process_account_age_check,
 )
 
@@ -309,3 +311,209 @@ def test_account_age_pagination_keyboard():
     nav_large = kb_large.inline_keyboard[0]
     assert nav_large[0].text == "⏮"
     assert nav_large[-1].text == "⏭"
+
+
+def test_format_registration_report_summary():
+    from app.services.account_age import AccountAgeInfo, AccountAgeResult
+
+    acc1 = AccountAgeInfo(
+        session_name="a.session",
+        user_id=100,
+        phone="111",
+        username="user1",
+        first_name="U1",
+        last_name="",
+        is_premium=False,
+        dc_id=1,
+        creation_estimate="~ 2020",
+        exact_creation_date="2026-07-22",
+    )
+    acc2 = AccountAgeInfo(
+        session_name="b.session",
+        user_id=200,
+        phone="222",
+        username="user2",
+        first_name="U2",
+        last_name="",
+        is_premium=False,
+        dc_id=2,
+        creation_estimate="~ 2021",
+        exact_creation_date="2026-07-30",
+    )
+    acc3 = AccountAgeInfo(
+        session_name="c.session",
+        user_id=300,
+        phone="333",
+        username="user3",
+        first_name="U3",
+        last_name="",
+        is_premium=False,
+        dc_id=3,
+        creation_estimate="~ 2022",
+        exact_creation_date="2026-07-30",
+    )
+    res = AccountAgeResult(total=3, checked=3, failed=0, accounts=(acc1, acc2, acc3))
+
+    text = format_registration_report_summary(res)
+    assert "Registration Time Query Complete" in text
+    assert "Total: 3" in text
+    assert "Success: 3" in text
+    assert "2026-07-22: 1" in text
+    assert "2026-07-30: 2" in text
+    assert "See detailed report in files below" in text
+
+
+def test_format_registration_report_buckets_and_failures():
+    from app.services.account_age import AccountAgeInfo, AccountAgeResult
+
+    acc1 = AccountAgeInfo(
+        session_name="a.session",
+        user_id=100,
+        phone="111",
+        username="user1",
+        first_name="U1",
+        last_name="",
+        is_premium=False,
+        dc_id=1,
+        creation_estimate="~ 2020",
+        exact_creation_date="2019-05-12",
+        registration_source="telegram_chat",
+        registration_common_groups=3,
+    )
+    acc2 = AccountAgeInfo(
+        session_name="b.session",
+        user_id=200,
+        phone="222",
+        username="",
+        first_name="U2",
+        last_name="",
+        is_premium=False,
+        dc_id=2,
+        creation_estimate="~ 2021",
+        exact_creation_date="2019-05-12",
+        registration_source="saved_messages",
+        registration_common_groups=0,
+    )
+    acc3 = AccountAgeInfo(
+        session_name="c.session",
+        user_id=300,
+        phone="333",
+        username="user3",
+        first_name="U3",
+        last_name="",
+        is_premium=True,
+        dc_id=3,
+        creation_estimate="~ 2018",
+        exact_creation_date="2017-11-03",
+        registration_source="estimation",
+        registration_common_groups=1,
+    )
+    res = AccountAgeResult(
+        total=5,
+        checked=3,
+        failed=2,
+        accounts=(acc1, acc2, acc3),
+        failure_entries=(
+            ("d.session", "Account unauthorized or expired"),
+            ("e.session", "Invalid or corrupted session file"),
+        ),
+    )
+
+    text = format_registration_report(res)
+    assert "Total Accounts: 5" in text
+    assert "Success: 3" in text
+    assert "Failed: 2" in text
+    assert "📅 2019-05-12 | 2 accounts" in text
+    assert "📅 2017-11-03 | 1 account" in text
+    assert "File: a.session" in text
+    assert "Common Groups: 3" in text
+    assert "From @Telegram official chat" in text
+    assert "Failed accounts:" in text
+    assert "File: d.session" in text
+    assert "Error: Account unauthorized or expired" in text
+
+    empty = AccountAgeResult(
+        total=2,
+        checked=0,
+        failed=2,
+        accounts=(),
+        failure_entries=(("f.session", "Account unauthorized or expired"),),
+    )
+    empty_text = format_registration_report(empty)
+    assert "No accounts in the report." in empty_text
+    assert "File: f.session" in empty_text
+
+
+def test_build_outputs_zips(tmp_path: Path):
+    import zipfile
+
+    from app.services.account_age import (
+        AccountAgeInfo,
+        AccountAgeResult,
+        _build_outputs,
+    )
+
+    work = tmp_path / "work"
+    out = tmp_path / "out"
+    work.mkdir()
+    out.mkdir()
+    (work / "a.session").write_bytes(b"\x01" * 8)
+    (work / "b.session").write_bytes(b"\x02" * 8)
+    (work / "c.session").write_bytes(b"\x03" * 8)
+    (work / "d.session").write_bytes(b"\x04" * 8)
+    (work / "e.session").write_bytes(b"\x05" * 8)
+
+    acc1 = AccountAgeInfo(
+        "a.session", 100, "111", "u1", "U1", "", False, 1, "~ 2020",
+        exact_creation_date="2026-07-22",
+    )
+    acc2 = AccountAgeInfo(
+        "b.session", 200, "222", "u2", "U2", "", False, 2, "~ 2021",
+        exact_creation_date="2026-07-30",
+    )
+    acc3 = AccountAgeInfo(
+        "c.session", 300, "333", "u3", "U3", "", False, 3, "~ 2022",
+        exact_creation_date="2026-07-30",
+    )
+    res = AccountAgeResult(
+        total=5,
+        checked=3,
+        failed=2,
+        accounts=(acc1, acc2, acc3),
+        failure_entries=(
+            ("d.session", "Account unauthorized or expired"),
+            ("e.session", "Invalid or corrupted session file"),
+        ),
+    )
+    session_files = [
+        work / "a.session",
+        work / "b.session",
+        work / "c.session",
+        work / "d.session",
+        work / "e.session",
+    ]
+
+    report_path, classified_zip, failed_zip = _build_outputs(
+        work, res, session_files, out
+    )
+
+    assert report_path is not None and report_path.exists()
+    assert "Total Accounts: 5" in report_path.read_text(encoding="utf-8")
+
+    assert classified_zip is not None and classified_zip.exists()
+    with zipfile.ZipFile(classified_zip) as archive:
+        names = sorted(archive.namelist())
+        assert names == [
+            "2026-07-22/a.session",
+            "2026-07-30/b.session",
+            "2026-07-30/c.session",
+        ]
+
+    assert failed_zip is not None and failed_zip.exists()
+    with zipfile.ZipFile(failed_zip) as archive:
+        names = set(archive.namelist())
+        assert "d.session" in names
+        assert "e.session" in names
+        assert "failed_reasons.txt" in names
+        reasons = archive.read("failed_reasons.txt").decode("utf-8")
+        assert "d.session | Account unauthorized or expired" in reasons

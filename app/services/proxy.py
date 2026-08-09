@@ -147,8 +147,13 @@ def resolve_user_proxy(
 async def _run_multi_dc_check(
     proxy: object, per_endpoint_timeout: float = 3.0
 ) -> tuple[bool, str]:
-    """Test connection across Telegram DC endpoints with dedicated per-endpoint timeout."""
-    for dc_host, dc_port in TELEGRAM_DC_ENDPOINTS:
+    """Test connection across Telegram DC endpoints with dedicated per-endpoint timeout.
+
+    Endpoints are probed in parallel and the first success wins, so a slow
+    (but alive) DC never delays the verdict.
+    """
+
+    async def try_endpoint(dc_host: str, dc_port: int) -> tuple[bool, str]:
         try:
             sock = await asyncio.wait_for(
                 proxy.connect(dest_host=dc_host, dest_port=dc_port),  # type: ignore[attr-defined]
@@ -156,8 +161,15 @@ async def _run_multi_dc_check(
             )
             sock.close()
             return True, f"Proxy connection successful (connected to Telegram DC {dc_host})"
-        except Exception:  # noqa: BLE001, S112
-            continue
+        except Exception:  # noqa: BLE001
+            return False, f"Failed to connect to Telegram DC {dc_host}"
+
+    outcomes = await asyncio.gather(
+        *(try_endpoint(dc_host, dc_port) for dc_host, dc_port in TELEGRAM_DC_ENDPOINTS)
+    )
+    for ok, detail in outcomes:
+        if ok:
+            return True, detail
     return False, "Failed to connect to any Telegram DC endpoint through proxy"
 
 

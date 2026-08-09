@@ -19,6 +19,10 @@ LOGGER = logging.getLogger(__name__)
 TwoFactorOperation = Literal["changed", "disabled", "reset"]
 ResetOutcome = Literal["success", "pending", "failed"]
 
+# Max concurrent 2FA operations. All sessions share the global api_credential
+# pairs (one IP / api_id), so the ceiling stays low to avoid flood bans.
+_EDIT_CONCURRENCY = 8
+
 
 @dataclass(frozen=True)
 class TwoFactorResult:
@@ -43,7 +47,7 @@ def _is_valid_session(path: Path) -> bool:
         return False
 
 
-def _prepare_sessions(
+async def _prepare_sessions(
     input_path: Path, original_name: str | None, prefix: str
 ) -> tuple[tempfile.TemporaryDirectory[str], list[Path]]:
     work_dir = tempfile.TemporaryDirectory(prefix=prefix)
@@ -51,7 +55,9 @@ def _prepare_sessions(
     suffix = Path(original_name or input_path.name).suffix.lower()
     try:
         if suffix == ".zip":
-            sessions = extract_zip_sessions_safe(input_path, work_path)
+            sessions = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, work_path
+            )
         elif suffix == ".session":
             target = work_path / Path(original_name or input_path.name).name
             shutil.copy2(input_path, target)
@@ -64,7 +70,7 @@ def _prepare_sessions(
         raise
 
 
-def stage_two_factor_sessions(
+async def stage_two_factor_sessions(
     input_path: Path,
     work_dir: Path,
     *,
@@ -74,7 +80,7 @@ def stage_two_factor_sessions(
     work_dir.mkdir(parents=True, exist_ok=True)
     suffix = Path(original_name or input_path.name).suffix.lower()
     if suffix == ".zip":
-        return extract_zip_sessions_safe(input_path, work_dir)
+        return await asyncio.to_thread(extract_zip_sessions_safe, input_path, work_dir)
     if suffix == ".session":
         target = work_dir / Path(original_name or input_path.name).name
         shutil.copy2(input_path, target)
@@ -106,11 +112,14 @@ async def _edit_password(
         with tempfile.TemporaryDirectory(prefix="ftgc_2fa_client_") as run_tmp:
             run_session = Path(run_tmp) / "account.session"
             shutil.copy2(session_path, run_session)
+            from app.services.device_params import get_stable_device_params
+            device_kwargs = get_stable_device_params(session_path)
             client = TelegramClient(
                 str(run_session.with_suffix("")),
                 api_id,
                 api_hash,
                 receive_updates=False,
+                **device_kwargs,
             )
             try:
                 await client.connect()
@@ -259,11 +268,14 @@ async def _reset_password(
         with tempfile.TemporaryDirectory(prefix="ftgc_2fa_reset_client_") as run_tmp:
             run_session = Path(run_tmp) / "account.session"
             shutil.copy2(session_path, run_session)
+            from app.services.device_params import get_stable_device_params
+            device_kwargs = get_stable_device_params(session_path)
             client = TelegramClient(
                 str(run_session.with_suffix("")),
                 api_id,
                 api_hash,
                 receive_updates=False,
+                **device_kwargs,
             )
             try:
                 await client.connect()
@@ -361,23 +373,39 @@ async def _process_password_edit(
     original_name: str | None,
 ) -> TwoFactorResult:
     force_zip = Path(original_name or input_path.name).suffix.lower() == ".zip"
-    work_dir, session_files = _prepare_sessions(
+    work_dir, session_files = await _prepare_sessions(
         input_path, original_name, f"ftgc_2fa_{operation}_"
     )
     try:
         success_files: list[Path] = []
         failed = 0
-        for session_path in session_files:
+
+        # Each password edit is a connect + get_me + edit_2fa RPC chain.
+        # Running them one-by-one made multi-session 2FA changes painfully
+        # slow; a bounded semaphore (shared api credentials / IP) parallelizes
+        # without risking flood bans.
+        edit_semaphore = asyncio.Semaphore(
+            min(_EDIT_CONCURRENCY, len(session_files) or 1)
+        )
+
+        async def edit_one(index: int) -> bool:
+            session_path = session_files[index]
             if not _is_valid_session(session_path):
-                failed += 1
-                continue
-            if await _edit_password(
-                session_path,
-                credentials,
-                current_password=current_password,
-                new_password=new_password,
-            ):
-                success_files.append(session_path)
+                return False
+            async with edit_semaphore:
+                return await _edit_password(
+                    session_path,
+                    credentials,
+                    current_password=current_password,
+                    new_password=new_password,
+                )
+
+        edits = await asyncio.gather(
+            *(edit_one(index) for index in range(len(session_files)))
+        )
+        for index, ok in enumerate(edits):
+            if ok:
+                success_files.append(session_files[index])
             else:
                 failed += 1
 
@@ -447,7 +475,7 @@ async def process_reset_2fa(
     cancel_event: asyncio.Event | None = None,
 ) -> TwoFactorResult:
     force_zip = Path(original_name or input_path.name).suffix.lower() == ".zip"
-    work_dir, session_files = _prepare_sessions(
+    work_dir, session_files = await _prepare_sessions(
         input_path, original_name, "ftgc_2fa_reset_"
     )
     try:
@@ -455,30 +483,50 @@ async def process_reset_2fa(
         failed = 0
         pending = 0
         failure_reasons: list[str] = []
-        for session_path in session_files:
-            if cancel_event is not None and cancel_event.is_set():
-                return TwoFactorResult(
-                    total=len(session_files),
-                    success=0,
-                    failed=failed + len(success_files) + 1,
-                    pending=pending,
-                    output_path=None,
-                )
-            if not _is_valid_session(session_path):
-                failed += 1
-                failure_reasons.append("invalid_session")
-                continue
-            outcome, reason = await _reset_password(
-                session_path, credentials, cancel_event
+
+        if cancel_event is not None and cancel_event.is_set():
+            return TwoFactorResult(
+                total=len(session_files),
+                success=0,
+                failed=1,
+                pending=pending,
+                output_path=None,
             )
+
+        reset_semaphore = asyncio.Semaphore(
+            min(_EDIT_CONCURRENCY, len(session_files) or 1)
+        )
+
+        async def reset_one(
+            index: int,
+        ) -> tuple[str, str | None]:
+            session_path = session_files[index]
+            if not _is_valid_session(session_path):
+                return "failed", "invalid_session"
+            async with reset_semaphore:
+                return await _reset_password(session_path, credentials, cancel_event)
+
+        outcomes = await asyncio.gather(
+            *(reset_one(index) for index in range(len(session_files)))
+        )
+        for index, (outcome, reason) in enumerate(outcomes):
             if outcome == "success":
-                success_files.append(session_path)
+                success_files.append(session_files[index])
             elif outcome == "pending":
                 pending += 1
             else:
                 failed += 1
                 if reason and reason != "cancelled":
                     failure_reasons.append(reason)
+
+        if cancel_event is not None and cancel_event.is_set():
+            return TwoFactorResult(
+                total=len(session_files),
+                success=0,
+                failed=failed + len(success_files) + 1,
+                pending=pending,
+                output_path=None,
+            )
 
         output_path, is_zip = _package_successes(
             success_files, output_dir, "reset", force_zip=force_zip

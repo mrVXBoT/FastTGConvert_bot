@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 UTC = timezone.utc  # noqa: UP017
 
+from typing import Any
+
 import aiohttp
 from aiogram import Bot
 from sqlalchemy import select
@@ -34,6 +36,10 @@ USDT_BEP20_CONTRACT = "0x55d398326f99059fF775485246999027B3197955"
 # Serialize all payment scans so the poll loop and a user's "Check Payment" button
 # can never race each other (two concurrent scans must not both claim one transfer).
 _SCAN_LOCK = asyncio.Lock()
+
+# Max parallel chain-RPC scans inside one lock-held pass. DB writes stay on the
+# single session afterwards, so SQLite sees no concurrent writers.
+_SCAN_CONCURRENCY = 4
 
 # BEP20 scans paginate through at most this many 50-tx pages so customers buried
 # under spam (`> 50`) transfers to the shared wallet are still detected.
@@ -179,6 +185,8 @@ async def _check_bep20_via_rpc(
     """Scan BSC `eth_getLogs` for a USDT Transfer to *wallet* of *expected_units*."""
     latest_raw = await bsc_rpc_request(rpc_urls, rpc_post, "eth_blockNumber", [])
     if latest_raw is None:
+        return None
+    if not isinstance(latest_raw, (str, bytes, bytearray)):
         return None
     try:
         latest_block = int(latest_raw, 16)
@@ -434,6 +442,12 @@ async def _scan_pending_payments(
             if target is None:
                 return result
             payments = [p for p in payments if p.user_id == target.id]
+
+        # Pre-compute scan params on the shared session, then run the SLOW
+        # chain RPC scans in bounded parallel. All DB reads/writes stay on
+        # this single session sequentially afterwards (SQLite-safe), while
+        # the network waits no longer serialize one payment after another.
+        items: list[tuple[Any, Any, Any, tuple]] = []
         for payment in payments:
             result["checked"] += 1
             expires_at = payment.expires_at
@@ -462,8 +476,8 @@ async def _scan_pending_payments(
                     window_end = window_end.replace(tzinfo=UTC)
                 until_ms = int(window_end.timestamp() * 1000)
             if payment.network == "trc20":
-                tx = await check_trc20_payment(
-                    fetch_json,
+                args: tuple = (
+                    "trc20",
                     payment.wallet_address,
                     payment.expected_amount,
                     since_ms,
@@ -476,17 +490,49 @@ async def _scan_pending_payments(
                     for u in (settings.bsc_rpc_urls or "").split(",")
                     if u.strip()
                 )
-                tx = await check_bep20_payment(
-                    fetch_json,
+                args = (
+                    "bep20",
                     payment.wallet_address,
                     payment.expected_amount,
+                    since_ms,
                     settings.bsc_api_key,
+                    until_ms,
+                    rpc_urls,
+                )
+            else:
+                continue
+            items.append((payment, user, plan, args))
+
+        scan_semaphore = asyncio.Semaphore(min(_SCAN_CONCURRENCY, len(items) or 1))
+
+        async def scan_one(
+            args: tuple,
+        ) -> str | None:
+            async with scan_semaphore:
+                if args[0] == "trc20":
+                    _, wallet, expected, since_ms, api_key, until_ms = args
+                    return await check_trc20_payment(
+                        fetch_json,
+                        wallet,
+                        expected,
+                        since_ms,
+                        api_key,
+                        until_ms,
+                    )
+                _, wallet, expected, since_ms, api_key, until_ms, rpc_urls = args
+                return await check_bep20_payment(
+                    fetch_json,
+                    wallet,
+                    expected,
+                    api_key,
                     since_ms,
                     until_ms,
                     rpc_urls=rpc_urls,
                 )
-            else:
-                continue
+
+        txs = await asyncio.gather(*(scan_one(args) for _, _, _, args in items))
+
+        for (payment, user, plan, _args), tx in zip(items, txs):
             if not tx:
                 continue
             if is_transaction_used(session, tx):

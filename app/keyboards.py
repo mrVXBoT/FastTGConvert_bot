@@ -694,38 +694,45 @@ def channel_result_menu(
 
 
 def language_menu(selected_language: str | None = None) -> InlineKeyboardMarkup:
-    rows = []
-    for code, locale in LANGUAGES.items():
-        emoji_key = f"FLAG_{code.upper()}"
-        _, custom_id = EmojiRegistry.resolve_icon(emoji_key)
-        if custom_id:
-            parts = locale.language_name.split(maxsplit=1)
-            text = parts[1] if len(parts) > 1 else locale.language_name
-        else:
-            text = locale.language_name
-
-        btn = Button.create(
-            text=text,
-            callback_data=f"language:{code}",
-            style=ButtonStyle.PRIMARY,
-            emoji_key=emoji_key,
-        )
-        rows.append([btn])
-
-    start_cb = (
-        f"language:start:{selected_language}"
-        if selected_language in LANGUAGES
-        else "language:start"
-    )
-    rows.append(
-        [
-            Button.create(
-                text="🚀 /start",
-                callback_data=start_cb,
-                style=ButtonStyle.SUCCESS,
+    """Professional 2-column language grid. The currently active language is
+    highlighted (✅ + SUCCESS style). Tapping a language applies it instantly;
+    a Back button is offered when a language is already set."""
+    codes = list(LANGUAGES.keys())
+    rows: list[list[InlineKeyboardButton]] = []
+    for i in range(0, len(codes), 2):
+        row: list[InlineKeyboardButton] = []
+        for code in codes[i : i + 2]:
+            locale = LANGUAGES[code]
+            emoji_key = f"FLAG_{code.upper()}"
+            _, custom_id = EmojiRegistry.resolve_icon(emoji_key)
+            if custom_id:
+                parts = locale.language_name.split(maxsplit=1)
+                label = parts[1] if len(parts) > 1 else locale.language_name
+            else:
+                label = locale.language_name
+            is_selected = code == selected_language
+            if is_selected:
+                label = f"{label} ✅"
+            row.append(
+                Button.create(
+                    text=label,
+                    callback_data=f"language:{code}",
+                    style=ButtonStyle.SUCCESS if is_selected else ButtonStyle.PRIMARY,
+                    emoji_key=emoji_key,
+                )
             )
-        ]
-    )
+        rows.append(row)
+    if selected_language in LANGUAGES:
+        rows.append(
+            [
+                Button.create(
+                    text=BACK_LABELS.get(selected_language, "Back"),
+                    callback_data="menu:back",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="BACK",
+                )
+            ]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1075,7 +1082,7 @@ def fresh_session_confirm_menu(language: str = "en") -> InlineKeyboardMarkup:
 
 
 def fresh_session_result_menu(
-    total: int, succeeded: int, failed: int, language: str = "en"
+    total: int, succeeded: int, kicked: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
     msgs = FRESH_SESSION_MESSAGES.get(language, FRESH_SESSION_MESSAGES["en"])
     back_label = BACK_LABELS.get(language, BACK_LABELS["en"])
@@ -1090,12 +1097,47 @@ def fresh_session_result_menu(
                 button(str(succeeded), "fresh_sess:noop"),
             ],
             [
+                button(msgs.get("btn_kicked", "Kicked"), "fresh_sess:noop", emoji_key="KILL"),
+                button(str(kicked), "fresh_sess:noop"),
+            ],
+            [
                 button(msgs["btn_failed"], "fresh_sess:noop", emoji_key="FAILED"),
                 button(str(failed), "fresh_sess:noop"),
             ],
             [
                 button(
                     back_label, "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK"
+                ),
+            ],
+        ]
+    )
+
+
+def fresh_session_new_password_menu(language: str = "en") -> InlineKeyboardMarkup:
+    """Menu shown during the new-password step: Skip / Remove Password / Cancel."""
+    msgs = FRESH_SESSION_MESSAGES.get(language, FRESH_SESSION_MESSAGES["en"])
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                _premium_icon_button(
+                    msgs.get("skip_new_password", "⏭ Skip"),
+                    "fresh_sess:skip_new_password",
+                    "SKIP",
+                    style=ButtonStyle.PRIMARY,
+                )
+            ],
+            [
+                _premium_icon_button(
+                    msgs.get("remove_password", "🗑 Remove 2FA"),
+                    "fresh_sess:remove_password",
+                    "DELETE",
+                    style=ButtonStyle.DANGER,
+                )
+            ],
+            [
+                _premium_icon_button(
+                    cancel_label, "action:cancel", "CANCEL", style=ButtonStyle.DANGER
                 ),
             ],
         ]
@@ -1391,6 +1433,13 @@ def profile_setup_account_menu(
                     "prof_setup:apply",
                     style=ButtonStyle.SUCCESS,
                     emoji_key="SUCCESS",
+                ),
+            ],
+            [
+                button(
+                    msgs["btn_auto"],
+                    "prof_setup:auto",
+                    style=ButtonStyle.SUCCESS,
                 ),
             ],
             [

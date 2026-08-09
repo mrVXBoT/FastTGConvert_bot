@@ -3,27 +3,36 @@ Contact checker for Telethon ``.session`` accounts.
 
 Classifies every account as one of:
 
-* ``ok``          – connected and successfully passed the live "add a test
-                         contact, then delete it" write probe
-* ``limited``     – the account is write-restricted: it can read / connect but
-                         its attempt to add a test contact was rejected
-                         (privacy / flood / take-out limitation)
+* ``ok``          – connected, authorized and can read its profile/contacts
+* ``limited``     – the account is restricted: Telegram explicitly rejects
+                         reading (privacy / flood / restriction) or @SpamBot
+                         reports a restriction
 * ``2fa``         – account is protected by a 2FA password (session unusable)
 * ``banned``      – account is banned / deactivated / auth key duplicated
 * ``invalid``     – corrupt session, expired / revoked auth key, invalid API id
 * ``inconclusive``– transient network / flood / timeout; structural check failed
                         → invalid, else reported honestly as inconclusive
 
-Improvements over the original implementation:
+The 6 internal statuses map to 4 user-facing buckets (matching the
+industry-standard 4-way report):
 
-* ``AuthKeyDuplicatedError`` / ``PhoneNumberBannedError`` are now classified
-  as ``banned`` instead of being silently marked OK.
+* Healthy    ← ``ok``
+* Restricted ← ``limited``
+* Invalid    ← ``invalid`` + ``banned`` + ``2fa``
+* Error      ← ``inconclusive``
+
+Notes:
+
+* Classification is read-first: an account is Healthy when it can connect
+  and read its own profile; write probes do NOT downgrade an account.
+* ``AuthKeyDuplicatedError`` / ``PhoneNumberBannedError`` are classified
+  as banned (→ Invalid for users).
 * A 2FA-protected account is detected (``account.getPassword`` probe) and
-  reported as ``2fa`` instead of OK.
-* Transient network errors / FloodWait are never converted to OK: the next
+  reported under the Invalid bucket.
+* Transient network errors / FloodWait are never treated as OK: the next
   credential is tried, small flood waits are honoured, and a session that
-  never succeeds is reported ``inconclusive`` (or ``invalid`` when the
-  offline structural check also fails).
+  never succeeds is reported inconclusive (→ Error), or ``invalid`` when
+  the offline structural check also fails.
 * Each session is checked under a per-session timeout, several sessions run
   concurrently, the job can be cancelled, and live progress (done / total)
   is reported through a callback object.
@@ -61,14 +70,24 @@ ContactStatus = Literal[
     "ok", "limited", "2fa", "banned", "invalid", "inconclusive"
 ]
 
-# Status -> (ZIP file-name stem, report Status column).
+# Status -> (ZIP file-name stem, report Status column).  Several internal
+# statuses collapse into the 4 user-facing buckets.
 _STATUS_ZIP_STEM: dict[ContactStatus, str] = {
-    "ok": "Ok",
-    "limited": "Limited",
-    "2fa": "TwoFA",
-    "banned": "Banned",
+    "ok": "Check_contacts_Healthy",
+    "limited": "Check_contacts_Restricted",
+    "2fa": "Check_contacts_Invalid",
+    "banned": "Check_contacts_Invalid",
+    "invalid": "Check_contacts_Invalid",
+    "inconclusive": "Check_contacts_Error",
+}
+
+_STATUS_BUCKET_LABEL: dict[ContactStatus, str] = {
+    "ok": "Healthy",
+    "limited": "Restricted",
+    "2fa": "Invalid",
+    "banned": "Invalid",
     "invalid": "Invalid",
-    "inconclusive": "Inconclusive",
+    "inconclusive": "Error",
 }
 
 # Fictional, reserved test number used by the live "add a contact" probe.
@@ -299,6 +318,7 @@ async def check_session_contacts_live(
     proxy: tuple | None = None,
     *,
     flood_wait_ceiling: int = 5,
+    credential_offset: int = 0,
 ) -> tuple[ContactStatus, ContactAccountInfo | None]:
     """
     Connect via Telethon, probe 2FA, fetch the contacts count and the
@@ -310,6 +330,13 @@ async def check_session_contacts_live(
     """
     if not credentials or not session_path.exists():
         return "inconclusive", None
+
+    # Round-robin the starting credential so concurrent sessions do not all
+    # pile onto the first api_id at the same moment.
+    if credential_offset:
+        offset = credential_offset % len(credentials)
+        if offset:
+            credentials = credentials[offset:] + credentials[:offset]
 
     try:
         # fmt: off
@@ -356,14 +383,17 @@ async def check_session_contacts_live(
 
         for api_id, api_hash in credentials:
             for _attempt in range(3):
-                client = None
                 try:
+                    from app.services.device_params import get_stable_device_params
+                    device_kwargs = get_stable_device_params(session_path)
+
                     client = TelegramClient(  # type: ignore[call-arg]
                         session_str,
                         api_id,
                         api_hash,
                         receive_updates=False,
                         proxy=proxy,
+                        **device_kwargs,
                     )
                     await client.connect()
                     if not await client.is_user_authorized():
@@ -384,6 +414,20 @@ async def check_session_contacts_live(
                     )
                     if probe_status != "ok":
                         return probe_status, None
+
+                    # Secondary probe: check @SpamBot for spam restrictions
+                    with suppress(Exception):
+                        from app.services.spam import _parse_spambot_reply, _spambot_status_reply
+                        spambot_reply = await _spambot_status_reply(
+                            client, timeout=5, FloodWaitError=flood_error or Exception
+                        )
+                        if spambot_reply:
+                            spam_st = _parse_spambot_reply(spambot_reply)
+                            if spam_st in ("spam", "frozen"):
+                                return "limited", None
+                            if spam_st == "banned":
+                                return "banned", None
+
                     return "ok", info
                 except password_errors:
                     return "2fa", None
@@ -714,7 +758,9 @@ async def process_contacts_check(
     try:
         if input_path.suffix.lower() == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_cntzip_")
-            extracted = extract_accounts_safe(input_path, Path(temp_dir.name))
+            extracted = await asyncio.to_thread(
+                extract_accounts_safe, input_path, Path(temp_dir.name)
+            )
         else:
             extracted = [
                 _ExtractedSession(
@@ -731,7 +777,7 @@ async def process_contacts_check(
         sem = asyncio.Semaphore(concurrency)
         cancelled = False
 
-        async def worker(ex: _ExtractedSession) -> ContactCheckEntry | None:
+        async def worker(index: int, ex: _ExtractedSession) -> ContactCheckEntry | None:
             nonlocal cancelled
             if cancelled:
                 return None
@@ -745,12 +791,15 @@ async def process_contacts_check(
                     proxy=proxy,
                     per_session_timeout=per_session_timeout,
                     flood_wait_ceiling=flood_wait_ceiling,
+                    credential_offset=index,
                 )
                 if progress is not None:
                     progress.done += 1
                 return ContactCheckEntry(name=ex.member_name, status=status, info=info)
 
-        results = await asyncio.gather(*(worker(ex) for ex in extracted))
+        results = await asyncio.gather(
+            *(worker(index, ex) for index, ex in enumerate(extracted))
+        )
         entries = [entry for entry in results if entry is not None]
         if cancelled:
             raise ContactsCheckCancelled()
@@ -804,6 +853,7 @@ async def _check_one_session(
     proxy: tuple | None,
     per_session_timeout: int,
     flood_wait_ceiling: int,
+    credential_offset: int = 0,
 ) -> tuple[ContactStatus, ContactAccountInfo | None]:
     """Check a single extracted session file (live with offline fallback)."""
     if credentials:
@@ -814,6 +864,7 @@ async def _check_one_session(
                     credentials,
                     proxy=proxy,
                     flood_wait_ceiling=flood_wait_ceiling,
+                    credential_offset=credential_offset,
                 ),
                 timeout=per_session_timeout,
             )

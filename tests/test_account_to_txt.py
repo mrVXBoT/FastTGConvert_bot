@@ -84,10 +84,18 @@ async def test_process_single_session_creates_reference_txt(tmp_path: Path) -> N
     )
     assert result.output_zip_path is not None
     with zipfile.ZipFile(result.output_zip_path) as archive:
-        assert archive.namelist() == ["573118508561.txt"]
+        assert archive.namelist() == ["phones.txt", "573118508561.txt"]
         assert archive.read("573118508561.txt").decode().strip() == render_account_line(
             profile
         )
+        assert archive.read("phones.txt").decode().strip() == "+573118508561"
+    assert result.phones_path is not None
+    assert result.phones_path.read_text(encoding="utf-8").strip() == "+573118508561"
+    assert result.status_path is not None
+    assert (
+        result.status_path.read_text(encoding="utf-8").strip()
+        == "+573118508561 | ✅ active"
+    )
 
 
 @pytest.mark.asyncio
@@ -128,10 +136,31 @@ async def test_process_zip_counts_active_invalid_and_failed(tmp_path: Path) -> N
     ]
     assert result.output_zip_path is not None
     with zipfile.ZipFile(result.output_zip_path) as archive:
-        assert sorted(archive.namelist()) == ["1111111.txt", "Invalid/2222222.txt"]
+        assert sorted(archive.namelist()) == [
+            "1111111.txt",
+            "Invalid/2222222.txt",
+            "phones.txt",
+        ]
         assert archive.read("Invalid/2222222.txt").decode().strip() == render_account_line(
             AccountProfile("2222222", "+2222222", "N/A", "N/A", 0, dc_id=2)
         )
+        assert archive.read("phones.txt").decode().strip().splitlines() == [
+            "+1111111",
+            "+2222222",
+            "+3333333",
+        ]
+    assert result.phones_path is not None
+    assert result.phones_path.read_text(encoding="utf-8").strip().splitlines() == [
+        "+1111111",
+        "+2222222",
+        "+3333333",
+    ]
+    assert result.status_path is not None
+    assert result.status_path.read_text(encoding="utf-8").strip().splitlines() == [
+        "+1111111 | ✅ active",
+        "+2222222 | ⚠️ unauthorized",
+        "+3333333 | ❌ no_credentials",
+    ]
 
 
 @pytest.mark.asyncio
@@ -198,6 +227,54 @@ async def test_txt_input_is_ignored(tmp_path: Path) -> None:
 
     assert result.total == 0
     assert result.output_zip_path is None
+
+
+@pytest.mark.asyncio
+async def test_probes_run_concurrently_but_bounded(tmp_path: Path) -> None:
+    """Per-session network probes must overlap (not run one-by-one) and never
+    exceed the module concurrency ceiling."""
+    sessions = []
+    for i in range(6):
+        path = tmp_path / f"sess{i}.session"
+        _make_session(path)
+        sessions.append(path)
+
+    archive_path = tmp_path / "accounts.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for path in sessions:
+            archive.write(path, arcname=path.name)
+
+    active = 0
+    max_active = 0
+    lock = asyncio.Lock()
+
+    async def slow_probe(*_args, **_kwargs):
+        nonlocal active, max_active
+        async with lock:
+            active += 1
+            max_active = max(max_active, active)
+        await asyncio.sleep(0.05)
+        async with lock:
+            active -= 1
+        return (
+            "active",
+            AccountProfile(f"sess{_args[0].stem}", "+1", "N/A", "N/A", 0),
+            "",
+        )
+
+    from app.services.account_to_txt import _PROBE_CONCURRENCY
+
+    with patch(
+        "app.services.account_to_txt.fetch_account_profile",
+        new=slow_probe,
+    ):
+        result = await process_account_to_txt(
+            archive_path, tmp_path / "outbox", [(1, "hash")]
+        )
+
+    assert result.active == 6
+    assert max_active >= 2, "probes ran strictly one-by-one (no overlap)"
+    assert max_active <= _PROBE_CONCURRENCY, "concurrency exceeded the ceiling"
 
 
 def test_account_txt_locales_and_keyboards() -> None:

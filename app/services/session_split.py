@@ -137,6 +137,8 @@ async def _live_probe(
         for api_id, api_hash in credentials:
             client = None
             try:
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_path)
                 client = TelegramClient(
                     session_stem,
                     api_id,
@@ -147,6 +149,7 @@ async def _live_probe(
                     retry_delay=0.25,
                     timeout=10,
                     flood_sleep_threshold=0,
+                    **device_kwargs,
                 )
                 await client.connect()
                 if not await client.is_user_authorized():
@@ -286,8 +289,8 @@ async def inspect_session_split(
     input_path: Path, *, original_name: str | None = None
 ) -> int:
     with tempfile.TemporaryDirectory(prefix="ftgc_split_inspect_") as temporary:
-        sessions = _collect_sessions(
-            input_path, Path(temporary), original_name=original_name
+        sessions = await asyncio.to_thread(
+            _collect_sessions, input_path, Path(temporary), original_name=original_name
         )
         return len(sessions)
 
@@ -310,8 +313,8 @@ async def process_session_split(
         raise ValueError("invalid_concurrency")
 
     with tempfile.TemporaryDirectory(prefix="ftgc_session_split_") as temporary:
-        sessions = _collect_sessions(
-            input_path, Path(temporary), original_name=original_name
+        sessions = await asyncio.to_thread(
+            _collect_sessions, input_path, Path(temporary), original_name=original_name
         )
         total = len(sessions)
 

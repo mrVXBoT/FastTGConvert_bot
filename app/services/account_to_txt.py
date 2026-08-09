@@ -31,6 +31,10 @@ AccountStatus = Literal["active", "invalid", "failed"]
 
 _SIDECAR_PASSWORD_NAMES = ("password.txt", "2fa.txt", "twofa.txt", "password")
 
+# Max concurrent network probes. Probes share the global api_credential pairs
+# (and thus one IP / api_id), so keep the ceiling low to avoid flood bans.
+_PROBE_CONCURRENCY = 8
+
 
 @dataclass(frozen=True)
 class AccountProfile:
@@ -47,9 +51,14 @@ class AccountProfile:
 
 @dataclass(frozen=True)
 class AccountTxtEntry:
-    name: str
+    profile: AccountProfile
     status: AccountStatus
+    authorized: bool
     reason: str = ""
+
+    @property
+    def report_icon(self) -> str:
+        return "✅" if self.authorized else "⚠️"
 
 
 @dataclass(frozen=True)
@@ -59,6 +68,8 @@ class AccountTxtResult:
     invalid_converted: int
     failed: int
     output_zip_path: Path | None = None
+    phones_path: Path | None = None
+    status_path: Path | None = None
     entries: tuple[AccountTxtEntry, ...] = ()
 
     @property
@@ -77,7 +88,10 @@ def _clean_value(value: object, fallback: str = "N/A") -> str:
 
 def _epoch_date(value: object) -> str:
     try:
-        ts = int(value or 0)
+        if isinstance(value, (int, float, str)):
+            ts = int(value)
+        else:
+            ts = 0
     except (TypeError, ValueError):
         return "N/A"
     if ts < 946684800:  # year 2000 sanity floor
@@ -118,6 +132,19 @@ def _fallback_profile(path: Path) -> AccountProfile | None:
     return AccountProfile(
         identifier=digits,
         phone=f"+{digits}",
+        username="N/A",
+        full_name="N/A",
+        user_id=0,
+    )
+
+
+def _placeholder_profile(path: Path) -> AccountProfile:
+    profile = _fallback_profile(path)
+    if profile is not None:
+        return profile
+    return AccountProfile(
+        identifier=path.stem,
+        phone="N/A",
         username="N/A",
         full_name="N/A",
         user_id=0,
@@ -249,8 +276,10 @@ async def fetch_account_profile(
         for api_id, api_hash in credentials:
             client = None
             try:
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_path)
                 client = TelegramClient(
-                    session_stem, api_id, api_hash, receive_updates=False
+                    session_stem, api_id, api_hash, receive_updates=False, **device_kwargs
                 )
                 await client.connect()
                 if not await client.is_user_authorized():
@@ -423,31 +452,45 @@ async def process_account_to_txt(
         failed = 0
         rows: list[tuple[str, str, bool]] = []
         entries: list[AccountTxtEntry] = []
+        phone_lines: list[str] = []
+        status_lines: list[str] = []
 
-        for index, (session_file, sidecars) in enumerate(session_files, start=1):
+        # Per-session probes hit the network (connect + up to 3-4 RPCs each).
+        # Probing sequentially makes a 30-session zip take ~2-4 minutes. The
+        # probes use distinct accounts but share the global api_credential
+        # pairs, so concurrency is bounded like clean_chat: a small semaphore
+        # plus batched asyncio.gather keeps order while cutting wall time.
+        fetch_semaphore = asyncio.Semaphore(
+            min(_PROBE_CONCURRENCY, len(session_files) or 1)
+        )
+
+        async def probe_session(index: int) -> tuple[int, AccountTxtEntry, tuple[str, str, bool] | None]:
             if cancel_event is not None and cancel_event.is_set():
                 raise JobCancelled()
-            if progress is not None:
-                progress.done = index - 1
-
+            session_file, sidecars = session_files[index]
             if not _is_structural_session(session_file):
-                failed += 1
-                entries.append(
+                return (
+                    index,
                     AccountTxtEntry(
-                        name=session_file.name, status="failed", reason="structural"
-                    )
+                        profile=_placeholder_profile(session_file),
+                        status="failed",
+                        authorized=False,
+                        reason="structural",
+                    ),
+                    None,
                 )
-                continue
-
-            status, profile, reason = await fetch_account_profile(
-                session_file, credentials
-            )
+            async with fetch_semaphore:
+                status, profile, reason = await fetch_account_profile(
+                    session_file, credentials
+                )
             if status == "active" and profile is not None:
-                active += 1
                 profile = replace(profile, dc_id=_session_dc_id(session_file))
-                entries.append(AccountTxtEntry(name=session_file.name, status="active"))
-            elif status == "invalid" and profile is not None:
-                invalid_converted += 1
+                entry = AccountTxtEntry(
+                    profile=profile, status="active", authorized=True
+                )
+                row = (f"{profile.identifier}.txt", render_account_line(profile), True)
+                return index, entry, row
+            if status == "invalid" and profile is not None:
                 sidecar_password = _sidecar_password(sidecars)
                 profile = replace(
                     profile,
@@ -460,30 +503,77 @@ async def process_account_to_txt(
                         else None
                     ),
                 )
-                entries.append(
-                    AccountTxtEntry(
-                        name=session_file.name, status="invalid", reason=reason
-                    )
+                entry = AccountTxtEntry(
+                    profile=profile,
+                    status="invalid",
+                    authorized=False,
+                    reason=reason,
                 )
+                row = (f"{profile.identifier}.txt", render_account_line(profile), False)
+                return index, entry, row
+            return (
+                index,
+                AccountTxtEntry(
+                    profile=_placeholder_profile(session_file),
+                    status="failed",
+                    authorized=False,
+                    reason=reason,
+                ),
+                None,
+            )
+
+        async def tracked_probe(
+            index: int,
+        ) -> tuple[int, AccountTxtEntry, tuple[str, str, bool] | None]:
+            outcome = await probe_session(index)
+            if progress is not None:
+                progress.done += 1
+            return outcome
+
+        outcomes = await asyncio.gather(
+            *(tracked_probe(index) for index in range(len(session_files)))
+        )
+        for index, entry, row in sorted(outcomes, key=lambda item: item[0]):
+            if entry.status == "active":
+                active += 1
+            elif entry.status == "invalid":
+                invalid_converted += 1
             else:
                 failed += 1
-                entries.append(
-                    AccountTxtEntry(name=session_file.name, status="failed", reason=reason)
-                )
-                continue
-
-            filename = f"{profile.identifier}.txt"
-            rows.append((filename, render_account_line(profile), status == "active"))
-            if progress is not None:
-                progress.done = index
+            entries.append(entry)
+            if row is not None:
+                rows.append(row)
+            phone = entry.profile.phone
+            if phone and phone != "N/A":
+                phone_lines.append(phone)
+                if entry.status == "active":
+                    status_lines.append(f"{phone} | ✅ active")
+                elif entry.status == "invalid":
+                    status_lines.append(f"{phone} | ⚠️ {entry.reason or 'invalid'}")
+                else:
+                    status_lines.append(f"{phone} | ❌ {entry.reason or 'failed'}")
 
         output_zip: Path | None = None
-        if rows:
+        phones_path: Path | None = None
+        status_path: Path | None = None
+        if rows or phone_lines:
             output_dir.mkdir(parents=True, exist_ok=True)
+            if phone_lines:
+                phones_path = output_dir / f"phones_{uuid4().hex[:10]}.txt"
+                status_path = output_dir / f"phones_status_{uuid4().hex[:10]}.txt"
+                phones_path.write_text("\n".join(phone_lines) + "\n", encoding="utf-8")
+                status_path.write_text(
+                    "\n".join(status_lines) + "\n", encoding="utf-8"
+                )
             output_zip = output_dir / f"account_txt_{uuid4().hex[:10]}.zip"
             try:
                 with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as archive:
                     used: set[str] = set()
+                    if phone_lines:
+                        archive.writestr(
+                            "phones.txt", "\n".join(phone_lines) + "\n"
+                        )
+                        used.add("phones.txt")
                     for index, (filename, line, is_active) in enumerate(rows, start=1):
                         arcname = filename
                         if arcname in used:
@@ -503,6 +593,8 @@ async def process_account_to_txt(
             invalid_converted=invalid_converted,
             failed=failed,
             output_zip_path=output_zip,
+            phones_path=phones_path,
+            status_path=status_path,
             entries=tuple(entries),
         )
     finally:

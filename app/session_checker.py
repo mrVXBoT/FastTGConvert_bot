@@ -245,6 +245,7 @@ async def _live_status(
     credentials: list[tuple[int, str]],
     timeout: int,
     proxy: tuple | None = None,
+    credential_offset: int = 0,
 ) -> _FinalStatus:
     """
     Run the live @SpamBot check for one ``.session`` file.
@@ -252,7 +253,13 @@ async def _live_status(
     """
     from app.services.spam import check_spam_via_spambot
 
-    return await check_spam_via_spambot(session_path, credentials, timeout, proxy=proxy)
+    return await check_spam_via_spambot(
+        session_path,
+        credentials,
+        timeout,
+        proxy=proxy,
+        credential_offset=credential_offset,
+    )
 
 
 async def _resolve_final_status(
@@ -262,6 +269,7 @@ async def _resolve_final_status(
     credentials: list[tuple[int, str]],
     timeout: int,
     proxy: tuple | None = None,
+    credential_offset: int = 0,
 ) -> _FinalStatus:
     """
     Combine the offline result with the (optional) live spam check.
@@ -285,7 +293,10 @@ async def _resolve_final_status(
 
     # Run live check against Telegram servers.
     try:
-        return await _live_status(session_path, credentials, timeout, proxy=proxy)
+        return await _live_status(
+            session_path, credentials, timeout, proxy=proxy,
+            credential_offset=credential_offset,
+        )
     except Exception:
         LOGGER.exception("Live spam check failed")
         return "inconclusive"
@@ -353,7 +364,7 @@ async def _check_zip(
             if progress is not None:
                 progress.total = len(session_members)
 
-            sem = asyncio.Semaphore(50 if credentials is None else 30)
+            sem = asyncio.Semaphore(40 if credentials else 50)
 
             with tempfile.TemporaryDirectory(prefix="ftgc_zip_") as tmp:
                 tmp_dir = Path(tmp)
@@ -361,7 +372,9 @@ async def _check_zip(
                 async def _check_one_member(idx: int, info: zipfile.ZipInfo) -> SessionCheckEntry:
                     dest = tmp_dir / f"sess_{idx}_{Path(info.filename).name}"
                     try:
-                        _extract_member_chunked(archive, info.filename, dest)
+                        await asyncio.to_thread(
+                            _extract_member_chunked, archive, info.filename, dest
+                        )
                         offline = _classify_session_file(dest)
                         async with sem:
                             final = await _resolve_final_status(
@@ -370,6 +383,7 @@ async def _check_zip(
                                 credentials=credentials,
                                 timeout=timeout,
                                 proxy=proxy,
+                                credential_offset=idx,
                             )
                         return SessionCheckEntry(info.filename, final)
                     except Exception:  # noqa: BLE001

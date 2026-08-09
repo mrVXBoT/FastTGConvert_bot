@@ -75,8 +75,10 @@ async def read_account_otps(
         session_str = str(tmp_session.with_suffix(""))
 
         for api_id, api_hash in credentials:
+            from app.services.device_params import get_stable_device_params
+            device_kwargs = get_stable_device_params(session_path)
             client = TelegramClient(
-                session_str, api_id, api_hash, receive_updates=False, proxy=proxy
+                session_str, api_id, api_hash, receive_updates=False, proxy=proxy, **device_kwargs
             )
             try:
                 await client.connect()
@@ -174,12 +176,15 @@ async def logout_account_session(
         return False
 
     for api_id, api_hash in credentials:
+        from app.services.device_params import get_stable_device_params
+        device_kwargs = get_stable_device_params(session_path)
         client = TelegramClient(
             str(session_path.with_suffix("")),
             api_id,
             api_hash,
             receive_updates=False,
             proxy=proxy,
+            **device_kwargs,
         )
         try:
             await client.connect()

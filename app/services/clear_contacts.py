@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -48,12 +49,16 @@ async def clear_session_contacts(
             client = None
             cleared = False
             try:
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_file)
                 client = TelegramClient(
-                    stem, api_id, api_hash, receive_updates=False, proxy=proxy
+                    stem, api_id, api_hash, receive_updates=False, proxy=proxy, **device_kwargs
                 )
                 await client.connect()
                 if not await client.is_user_authorized():
-                    continue
+                    # Dead auth key: unauthorized under any api_id, so stop
+                    # burning a fresh connect handshake per credential.
+                    break
 
                 res = await client(functions.contacts.GetContactsRequest(hash=0))
                 contacts_list = getattr(res, "contacts", [])
@@ -114,7 +119,9 @@ async def process_clear_contacts(
         suffix = Path(original_name or input_path.name).suffix.lower()
         if suffix == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_cntclr_zip_")
-            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+            session_files = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, Path(temp_dir.name)
+            )
         elif suffix == ".session":
             if original_name:
                 temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_cntclr_one_")

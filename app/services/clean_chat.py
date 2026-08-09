@@ -86,6 +86,8 @@ async def clean_session_chats(
                 run_sess = Path(tmp_dir) / session_file.name
                 shutil.copy2(session_file, run_sess)
                 stem = str(run_sess.with_suffix(""))
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_file)
                 client = TelegramClient(
                     stem,
                     api_id,
@@ -93,11 +95,23 @@ async def clean_session_chats(
                     receive_updates=False,
                     proxy=proxy,
                     flood_sleep_threshold=0,
+                    **device_kwargs,
                 )
                 try:
                     await client.connect()
                     if not await client.is_user_authorized():  # type: ignore[attr-defined]
-                        continue
+                        # An unauthorized session stays unauthorized under any
+                        # api_id (the auth key itself is dead/banned). Rotating
+                        # through every credential just multiplies a multi-
+                        # second connect+probe by the number of api pairs —
+                        # with 10 credentials this turned dead sessions into
+                        # ~35s each and whole batches into ~30 min runs.
+                        LOGGER.info(
+                            "Session %s unauthorized; skipping remaining "
+                            "credentials",
+                            session_file.name,
+                        )
+                        return False
 
                     # ── Phase 1: scan dialogs and collect the targets ──────
                     targets: list[Any] = []
@@ -190,6 +204,26 @@ async def clean_session_chats(
                     shutil.copy2(run_sess, session_file)
                     return True
         except Exception as exc:  # noqa: BLE001
+            # Some failures mean the SESSION itself is dead, not the
+            # credential: the auth key was revoked or the account was
+            # deactivated/banned. Retrying those with another api_id is pure
+            # waste — each attempt costs a fresh connect handshake. Only
+            # transient failures (connect errors, timeouts, other RPC errors)
+            # deserve the next credential pair.
+            from telethon.errors import (  # type: ignore[import-untyped]
+                AuthKeyUnregisteredError,
+                UserDeactivatedBanError,
+                UserDeactivatedError,
+            )
+
+            if isinstance(exc, (AuthKeyUnregisteredError, UserDeactivatedError, UserDeactivatedBanError)):
+                LOGGER.info(
+                    "Session %s is deactivated/banned (%s); skipping remaining "
+                    "credentials",
+                    session_file.name,
+                    type(exc).__name__,
+                )
+                return False
             LOGGER.warning(
                 "Clean chat attempt failed with api_id=%d: %s", api_id, exc
             )
@@ -198,21 +232,35 @@ async def clean_session_chats(
 
 
 class _ProgressAggregator:
-    """Sums per-session deletion progress into one shared counter."""
+    """Sums per-session deletion progress into one shared counter and reports
+    both deletions and completed sessions so long dead-session phases keep
+    the user-facing status message moving."""
 
     def __init__(
         self,
-        on_progress: Callable[[int], Awaitable[None]],
+        on_progress: Callable[[int, int], Awaitable[None]],
         lock: asyncio.Lock,
     ) -> None:
         self._on_progress = on_progress
         self._lock = lock
         self.done = 0
+        self.sessions_done = 0
 
-    async def __call__(self, count: int) -> None:
+    async def add_deletions(self, count: int) -> None:
         async with self._lock:
             self.done += count
-        await self._on_progress(self.done)
+        await self._emit()
+
+    async def add_session(self) -> None:
+        async with self._lock:
+            self.sessions_done += 1
+        await self._emit()
+
+    async def _emit(self) -> None:
+        await self._on_progress(self.done, self.sessions_done)
+
+    async def __call__(self, count: int) -> None:
+        await self.add_deletions(count)
 
 
 async def process_clean_chat(
@@ -226,8 +274,14 @@ async def process_clean_chat(
     concurrency: int = 5,
     flood_ceiling: int = 30,
     delete_concurrency: int = 5,
-    on_progress: Callable[[int], Awaitable[None]] | None = None,
+    on_progress: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> CleanChatResult:
+    """Clean chats in all uploaded sessions, returning a result summary.
+
+    ``on_progress(deleted, sessions_done)`` is awaited after every deletion
+    batch and after every finished session (deleted chats so far, sessions
+    completed so far).
+    """
     selected_categories = normalize_clean_chat_selection(mode)
     if concurrency < 1:
         raise ValueError("invalid_concurrency")
@@ -240,7 +294,9 @@ async def process_clean_chat(
         suffix = Path(original_name or input_path.name).suffix.lower()
         if suffix == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_clnchat_zip_")
-            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+            session_files = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, Path(temp_dir.name)
+            )
         elif suffix == ".session":
             if original_name:
                 temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_clnchat_one_")
@@ -262,16 +318,22 @@ async def process_clean_chat(
         async def work(sess_file: Path) -> bool:
             async with semaphore:
                 if not _is_valid_sqlite_session(sess_file):
+                    if progress_agg is not None:
+                        await progress_agg.add_session()
                     return False
-                return await clean_session_chats(
-                    sess_file,
-                    credentials,
-                    mode=selected_categories,
-                    proxy=proxy,
-                    flood_ceiling=flood_ceiling,
-                    delete_concurrency=delete_concurrency,
-                    on_progress=progress_agg,
-                )
+                try:
+                    return await clean_session_chats(
+                        sess_file,
+                        credentials,
+                        mode=selected_categories,
+                        proxy=proxy,
+                        flood_ceiling=flood_ceiling,
+                        delete_concurrency=delete_concurrency,
+                        on_progress=progress_agg,
+                    )
+                finally:
+                    if progress_agg is not None:
+                        await progress_agg.add_session()
 
         results = await asyncio.gather(*(work(sess) for sess in session_files))
         for sess_file, cleaned in zip(session_files, results):

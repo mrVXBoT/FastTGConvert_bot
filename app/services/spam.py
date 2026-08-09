@@ -357,6 +357,7 @@ async def check_spam_via_spambot(
     credentials: list[tuple[int, str]],
     timeout: int = 15,
     proxy: tuple | None = None,
+    credential_offset: int = 0,
 ) -> SpamStatus:
     """
     Connect with *session_path* and query @SpamBot for the account's spam status.
@@ -364,6 +365,13 @@ async def check_spam_via_spambot(
     if not credentials:
         LOGGER.warning("No API credentials configured; cannot run live spam check")
         return "inconclusive"
+
+    # Round-robin the starting credential so concurrent checks do not all pile
+    # onto the first api_id at the same moment.
+    if credential_offset:
+        offset = credential_offset % len(credentials)
+        if offset:
+            credentials = credentials[offset:] + credentials[:offset]
 
     try:
         from telethon import TelegramClient  # type: ignore[import-untyped]
@@ -437,8 +445,10 @@ async def _try_one_credential(
     """
     Attempt the spam check with one ``(api_id, api_hash)`` pair.
     """
+    from app.services.device_params import get_stable_device_params
+    device_kwargs = get_stable_device_params(Path(f"{session_str}.session"))
     client = TelegramClient(
-        session_str, api_id, api_hash, receive_updates=False, proxy=proxy
+        session_str, api_id, api_hash, receive_updates=False, proxy=proxy, **device_kwargs
     )
     network_attempts = 0
 
@@ -642,7 +652,7 @@ async def _wait_for_spambot_reply(
                     return msg_text
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("Error fetching SpamBot messages: %s", exc)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.3)
     return None
 
 

@@ -102,6 +102,7 @@ class KillSessions(StatesGroup):
 class FreshSession(StatesGroup):
     waiting_for_file = State()
     waiting_for_2fa = State()
+    waiting_for_new_password = State()
     confirming = State()
 
 

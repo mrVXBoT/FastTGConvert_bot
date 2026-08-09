@@ -146,8 +146,7 @@ async def get_account_privacy_rules(
     client: TelegramClient,
 ) -> dict[str, str]:
     """Retrieve current privacy settings from Telegram server for all supported keys."""
-    current_rules: dict[str, str] = {}
-    for key_name, key_cls in RULE_KEY_CLASSES.items():
+    async def fetch_one(key_name: str, key_cls: type) -> tuple[str, str] | None:
         try:
             res = await client(GetPrivacyRequest(key=key_cls()))
             if hasattr(res, "rules") and res.rules:
@@ -162,10 +161,16 @@ async def get_account_privacy_rules(
                     elif isinstance(r, PrivacyValueDisallowAll):
                         val = "nobody"
                         break
-                current_rules[key_name] = val
+                return key_name, val
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("GetPrivacyRequest failed for %s: %s", key_name, exc)
-    return current_rules
+        return None
+
+    # Read-only GetPrivacy calls are safe to run in parallel on one client.
+    fetched = await asyncio.gather(
+        *(fetch_one(key_name, key_cls) for key_name, key_cls in RULE_KEY_CLASSES.items())
+    )
+    return {key: val for item in fetched if item is not None for key, val in [item]}
 
 
 async def apply_session_privacy(
@@ -265,14 +270,15 @@ async def process_single_session_privacy(
 ) -> SessionPrivacyDetail:
     """Process privacy settings update for a single .session file."""
     session_name = session_file.name
+    from app.services.device_params import get_stable_device_params
+    device_kwargs = get_stable_device_params(session_file)
+
     client = TelegramClient(
         str(session_file),
         api_id,
         api_hash,
-        device_model="FastTGConvert Bot",
-        system_version="1.0.0",
-        app_version="1.0.0",
         proxy=proxy,
+        **device_kwargs,
     )
 
     try:
@@ -362,7 +368,9 @@ async def process_privacy_settings(
 
     if input_path.suffix.lower() == ".zip":
         temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_privacy_"))
-        session_files = extract_zip_sessions_safe(input_path, temp_dir)
+        session_files = await asyncio.to_thread(
+            extract_zip_sessions_safe, input_path, temp_dir
+        )
     elif input_path.suffix.lower() == ".session":
         session_files = [input_path]
 
@@ -379,11 +387,28 @@ async def process_privacy_settings(
     failed = 0
 
     try:
-        for sf in session_files:
-            detail = await process_single_session_privacy(
-                sf, password, effective_rules, api_id, api_hash, proxy=proxy
+        # Each session is a connect + (auth) + N privacy RPCs. Sequential
+        # processing made multi-session batches slow; a bounded semaphore
+        # parallelizes while keeping the shared api_id / IP flood-safe.
+        privacy_semaphore = asyncio.Semaphore(min(8, len(session_files) or 1))
+
+        async def process_one(index: int) -> SessionPrivacyDetail:
+            async with privacy_semaphore:
+                return await process_single_session_privacy(
+                    session_files[index],
+                    password,
+                    effective_rules,
+                    api_id,
+                    api_hash,
+                    proxy=proxy,
+                )
+
+        details = list(
+            await asyncio.gather(
+                *(process_one(index) for index in range(len(session_files)))
             )
-            details.append(detail)
+        )
+        for detail in details:
             if detail.status == "ok":
                 succeeded += 1
             else:

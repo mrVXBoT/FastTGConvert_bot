@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import shutil
@@ -282,44 +283,51 @@ async def process_file_merge(
             successful: list[tuple[Path, str, str, Path]] = []
             used_clean_ids: set[str] = set()
 
-            for idx, sess_file in enumerate(session_files, start=1):
+            # Each session needs a live probe (network) before conversion.
+            # Sequential probing made large merges take minutes; a bounded
+            # semaphore + indexed gather keeps order while cutting wall time.
+            # The probe is done ONCE here; convert_session_to_tdata is called
+            # without credentials so it does not re-probe the same session.
+            merge_semaphore = asyncio.Semaphore(min(8, total or 1))
+
+            async def merge_one(
+                idx: int,
+            ) -> tuple[
+                int, FileMergeAccountEntry, str | None, tuple[Path, str, str, Path] | None
+            ]:
+                sess_file = session_files[idx - 1]
                 identifier, uid, phone = extract_account_identifier(sess_file)
-                connection = _session_connection(sess_file)
-                status, profile, _reason = await fetch_account_profile(
-                    sess_file, credentials or []
-                )
-                if connection is None or profile is None or status == "failed":
-                    entries.append(FileMergeAccountEntry(identifier, uid, phone, False))
-                    continue
+                async with merge_semaphore:
+                    connection = _session_connection(sess_file)
+                    status, profile, _reason = await fetch_account_profile(
+                        sess_file, credentials or []
+                    )
+                    if connection is None or profile is None or status == "failed":
+                        return idx, FileMergeAccountEntry(identifier, uid, phone, False), None, None
 
-                display_identifier = (
-                    profile.phone if profile.phone != "N/A" else profile.identifier
-                )
-                clean_id = _safe_account_name(
-                    profile.identifier.removeprefix("+"), f"account_{idx}"
-                )
-                if clean_id in used_clean_ids:
-                    clean_id = f"{clean_id}_{idx}"
-                used_clean_ids.add(clean_id)
+                    display_identifier = (
+                        profile.phone if profile.phone != "N/A" else profile.identifier
+                    )
+                    clean_id = _safe_account_name(
+                        profile.identifier.removeprefix("+"), f"account_{idx}"
+                    )
 
-                tdata_temp_dir = tmp_path / f"tdata_out_{idx}"
-                tdata_created = await convert_session_to_tdata(
-                    sess_file, tdata_temp_dir, credentials=credentials
-                )
-                if not tdata_created or not (tdata_temp_dir / "key_datas").is_file():
-                    entries.append(FileMergeAccountEntry(identifier, uid, phone, False))
-                    continue
+                    tdata_temp_dir = tmp_path / f"tdata_out_{idx}"
+                    tdata_created = await convert_session_to_tdata(
+                        sess_file, tdata_temp_dir
+                    )
+                    if not tdata_created or not (tdata_temp_dir / "key_datas").is_file():
+                        return idx, FileMergeAccountEntry(identifier, uid, phone, False), clean_id, None
 
-                dc_id, server_address = connection
-                json_content = render_session_json(
-                    profile,
-                    dc_id=dc_id,
-                    server_address=server_address,
-                    authorized=status == "active",
-                )
-                successful.append((sess_file, clean_id, json_content, tdata_temp_dir))
-                entries.append(
-                    FileMergeAccountEntry(
+                    dc_id, server_address = connection
+                    json_content = render_session_json(
+                        profile,
+                        dc_id=dc_id,
+                        server_address=server_address,
+                        authorized=status == "active",
+                    )
+                    conv = (sess_file, clean_id, json_content, tdata_temp_dir)
+                    entry = FileMergeAccountEntry(
                         display_identifier,
                         profile.user_id,
                         profile.phone.removeprefix("+")
@@ -327,7 +335,22 @@ async def process_file_merge(
                         else None,
                         True,
                     )
-                )
+                    return idx, entry, clean_id, conv
+
+            merge_results = await asyncio.gather(
+                *(merge_one(idx) for idx in range(1, total + 1))
+            )
+            for idx, entry, clean_id, conv in sorted(
+                merge_results, key=lambda item: item[0]
+            ):
+                if clean_id is not None and clean_id in used_clean_ids:
+                    clean_id = f"{clean_id}_{idx}"
+                if clean_id is not None:
+                    used_clean_ids.add(clean_id)
+                entries.append(entry)
+                if conv is not None and clean_id is not None:
+                    sess_file, _, json_content, tdata_dir = conv
+                    successful.append((sess_file, clean_id, json_content, tdata_dir))
 
             success_count = len(successful)
             failed_count = total - success_count

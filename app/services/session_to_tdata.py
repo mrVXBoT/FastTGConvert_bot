@@ -186,8 +186,10 @@ async def _live_session_probe(
         for api_id, api_hash in credentials:
             client = None
             try:
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_path)
                 client = TelegramClient(
-                    session_stem, api_id, api_hash, receive_updates=False
+                    session_stem, api_id, api_hash, receive_updates=False, **device_kwargs
                 )
                 await _probe_connect(client, timeout, ApiIdInvalidError)
                 me = await _probe_get_me(client, timeout, invalid_errors, FloodWaitError)
@@ -579,7 +581,7 @@ async def process_session_to_tdata_conversion(
             work_path = Path(work_dir)
             converted_dirs: list[tuple[str, Path]] = []
 
-            sem = asyncio.Semaphore(30)
+            sem = asyncio.Semaphore(8)
 
             async def _convert_one(idx: int, sess_file: Path) -> tuple[TdataConversionEntry, tuple[str, Path] | None]:
                 async with sem:
@@ -603,8 +605,15 @@ async def process_session_to_tdata_conversion(
                         probe_credentials = (
                             credentials if isinstance(credentials, list) else None
                         )
-                        live_user_id: int | None = None
                         if probe_credentials:
+                            # Stagger the starting credential pair per session
+                            # (round-robin) so parallel probes do not all pile
+                            # onto the first api_id at the same moment.
+                            offset = (idx - 1) % len(probe_credentials)
+                            if offset:
+                                probe_credentials = (
+                                    probe_credentials[offset:] + probe_credentials[:offset]
+                                )
                             probe = await _live_session_probe(
                                 sess_file, probe_credentials
                             )
@@ -618,6 +627,8 @@ async def process_session_to_tdata_conversion(
                                     None,
                                 )
                             live_user_id = probe.user_id
+                        else:
+                            live_user_id = None
 
                         effective_user_id: int | None = live_user_id or user_id
                         if effective_user_id is None:

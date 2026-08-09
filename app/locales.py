@@ -175,15 +175,43 @@ ADMIN_LOCALES: dict[str, dict[str, str]] = {
 def get_admin_locale(lang: str = "en") -> dict[str, str]:
     return ADMIN_LOCALES.get(lang, ADMIN_LOCALES["en"])
 
-LANGUAGE_PROMPT = "🌐 <b>Choose Language</b>\n\nPick your preferred language below:"
+LANGUAGE_PROMPT = (
+    "🌐 <b>Select Language</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "👇 Choose your preferred language — it applies instantly:"
+)
 
 LANGUAGE_PROMPTS = {
-    "bn": "🌐 <b>ভাষা নির্বাচন করুন</b>\n\nনিচে আপনার পছন্দের ভাষা বেছে নিন:",
-    "en": "🌐 <b>Choose Language</b>\n\nPick your preferred language below:",
-    "hi": "🌐 <b>भाषा चुनें</b>\n\nनीचे अपनी पसंदीदा भाषा चुनें:",
-    "ur": "🌐 <b>زبان منتخب کریں</b>\n\nنیچے اپنی پسندیدہ زبان منتخب کریں:",
-    "ar": "🌐 <b>اختر اللغة</b>\n\nاختر لغتك المفضلة أدناه:",
-    "zh": "🌐 <b>选择语言</b>\n\n请在下方选择您的首选语言：",
+    "bn": (
+        "🌐 <b>ভাষা নির্বাচন করুন</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 আপনার পছন্দের ভাষা বেছে নিন — সাথে সাথেই প্রযোজ্য হবে:"
+    ),
+    "en": (
+        "🌐 <b>Select Language</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 Choose your preferred language — it applies instantly:"
+    ),
+    "hi": (
+        "🌐 <b>भाषा चुनें</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 अपनी पसंदीदा भाषा चुनें — यह तुरंत लागू होगी:"
+    ),
+    "ur": (
+        "🌐 <b>زبان منتخب کریں</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 اپنی پسندیدہ زبان منتخب کریں — یہ فوری طور پر لاگو ہوگی:"
+    ),
+    "ar": (
+        "🌐 <b>اختر اللغة</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 اختر لغتك المفضلة — سيتم تطبيقها فوراً:"
+    ),
+    "zh": (
+        "🌐 <b>选择语言</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 请选择您的首选语言 — 将立即生效："
+    ),
 }
 
 REFERRAL_MESSAGES: dict[str, str] = {
@@ -809,6 +837,8 @@ ACCOUNT_AGE_MESSAGES = {
         "fetching": "⏳ Estimating account age & fetching account details...",
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
+        "cancelled": "❌ Account age check cancelled.",
+        "report_caption": "📄 Account registration time report",
         "report_title": "Account Information & Age Report",
         "btn_total": "Total",
         "btn_checked": "Checked",
@@ -830,6 +860,8 @@ ACCOUNT_AGE_MESSAGES = {
         "fetching": "⏳ অ্যাকাউন্টের তথ্য এবং নিবন্ধনের তারিখ সংগ্রহ করা হচ্ছে...",
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
+        "cancelled": "❌ অ্যাকাউন্টের বয়স যাচাই বাতিল করা হয়েছে।",
+        "report_caption": "📄 অ্যাকাউন্ট নিবন্ধনের সময়ের রিপোর্ট",
         "report_title": "অ্যাকাউন্টের তথ্য এবং বয়সের রিপোর্ট",
         "btn_total": "মোট",
         "btn_checked": "পরীক্ষিত",
@@ -851,6 +883,8 @@ ACCOUNT_AGE_MESSAGES = {
         "fetching": "⏳ खाते की जानकारी और पंजीकरण तिथि प्राप्त की जा रही है...",
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
+        "cancelled": "❌ खाता आयु जांच रद्द कर दी गई।",
+        "report_caption": "📄 खाता पंजीकरण समय रिपोर्ट",
         "report_title": "खाता जानकारी और आयु रिपोर्ट",
         "btn_total": "कुल",
         "btn_checked": "जांचा गया",
@@ -872,6 +906,8 @@ ACCOUNT_AGE_MESSAGES = {
         "fetching": "⏳ اکاؤنٹ کی تفصیلات اور رجسٹریشن کی تاریخ کا تخمینہ لگایا جا رہا ہے...",
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
+        "cancelled": "❌ اکاؤنٹ کی عمر کی جانچ منسوخ کر دی گئی۔",
+        "report_caption": "📄 اکاؤنٹ رجسٹریشن وقت کی رپورٹ",
         "report_title": "اکاؤنٹ کی معلومات اور عمر کی رپورٹ",
         "btn_total": "کل",
         "btn_checked": "چیک شدہ",
@@ -893,6 +929,8 @@ ACCOUNT_AGE_MESSAGES = {
         "fetching": "⏳ جاري جلب تفاصيل الحساب وتقدير عمر الحساب...",
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
+        "cancelled": "❌ تم إلغاء فحص عمر الحساب.",
+        "report_caption": "📄 تقرير زمن تسجيل الحساب",
         "report_title": "تقرير معلومات وعمر الحساب",
         "btn_total": "الإجمالي",
         "btn_checked": "تم الفحص",
@@ -914,6 +952,8 @@ ACCOUNT_AGE_MESSAGES = {
         "fetching": "⏳ 正在获取账号详细信息和估算注册年份...",
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
+        "cancelled": "❌ 账号年龄检查已取消。",
+        "report_caption": "📄 账号注册时间报告",
         "report_title": "账号详细信息与注册年份报告",
         "btn_total": "总计",
         "btn_checked": "已检测",
@@ -1550,6 +1590,57 @@ FRESH_SESSION_2FA_PROMPT = {
     "zh": "🔐 部分会话可能需要双重验证 (2FA) 密码。\n\n请立即发送 2FA 密码，或点击跳过：",
 }
 
+FRESH_SESSION_NEW_PASSWORD_PROMPT = {
+    "en": (
+        "🔑 <b>Set New Password (Optional)</b>\n\n"
+        "After re-authorization, you can:\n"
+        "• Send a <b>new 2FA password</b> to replace the old one\n"
+        "• Tap <b>Remove Password</b> to disable 2FA entirely\n"
+        "• Tap <b>Skip</b> to keep current password unchanged\n\n"
+        "⚠️ After re-authorization, old sessions will be invalidated immediately"
+    ),
+    "bn": (
+        "🔑 <b>নতুন পাসওয়ার্ড সেট করুন (ঐচ্ছিক)</b>\n\n"
+        "পুনরায় অনুমোদনের পরে আপনি:\n"
+        "• পুরানো পাসওয়ার্ড পরিবর্তন করতে <b>নতুন 2FA পাসওয়ার্ড</b> পাঠান\n"
+        "• 2FA সম্পূর্ণ বন্ধ করতে <b>পাসওয়ার্ড সরান</b> ট্যাপ করুন\n"
+        "• বর্তমান পাসওয়ার্ড অপরিবর্তিত রাখতে <b>এড়িয়ে যান</b> ট্যাপ করুন\n\n"
+        "⚠️ পুনরায় অনুমোদনের পরে পুরানো সেশনগুলি অবিলম্বে বাতিল হবে"
+    ),
+    "hi": (
+        "🔑 <b>नया पासवर्ड सेट करें (वैकल्पिक)</b>\n\n"
+        "पुनः प्राधिकरण के बाद आप:\n"
+        "• पुराना पासवर्ड बदलने के लिए <b>नया 2FA पासवर्ड</b> भेजें\n"
+        "• 2FA पूरी तरह बंद करने के लिए <b>पासवर्ड हटाएं</b> टैप करें\n"
+        "• वर्तमान पासवर्ड अपरिवर्तित रखने के लिए <b>छोड़ें</b> टैप करें\n\n"
+        "⚠️ पुनः प्राधिकरण के बाद पुराने सेशन तुरंत अमान्य हो जाएंगे"
+    ),
+    "ur": (
+        "🔑 <b>نیا پاسورڈ سیٹ کریں (اختیاری)</b>\n\n"
+        "دوبارہ اجازت کے بعد آپ:\n"
+        "• پرانا پاسورڈ تبدیل کرنے کے لیے <b>نیا 2FA پاسورڈ</b> بھیجیں\n"
+        "• 2FA مکمل بند کرنے کے لیے <b>پاسورڈ ہٹائیں</b> ٹیپ کریں\n"
+        "• موجودہ پاسورڈ کو غیر تبدیل شدہ رکھنے کے لیے <b>چھوڑیں</b> ٹیپ کریں\n\n"
+        "⚠️ دوبارہ اجازت کے بعد پرانی سیشنز فوری طور پر باطل ہو جائیں گی"
+    ),
+    "ar": (
+        "🔑 <b>تعيين كلمة مرور جديدة (اختياري)</b>\n\n"
+        "بعد إعادة التفويض يمكنك:\n"
+        "• إرسال <b>كلمة مرور 2FA جديدة</b> لاستبدال القديمة\n"
+        "• النقر على <b>إزالة كلمة المرور</b> لتعطيل 2FA كليًا\n"
+        "• النقر على <b>تخطَّ</b> للإبقاء على كلمة المرور الحالية\n\n"
+        "⚠️ بعد إعادة التفويض ستُبطَل الجلسات القديمة فورًا"
+    ),
+    "zh": (
+        "🔑 <b>设置新密码（可选）</b>\n\n"
+        "重新授权后，您可以：\n"
+        "• 发送<b>新的 2FA 密码</b>以替换旧密码\n"
+        "• 点击<b>删除密码</b>以完全禁用 2FA\n"
+        "• 点击<b>跳过</b>保持当前密码不变\n\n"
+        "⚠️ 重新授权后，旧会话将立即失效"
+    ),
+}
+
 FRESH_SESSION_CONFIRM_PROMPT = {
     "en": "⚠️ <b>Fresh Session Warning</b>\n\nThis will:\n• Send a login OTP via your existing session\n• Create a new session file for each account\n• The old session remains unchanged\n\nAre you sure you want to proceed?",
     "bn": "⚠️ <b>ফ্রেশ সেশন সতর্কতা</b>\n\nএটি:\n• বিদ্যমান সেশনে OTP পাঠাবে\n• প্রতিটি অ্যাকাউন্টের জন্য নতুন সেশন তৈরি করবে\n• পুরানো সেশন অপরিবর্তিত থাকবে\n\nআপনি কি এগিয়ে যেতে চান?",
@@ -1564,12 +1655,16 @@ FRESH_SESSION_MESSAGES = {
         "processing": "⏳ Creating fresh sessions... This may take a while (OTP wait per account).",
         "no_sessions": "❌ No valid sessions found in the file.",
         "request_failed": "❌ An error occurred while processing sessions.",
+        "cancelled": "❌ Job cancelled.",
         "confirm_btn": "🔄 Yes, Create Fresh Sessions",
         "skip_2fa": "⏭ Skip (No 2FA)",
-        "done": "🔄 <b>Fresh Session Summary</b>\n\n✅ Successfully Migrated: {succeeded}\n❌ Failed: {failed}\n\n{details}\nNew sessions ZIP is attached above.",
-        "no_new": "🔄 <b>Fresh Session Summary</b>\n\n✅ Migrated: {succeeded}\n❌ Failed: {failed}\n\n{details}",
+        "skip_new_password": "⏭ Skip (Keep Password)",
+        "remove_password": "🗑 Remove 2FA Password",
+        "done": "🔄 <b>Fresh Session Summary</b>\n\n✅ Successfully Migrated: {succeeded}\n🦵 Kicked Other Devices: {kicked}\n❌ Failed: {failed}\n\n{details}\nNew sessions ZIP is attached above.",
+        "no_new": "🔄 <b>Fresh Session Summary</b>\n\n✅ Migrated: {succeeded}\n🦵 Kicked: {kicked}\n❌ Failed: {failed}\n\n{details}",
         "btn_total": "Total",
         "btn_ok": "Migrated",
+        "btn_kicked": "Kicked",
         "btn_failed": "Failed",
         "new_zip_caption": "🔄 Fresh Sessions ({succeeded} accounts)",
         "fail_zip_caption": "❌ Failed Sessions ({failed} accounts)",
@@ -1578,12 +1673,16 @@ FRESH_SESSION_MESSAGES = {
         "processing": "⏳ ফ্রেশ সেশন তৈরি হচ্ছে... (প্রতিটি অ্যাকাউন্টের জন্য OTP অপেক্ষা)",
         "no_sessions": "❌ ফাইলে কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ সেশন প্রক্রিয়া করার সময় ত্রুটি হয়েছে।",
+        "cancelled": "❌ কাজ বাতিল হয়েছে।",
         "confirm_btn": "🔄 হ্যাঁ, ফ্রেশ সেশন তৈরি করুন",
         "skip_2fa": "⏭ এড়িয়ে যান (2FA নেই)",
-        "done": "🔄 <b>ফ্রেশ সেশন সারাংশ</b>\n\n✅ সফল: {succeeded}\n❌ ব্যর্থ: {failed}\n\n{details}\nনতুন সেশন ZIP উপরে যুক্ত হয়েছে।",
-        "no_new": "🔄 <b>ফ্রেশ সেশন সারাংশ</b>\n\n✅ সফল: {succeeded}\n❌ ব্যর্থ: {failed}\n\n{details}",
+        "skip_new_password": "⏭ এড়িয়ে যান (পাসওয়ার্ড রাখুন)",
+        "remove_password": "🗑 2FA পাসওয়ার্ড সরান",
+        "done": "🔄 <b>ফ্রেশ সেশন সারাংশ</b>\n\n✅ সফল: {succeeded}\n🦵 অন্যান্য ডিভাইস কিক: {kicked}\n❌ ব্যর্থ: {failed}\n\n{details}\nনতুন সেশন ZIP উপরে যুক্ত হয়েছে।",
+        "no_new": "🔄 <b>ফ্রেশ সেশন সারাংশ</b>\n\n✅ সফল: {succeeded}\n🦵 কিক: {kicked}\n❌ ব্যর্থ: {failed}\n\n{details}",
         "btn_total": "মোট",
         "btn_ok": "সফল",
+        "btn_kicked": "কিক",
         "btn_failed": "ব্যর্থ",
         "new_zip_caption": "🔄 ফ্রেশ সেশন ({succeeded} অ্যাকাউন্ট)",
         "fail_zip_caption": "❌ ব্যর্থ সেশন ({failed} অ্যাকাউন্ট)",
@@ -1592,12 +1691,16 @@ FRESH_SESSION_MESSAGES = {
         "processing": "⏳ फ्रेश सेशन बनाए जा रहे हैं... (प्रत्येक खाते के लिए OTP प्रतीक्षा)",
         "no_sessions": "❌ फ़ाइल में कोई मान्य सेशन नहीं मिला।",
         "request_failed": "❌ सेशन प्रोसेस करते समय त्रुटि हुई।",
+        "cancelled": "❌ कार्य रद्द किया गया।",
         "confirm_btn": "🔄 हाँ, फ्रेश सेशन बनाएं",
         "skip_2fa": "⏭ छोड़ें (2FA नहीं)",
-        "done": "🔄 <b>फ्रेश सेशन सारांश</b>\n\n✅ सफल: {succeeded}\n❌ विफल: {failed}\n\n{details}\nनई सेशन ZIP ऊपर संलग्न है।",
-        "no_new": "🔄 <b>फ्रेश सेशन सारांश</b>\n\n✅ सफल: {succeeded}\n❌ विफल: {failed}\n\n{details}",
+        "skip_new_password": "⏭ छोड़ें (पासवर्ड रखें)",
+        "remove_password": "🗑 2FA पासवर्ड हटाएं",
+        "done": "🔄 <b>फ्रेश सेशन सारांश</b>\n\n✅ सफल: {succeeded}\n🦵 अन्य डिवाइस किक: {kicked}\n❌ विफल: {failed}\n\n{details}\nनई सेशन ZIP ऊपर संलग्न है।",
+        "no_new": "🔄 <b>फ्रेश सेशन सारांश</b>\n\n✅ सफल: {succeeded}\n🦵 किक: {kicked}\n❌ विफल: {failed}\n\n{details}",
         "btn_total": "कुल",
         "btn_ok": "सफल",
+        "btn_kicked": "किक",
         "btn_failed": "विफल",
         "new_zip_caption": "🔄 फ्रेश सेशन ({succeeded} खाते)",
         "fail_zip_caption": "❌ विफल सेशन ({failed} खाते)",
@@ -1606,12 +1709,16 @@ FRESH_SESSION_MESSAGES = {
         "processing": "⏳ فریش سیشنز بنائی جا رہی ہیں... (ہر اکاؤنٹ کے لیے OTP انتظار)",
         "no_sessions": "❌ فائل میں کوئی درست سیشن نہیں ملی۔",
         "request_failed": "❌ سیشنز پروسیس کرتے وقت خرابی پیش آئی۔",
+        "cancelled": "❌ کام منسوخ کر دیا گیا۔",
         "confirm_btn": "🔄 ہاں، فریش سیشنز بنائیں",
         "skip_2fa": "⏭ چھوڑیں (2FA نہیں)",
-        "done": "🔄 <b>فریش سیشن خلاصہ</b>\n\n✅ کامیاب: {succeeded}\n❌ ناکام: {failed}\n\n{details}\nنئی سیشن ZIP اوپر منسلک ہے۔",
-        "no_new": "🔄 <b>فریش سیشن خلاصہ</b>\n\n✅ کامیاب: {succeeded}\n❌ ناکام: {failed}\n\n{details}",
+        "skip_new_password": "⏭ چھوڑیں (پاسورڈ رکھیں)",
+        "remove_password": "🗑 2FA پاسورڈ ہٹائیں",
+        "done": "🔄 <b>فریش سیشن خلاصہ</b>\n\n✅ کامیاب: {succeeded}\n🦵 دیگر ڈیوائسز کِک: {kicked}\n❌ ناکام: {failed}\n\n{details}\nنئی سیشن ZIP اوپر منسلک ہے۔",
+        "no_new": "🔄 <b>فریش سیشن خلاصہ</b>\n\n✅ کامیاب: {succeeded}\n🦵 کِک: {kicked}\n❌ ناکام: {failed}\n\n{details}",
         "btn_total": "کل",
         "btn_ok": "کامیاب",
+        "btn_kicked": "کِک",
         "btn_failed": "ناکام",
         "new_zip_caption": "🔄 فریش سیشنز ({succeeded} اکاؤنٹس)",
         "fail_zip_caption": "❌ ناکام سیشنز ({failed} اکاؤنٹس)",
@@ -1620,12 +1727,16 @@ FRESH_SESSION_MESSAGES = {
         "processing": "⏳ جاري إنشاء جلسات جديدة... (انتظار OTP لكل حساب)",
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة في الملف.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الجلسات.",
+        "cancelled": "❌ تم إلغاء المهمة.",
         "confirm_btn": "🔄 نعم، أنشئ جلسات جديدة",
         "skip_2fa": "⏭ تخطَّ (لا يوجد 2FA)",
-        "done": "🔄 <b>ملخص الجلسات الجديدة</b>\n\n✅ ناجح: {succeeded}\n❌ فاشل: {failed}\n\n{details}\nملف ZIP للجلسات الجديدة مرفق أعلاه.",
-        "no_new": "🔄 <b>ملخص الجلسات الجديدة</b>\n\n✅ ناجح: {succeeded}\n❌ فاشل: {failed}\n\n{details}",
+        "skip_new_password": "⏭ تخطَّ (الاحتفاظ بكلمة المرور)",
+        "remove_password": "🗑 إزالة كلمة مرور 2FA",
+        "done": "🔄 <b>ملخص الجلسات الجديدة</b>\n\n✅ ناجح: {succeeded}\n🦵 أجهزة مطرودة: {kicked}\n❌ فاشل: {failed}\n\n{details}\nملف ZIP للجلسات الجديدة مرفق أعلاه.",
+        "no_new": "🔄 <b>ملخص الجلسات الجديدة</b>\n\n✅ ناجح: {succeeded}\n🦵 مطرود: {kicked}\n❌ فاشل: {failed}\n\n{details}",
         "btn_total": "الإجمالي",
         "btn_ok": "ناجح",
+        "btn_kicked": "مطرود",
         "btn_failed": "فاشل",
         "new_zip_caption": "🔄 جلسات جديدة ({succeeded} حساب)",
         "fail_zip_caption": "❌ جلسات فاشلة ({failed} حساب)",
@@ -1634,12 +1745,16 @@ FRESH_SESSION_MESSAGES = {
         "processing": "⏳ 正在创建新会话... (每个账户等待 OTP)",
         "no_sessions": "❌ 文件中未找到有效会话。",
         "request_failed": "❌ 处理会话时出错。",
+        "cancelled": "❌ 任务已取消。",
         "confirm_btn": "🔄 是的，创建新会话",
         "skip_2fa": "⏭ 跳过 (无 2FA)",
-        "done": "🔄 <b>新会话摘要</b>\n\n✅ 成功：{succeeded}\n❌ 失败：{failed}\n\n{details}\n新会话 ZIP 已附在上方。",
-        "no_new": "🔄 <b>新会话摘要</b>\n\n✅ 成功：{succeeded}\n❌ 失败：{failed}\n\n{details}",
+        "skip_new_password": "⏭ 跳过（保留密码）",
+        "remove_password": "🗑 删除 2FA 密码",
+        "done": "🔄 <b>新会话摘要</b>\n\n✅ 成功：{succeeded}\n🦵 已踢出其他设备：{kicked}\n❌ 失败：{failed}\n\n{details}\n新会话 ZIP 已附在上方。",
+        "no_new": "🔄 <b>新会话摘要</b>\n\n✅ 成功：{succeeded}\n🦵 已踢出：{kicked}\n❌ 失败：{failed}\n\n{details}",
         "btn_total": "总计",
         "btn_ok": "成功",
+        "btn_kicked": "已踢出",
         "btn_failed": "失败",
         "new_zip_caption": "🔄 新会话 ({succeeded} 个账户)",
         "fail_zip_caption": "❌ 失败会话 ({failed} 个账户)",
@@ -2118,7 +2233,7 @@ CLEAN_CHAT_SELECTION_ACTIONS = {
 
 CLEAN_CHAT_MESSAGES = {
     "en": {
-        "processing_progress": "⏳ Cleaning chats from sessions...\n✅ Deleted: {done}",
+        "processing_progress": "⏳ Cleaning chats from sessions...\n🗂 Sessions: {sessions}\n✅ Deleted: {done}",
         "processing": "⏳ Cleaning chats from sessions...",
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
@@ -2129,7 +2244,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "Failed",
     },
     "bn": {
-        "processing_progress": "⏳ সেশন থেকে চ্যাট পরিষ্কার করা হচ্ছে...\n✅ মুছে ফেলা হয়েছে: {done}",
+        "processing_progress": "⏳ সেশন থেকে চ্যাট পরিষ্কার করা হচ্ছে...\n🗂 সেশন: {sessions}\n✅ মুছে ফেলা হয়েছে: {done}",
         "processing": "⏳ সেশন থেকে চ্যাট পরিষ্কার করা হচ্ছে...",
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
@@ -2140,7 +2255,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "ব্যর্থ",
     },
     "hi": {
-        "processing_progress": "⏳ सेशन से चैट साफ़ किए जा रहे हैं...\n✅ हटाए गए: {done}",
+        "processing_progress": "⏳ सेशन से चैट साफ़ किए जा रहे हैं...\n🗂 सेशन: {sessions}\n✅ हटाए गए: {done}",
         "processing": "⏳ सेशन से चैट साफ़ किए जा रहे हैं...",
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
@@ -2151,7 +2266,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "विफल",
     },
     "ur": {
-        "processing_progress": "⏳ سیشنز سے چیٹس صاف کی جا رہی ہیں...\n✅ حذف شدہ: {done}",
+        "processing_progress": "⏳ سیشنز سے چیٹس صاف کی جا رہی ہیں...\n🗂 سیشنز: {sessions}\n✅ حذف شدہ: {done}",
         "processing": "⏳ سیشنز سے چیٹس صاف کی جا رہی ہیں...",
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
@@ -2162,7 +2277,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "ناکام",
     },
     "ar": {
-        "processing_progress": "⏳ جاري مسح المحادثات من الجلسات...\n✅ تم حذف: {done}",
+        "processing_progress": "⏳ جاري مسح المحادثات من الجلسات...\n🗂 الجلسات: {sessions}\n✅ تم حذف: {done}",
         "processing": "⏳ جاري مسح المحادثات من الجلسات...",
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
@@ -2173,7 +2288,7 @@ CLEAN_CHAT_MESSAGES = {
         "btn_failed": "الفاشلة",
     },
     "zh": {
-        "processing_progress": "⏳ 正在从会话中清理聊天...\n✅ 已删除: {done}",
+        "processing_progress": "⏳ 正在从会话中清理聊天...\n🗂 会话: {sessions}\n✅ 已删除: {done}",
         "processing": "⏳ 正在从会话中清理聊天...",
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
@@ -2416,6 +2531,7 @@ PROFILE_SETUP_MESSAGES = {
         "applying": "⏳ Applying profile updates...",
         "no_sessions": "❌ No valid sessions found.",
         "request_failed": "❌ An error occurred during request processing.",
+        "cancelled": "⚠️ Profile fetch cancelled.",
         "done": "✅ Profile Setup Completed — {modified} modified | ⏭️ {skipped} skipped | ❌ {failed} failed",
         "failed_report": "❌ All attempts failed — {failed} failed",
         "btn_total": "Total",
@@ -2428,6 +2544,11 @@ PROFILE_SETUP_MESSAGES = {
         "btn_set_photo": "Set Photo",
         "btn_apply": "Apply Changes & Next",
         "btn_skip": "Skip Account",
+        "btn_auto": "⚡ Auto Profile",
+        "auto_running": "⚡ Generating fresh profiles for all accounts...\n<i>real names, bios, unique usernames & country-matched photos</i>",
+        "auto_account_done": "✅ {done}/{total} · {region} · {identifier} · @{username}",
+        "auto_done": "✨ Auto Profile Complete — {modified} modified | ⏭️ {skipped} skipped | ❌ {failed} failed",
+        "auto_cancelled": "⚠️ Auto Profile cancelled.",
         "photo_pending": "New Photo Selected",
         "photo_none": "None",
     },
@@ -2436,6 +2557,7 @@ PROFILE_SETUP_MESSAGES = {
         "applying": "⏳ প্রোফাইল আপডেট প্রয়োগ করা হচ্ছে...",
         "no_sessions": "❌ কোনো বৈধ সেশন পাওয়া যায়নি।",
         "request_failed": "❌ অনুরোধ প্রসেসিংকালে ত্রুটি ঘটেছে।",
+        "cancelled": "⚠️ প্রোফাইল আনয়ন বাতিল করা হয়েছে।",
         "done": "✅ প্রোফাইল সেটআপ সম্পন্ন — {modified} পরিবর্তন | ⏭️ {skipped} স্কিপ | ❌ {failed} ব্যর্থ",
         "failed_report": "❌ সব প্রচেষ্টা ব্যর্থ — {failed}টি ব্যর্থ",
         "btn_total": "মোট",
@@ -2448,6 +2570,11 @@ PROFILE_SETUP_MESSAGES = {
         "btn_set_photo": "ছবি যুক্ত",
         "btn_apply": "পরিবর্তন প্রয়োগ ও পরবর্তী",
         "btn_skip": "অ্যাকাউন্ট স্কিপ",
+        "btn_auto": "⚡ অটো প্রোফাইল",
+        "auto_running": "⚡ সব অ্যাকাউন্টের জন্য নতুন প্রোফাইল তৈরি হচ্ছে...\n<i>আসল নাম, বায়ো, ইউনিক ইউজারনেম ও দেশ-অনুযায়ী ছবি</i>",
+        "auto_account_done": "✅ {done}/{total} · {region} · {identifier} · @{username}",
+        "auto_done": "✨ অটো প্রোফাইল সম্পন্ন — {modified} পরিবর্তিত / ⏭️ {skipped} স্কিপ / ❌ {failed} ব্যর্থ",
+        "auto_cancelled": "⚠️ অটো প্রোফাইল বাতিল হয়েছে।",
         "photo_pending": "নতুন ছবি নির্বাচিত",
         "photo_none": "নাই",
     },
@@ -2456,6 +2583,7 @@ PROFILE_SETUP_MESSAGES = {
         "applying": "⏳ प्रोफ़ाइल अपडेट लागू हो रहे हैं...",
         "no_sessions": "❌ कोई वैध सेशन नहीं मिला।",
         "request_failed": "❌ अनुरोध प्रक्रिया के दौरान त्रुटि हुई।",
+        "cancelled": "⚠️ प्रोफ़ाइल प्राप्त करना रद्द किया गया।",
         "done": "✅ प्रोफ़ाइल सेटअप पूर्ण — {modified} संशोधित | ⏭️ {skipped} छूटे | ❌ {failed} विफल",
         "failed_report": "❌ सभी प्रयास विफल — {failed} विफल",
         "btn_total": "कुल",
@@ -2468,6 +2596,11 @@ PROFILE_SETUP_MESSAGES = {
         "btn_set_photo": "फ़ोटो जोड़ें",
         "btn_apply": "बदलाव लागू करें और आगे",
         "btn_skip": "अकाउंट छोड़ें",
+        "btn_auto": "⚡ ऑटो प्रोफ़ाइल",
+        "auto_running": "⚡ सभी अकाउंट्स के लिए नई प्रोफ़ाइल बनाई जा रही हैं...\n<i>असली नाम, बायो, यूनिक यूज़रनेम और देश-आधारित फ़ोटो</i>",
+        "auto_account_done": "✅ {done}/{total} · {region} · {identifier} · @{username}",
+        "auto_done": "✨ ऑटो प्रोफ़ाइल पूर्ण — {modified} संशोधित | ⏭️ {skipped} छूटे | ❌ {failed} विफल",
+        "auto_cancelled": "⚠️ ऑटो प्रोफ़ाइल रद्द की गई।",
         "photo_pending": "नयी फ़ोटो चुनी गई",
         "photo_none": "कोई नहीं",
     },
@@ -2476,6 +2609,7 @@ PROFILE_SETUP_MESSAGES = {
         "applying": "⏳ پروفائل اپ ڈیٹس لاگو کی جا رہی ہیں...",
         "no_sessions": "❌ کوئی بھی درست سیشن نہیں ملا۔",
         "request_failed": "❌ درخواست کے عمل کے دوران ایک خرابی پیش آئی۔",
+        "cancelled": "⚠️ پروفائل حاصل کرنا منسوخ کر دیا گیا۔",
         "done": "✅ پروفائل سیٹ اپ مکمل — {modified} تبدیل | ⏭️ {skipped} چھوڑے | ❌ {failed} ناکام",
         "failed_report": "❌ تمام کوششیں ناکام — {failed} ناکام",
         "btn_total": "کل",
@@ -2488,14 +2622,20 @@ PROFILE_SETUP_MESSAGES = {
         "btn_set_photo": "تصویر منتخب",
         "btn_apply": "تبدیلیاں لاگو اور آگے",
         "btn_skip": "اکاؤنٹ اسکیپ",
+        "btn_auto": "⚡ آٹو پروفائل",
+        "auto_running": "⚡ تمام اکاؤنٹس کے لیے نئے پروفائلز بنائے جا رہے ہیں...\n<i>حقیقی نام، بائیو، یونیک یوزر نیم اور ملک کے مطابق تصاویر</i>",
+        "auto_account_done": "✅ {done}/{total} · {region} · {identifier} · @{username}",
+        "auto_done": "✨ آٹو پروفائل مکمل — {modified} تبدیل | ⏭️ {skipped} چھوڑے | ❌ {failed} ناکام",
+        "auto_cancelled": "⚠️ آٹو پروفائل منسوخ کر دیا گیا۔",
         "photo_pending": "نئی تصویر منتخب",
         "photo_none": "کوئی نہیں",
     },
     "ar": {
         "fetching": "⏳ جاري جلب تفاصيل الملف الشخصي...",
-        "applying": "⏳ جاري تطبيق التحديثات...",
+        "applying": "⏳ جاري تطبيق تحديثات الملف الشخصي...",
         "no_sessions": "❌ لم يتم العثور على جلسات صالحة.",
         "request_failed": "❌ حدث خطأ أثناء معالجة الطلب.",
+        "cancelled": "⚠️ تم إلغاء جلب الملف الشخصي.",
         "done": "✅ اكتمل إعداد الملف الشخصي — {modified} معدل | ⏭️ {skipped} متخطي | ❌ {failed} فشل",
         "failed_report": "❌ فشلت جميع المحاولات — {failed} فشل",
         "btn_total": "الإجمالي",
@@ -2508,14 +2648,20 @@ PROFILE_SETUP_MESSAGES = {
         "btn_set_photo": "تعيين صورة",
         "btn_apply": "تطبيق والتالي",
         "btn_skip": "تخطي الحساب",
+        "btn_auto": "⚡ ملف شخصي تلقائي",
+        "auto_running": "⚡ جاري إنشاء ملفات شخصية جديدة لجميع الحسابات...\n<i>أسماء حقيقية، سير ذاتية، أسماء مستخدمين فريدة وصور حسب الدولة</i>",
+        "auto_account_done": "✅ {done}/{total} · {region} · {identifier} · @{username}",
+        "auto_done": "✨ اكتمل الملف التلقائي — {modified} معدل | ⏭️ {skipped} متخطي | ❌ {failed} فشل",
+        "auto_cancelled": "⚠️ تم إلغاء الملف التلقائي.",
         "photo_pending": "تم تحديد صورة جديدة",
         "photo_none": "لا يوجد",
     },
     "zh": {
         "fetching": "⏳ 正在获取个人资料...",
-        "applying": "⏳ 正在应用更新...",
+        "applying": "⏳ 正在应用资料更新...",
         "no_sessions": "❌ 未找到有效会话。",
         "request_failed": "❌ 处理请求时出错。",
+        "cancelled": "⚠️ 已取消获取个人资料。",
         "done": "✅ 个人资料设置完成 — {modified} 已修改 | ⏭️ {skipped} 已跳过 | ❌ {failed} 失败",
         "failed_report": "❌ 所有尝试均失败 — {failed} 失败",
         "btn_total": "总计",
@@ -2528,6 +2674,11 @@ PROFILE_SETUP_MESSAGES = {
         "btn_set_photo": "设置头像",
         "btn_apply": "应用更改并继续",
         "btn_skip": "跳过此账号",
+        "btn_auto": "⚡ 自动资料",
+        "auto_running": "⚡ 正在为所有账号生成新资料...\n<i>真实姓名、简介、唯一用户名及对应国家的照片</i>",
+        "auto_account_done": "✅ {done}/{total} · {region} · {identifier} · @{username}",
+        "auto_done": "✨ 自动资料完成 — {modified} 已修改 | ⏭️ {skipped} 已跳过 | ❌ {failed} 失败",
+        "auto_cancelled": "⚠️ 自动资料已取消。",
         "photo_pending": "已选择新头像",
         "photo_none": "无",
     },
@@ -3889,6 +4040,8 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "btn_retry": "Run Again",
         "btn_home": "Home",
         "caption": "📄 Account TXT Files",
+        "phones_caption": "📄 Phone numbers",
+        "status_caption": "📄 Phone numbers with status",
         "cancelled": "🚫 Conversion cancelled.",
         "more": "\n<i>... and {count} more</i>",
     },
@@ -3903,6 +4056,8 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "btn_retry": "আবার চালান",
         "btn_home": "হোম",
         "caption": "📄 অ্যাকাউন্ট TXT ফাইল",
+        "phones_caption": "📄 ফোন নম্বর",
+        "status_caption": "📄 স্ট্যাটাসসহ ফোন নম্বর",
         "cancelled": "🚫 রূপান্তর বাতিল করা হয়েছে।",
         "more": "\n<i>... এবং আরও {count}টি</i>",
     },
@@ -3917,6 +4072,8 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "btn_retry": "फिर चलाएँ",
         "btn_home": "होम",
         "caption": "📄 अकाउंट TXT फ़ाइलें",
+        "phones_caption": "📄 फ़ोन नंबर",
+        "status_caption": "📄 स्थिति के साथ फ़ोन नंबर",
         "cancelled": "🚫 रूपांतरण रद्द कर दिया गया।",
         "more": "\n<i>... और {count} और</i>",
     },
@@ -3931,6 +4088,8 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "btn_retry": "دوبارہ چلائیں",
         "btn_home": "ہوم",
         "caption": "📄 اکاؤنٹ TXT فائلیں",
+        "phones_caption": "📄 فون نمبرز",
+        "status_caption": "📄 سٹیٹس کے ساتھ فون نمبرز",
         "cancelled": "🚫 تبدیلی منسوخ کر دی گئی۔",
         "more": "\n<i>... اور مزید {count}</i>",
     },
@@ -3945,6 +4104,8 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "btn_retry": "إعادة تشغيل",
         "btn_home": "الرئيسية",
         "caption": "📄 ملفات TXT للحسابات",
+        "phones_caption": "📄 أرقام الهواتف",
+        "status_caption": "📄 أرقام الهواتف مع الحالة",
         "cancelled": "🚫 تم إلغاء التحويل.",
         "more": "\n<i>... و {count} أخرى</i>",
     },
@@ -3959,6 +4120,8 @@ ACCOUNT_TO_TXT_MESSAGES = {
         "btn_retry": "再次运行",
         "btn_home": "首页",
         "caption": "📄 账户 TXT 文件",
+        "phones_caption": "📄 手机号码",
+        "status_caption": "📄 带状态的手机号码",
         "cancelled": "🚫 转换已取消。",
         "more": "\n<i>... 还有 {count} 个</i>",
     },

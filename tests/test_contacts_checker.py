@@ -62,6 +62,17 @@ def _ok_client(contacts_count: int = 3) -> AsyncMock:
     client.connect = AsyncMock()
     client.is_user_authorized = AsyncMock(return_value=True)
     client.disconnect = AsyncMock()
+    clean_msg = type(
+        "Msg",
+        (),
+        {
+            "out": False,
+            "id": 99,
+            "message": "Good news, no restrictions are placed on your account.",
+        },
+    )()
+    client.get_messages = AsyncMock(return_value=[clean_msg])
+    client.send_message = AsyncMock(return_value=type("SentMsg", (), {"id": 1})())
     contacts_res = type("ContactsRes", (), {"contacts": list(range(contacts_count))})()
     me_res = type(
         "MeRes",
@@ -432,6 +443,60 @@ async def test_live_check_add_probe_imports_nothing_is_limited() -> None:
         with patch("telethon.TelegramClient", return_value=client):
             status, _ = await check_session_contacts_live(sess_file, [(12345, "h")])
             assert status == "limited"
+
+
+@pytest.mark.asyncio
+async def test_spambot_probe_returns_limited_when_spambot_reports_restriction() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sess_file = Path(tmp) / "spambot_limited.session"
+        sess_file.write_bytes(b"dummy")
+
+        client = AsyncMock()
+        client.connect = AsyncMock()
+        client.is_user_authorized = AsyncMock(return_value=True)
+        client.disconnect = AsyncMock()
+
+        contacts_res = type("ContactsRes", (), {"contacts": [1, 2]})()
+        me_res = type(
+            "MeRes",
+            (),
+            {
+                "users": [
+                    type(
+                        "User",
+                        (),
+                        {
+                            "phone": "+123456",
+                            "username": "user",
+                            "first_name": "U",
+                            "last_name": "",
+                            "premium": False,
+                            "dc_id": 2,
+                        },
+                    )()
+                ]
+            },
+        )()
+        client.side_effect = [contacts_res, me_res, _imported(), object()]
+
+        spambot_msg = type(
+            "Msg",
+            (),
+            {
+                "out": False,
+                "id": 100,
+                "message": "Dear user, your account is limited for sending unsolicited messages.",
+            },
+        )()
+        client.get_messages = AsyncMock(return_value=[spambot_msg])
+        client.send_message = AsyncMock(return_value=type("SentMsg", (), {"id": 2})())
+
+        with patch("telethon.TelegramClient", return_value=client):
+            status, info = await check_session_contacts_live(
+                sess_file, [(12345, "h")]
+            )
+            assert status == "limited"
+            assert info is None
 
 
 @pytest.mark.asyncio

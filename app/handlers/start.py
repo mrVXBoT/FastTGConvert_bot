@@ -415,46 +415,35 @@ async def choose_language(
         return
     if len(parts) == 3 and parts[1] == "start":
         language = parts[2]
-        if language not in LANGUAGES:
-            invalid_msg = INVALID_LANGUAGE_MESSAGES.get("en", "Invalid language.")
-            await callback.answer(invalid_msg, show_alert=True)
-            return
-        with session_factory() as session:
-            set_user_language(
-                session, callback.from_user.id, callback.from_user.username, language
-            )
-        locale = get_locale(language)
-        await callback.answer()
-        with session_factory() as session:
-            required_channels = get_active_force_join_channels(session, settings)
-            invite_links = get_force_join_invite_links(session)
-        if not await has_access(bot, callback.from_user.id, settings, session_factory):
-            channel_names = "\n".join(
-                f"📢 {channel}" for channel in required_channels
-            )
-            text = locale.join_required
-            if channel_names:
-                text = f"{text}\n\n{channel_names}"
-            await callback.message.edit_text(
-                text,
-                reply_markup=membership_menu(tuple(required_channels), language, invite_links),
-            )
-            return
-        await callback.message.edit_text(
-            f"{locale.welcome}\n\n{locale.choose_option}",
-            reply_markup=main_menu(language),
-        )
-        return
-
-    language = parts[1] if len(parts) == 2 else ""
+        language = language if language in LANGUAGES else ""
+    else:
+        language = parts[1] if len(parts) == 2 else ""
     if language not in LANGUAGES:
         invalid_msg = INVALID_LANGUAGE_MESSAGES.get("en", "Invalid language.")
         await callback.answer(invalid_msg, show_alert=True)
         return
-    await callback.answer()
+    with session_factory() as session:
+        set_user_language(
+            session, callback.from_user.id, callback.from_user.username, language
+        )
+    locale = get_locale(language)
+    await callback.answer(locale.language_name)
+    with session_factory() as session:
+        required_channels = get_active_force_join_channels(session, settings)
+        invite_links = get_force_join_invite_links(session)
+    if not await has_access(bot, callback.from_user.id, settings, session_factory):
+        channel_names = "\n".join(f"📢 {channel}" for channel in required_channels)
+        text = locale.join_required
+        if channel_names:
+            text = f"{text}\n\n{channel_names}"
+        await callback.message.edit_text(
+            text,
+            reply_markup=membership_menu(tuple(required_channels), language, invite_links),
+        )
+        return
     await callback.message.edit_text(
-        LANGUAGE_PROMPTS[language],
-        reply_markup=language_menu(language),
+        f"{locale.welcome}\n\n{locale.choose_option}",
+        reply_markup=main_menu(language),
     )
 
 
@@ -491,10 +480,16 @@ async def check_membership(
 
 
 @router.callback_query(F.data == "menu:language")
-async def change_language(callback: CallbackQuery) -> None:
+async def change_language(
+    callback: CallbackQuery, session_factory: sessionmaker[Session]
+) -> None:
     await callback.answer()
     if isinstance(callback.message, Message):
-        await callback.message.edit_text(LANGUAGE_PROMPT, reply_markup=language_menu())
+        language = user_language(session_factory, callback.from_user.id)
+        prompt = LANGUAGE_PROMPTS.get(language, LANGUAGE_PROMPT)
+        await callback.message.edit_text(
+            prompt, reply_markup=language_menu(language)
+        )
 
 
 @router.callback_query(F.data == "section:noop")

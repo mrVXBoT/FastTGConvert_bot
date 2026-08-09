@@ -24,12 +24,18 @@ class Settings(BaseSettings):
     # Obtained from https://my.telegram.org  (keep this secret!)
     api_credentials: str = ""
     # Seconds to wait for @SpamBot reply before timing out
-    spambot_timeout: int = Field(default=15, ge=5, le=60)
+    spambot_timeout: int = Field(default=15, ge=1, le=60)
     # Contacts check job tuning: concurrent sessions, per-session timeout and
     # max FloodWait seconds honoured before skipping a credential.
-    contacts_check_concurrency: int = Field(default=3, ge=1, le=20)
+    contacts_check_concurrency: int = Field(default=3, ge=1, le=2000)
     contacts_check_timeout: int = Field(default=30, ge=5, le=300)
     contacts_flood_ceiling: int = Field(default=5, ge=0, le=30)
+    # Account-age check tuning: how many sessions are probed in parallel
+    # (each needs one TelegramClient with a fresh temp session file).
+    account_age_concurrency: int = Field(default=100, ge=1, le=2000)
+    # Profile-setup prefetch: how many session profiles are fetched in
+    # parallel during the initial scan before the interactive editor opens.
+    profile_setup_concurrency: int = Field(default=50, ge=1, le=2000)
     # Split job tuning: how many sessions are live-verified in parallel.
     split_concurrency: int = Field(default=10, ge=1, le=20)
     # Clean chat job tuning: concurrent sessions and max FloodWait seconds to

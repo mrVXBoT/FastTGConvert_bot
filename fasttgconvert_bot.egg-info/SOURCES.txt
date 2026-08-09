@@ -134,6 +134,7 @@ tests/test_session_results.py
 tests/test_session_split.py
 tests/test_session_to_json.py
 tests/test_session_to_tdata.py
+tests/test_spam.py
 tests/test_split_merge_ui.py
 tests/test_support.py
 tests/test_tdata_to_session.py

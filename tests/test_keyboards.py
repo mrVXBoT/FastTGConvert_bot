@@ -11,22 +11,33 @@ from app.ui import EmojiRegistry
 
 def test_language_menu_matches_reference_order() -> None:
     menu = language_menu()
-    assert [row[0].text for row in menu.inline_keyboard] == [
+    assert [btn.text for row in menu.inline_keyboard for btn in row] == [
         "🇧🇩 বাংলা",
         "🇬🇧 English",
         "🇮🇳 हिन्दी",
         "🇵🇰 اردو",
         "🇸🇦 العربية",
         "🇨🇳 中文",
-        "🚀 /start",
     ]
 
 
-def test_language_is_only_confirmed_by_start_button() -> None:
+def test_language_is_applied_directly_without_start_button() -> None:
     initial = language_menu()
     selected = language_menu("ar")
-    assert initial.inline_keyboard[-1][0].callback_data == "language:start"
-    assert selected.inline_keyboard[-1][0].callback_data == "language:start:ar"
+    assert not any(
+        btn.callback_data.startswith("language:start")
+        for row in initial.inline_keyboard
+        for btn in row
+    )
+    ar_btn = next(
+        btn
+        for row in selected.inline_keyboard
+        for btn in row
+        if btn.callback_data == "language:ar"
+    )
+    assert "✅" in ar_btn.text
+    assert ar_btn.style == "success"
+    assert selected.inline_keyboard[-1][0].callback_data == "menu:back"
 
 
 def test_english_membership_menu_has_join_and_verify_buttons() -> None:

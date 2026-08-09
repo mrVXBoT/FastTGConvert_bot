@@ -1,5 +1,6 @@
 """tests/test_fresh_session.py — Tests for the Fresh Session migration service."""
 
+from datetime import datetime, timezone
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -22,9 +23,9 @@ class _FakeSent:
     phone_code_hash = "hash123"
 
 
-class _FakeOtpQueue:
-    async def get(self):
-        return "12345"
+class _FakeMsg:
+    date = datetime.now(timezone.utc)
+    message = "Login code: 12345"
 
 
 @pytest.mark.asyncio
@@ -41,11 +42,13 @@ async def test_freshen_single_session_invalid_2fa_password(tmp_path: Path):
 
     me = _FakeMe()
     sent = _FakeSent()
+    msg = _FakeMsg()
 
     old_client = AsyncMock()
     old_client.connect = AsyncMock()
     old_client.is_user_authorized = AsyncMock(return_value=True)
     old_client.get_me = AsyncMock(return_value=me)
+    old_client.get_messages = AsyncMock(return_value=[msg])
     old_client.on = lambda *a, **k: lambda fn: fn
     old_client.remove_event_handler = AsyncMock()
     old_client.disconnect = AsyncMock()
@@ -61,12 +64,7 @@ async def test_freshen_single_session_invalid_2fa_password(tmp_path: Path):
     )
     new_client.disconnect = AsyncMock()
 
-    with (
-        patch("telethon.TelegramClient", side_effect=[old_client, new_client]),
-        patch(
-            "app.services.fresh_session.asyncio.Queue", return_value=_FakeOtpQueue()
-        ),
-    ):
+    with patch("telethon.TelegramClient", side_effect=[old_client, new_client]):
         detail = await freshen_single_session(
             sess, [(123, "hash")], tmp_path, password_2fa="wrong-password"
         )
@@ -84,11 +82,13 @@ async def test_freshen_single_session_otp_success(tmp_path: Path):
 
     me = _FakeMe()
     sent = _FakeSent()
+    msg = _FakeMsg()
 
     old_client = AsyncMock()
     old_client.connect = AsyncMock()
     old_client.is_user_authorized = AsyncMock(return_value=True)
     old_client.get_me = AsyncMock(return_value=me)
+    old_client.get_messages = AsyncMock(return_value=[msg])
     old_client.on = lambda *a, **k: lambda fn: fn
     old_client.remove_event_handler = AsyncMock()
     old_client.disconnect = AsyncMock()
@@ -100,15 +100,11 @@ async def test_freshen_single_session_otp_success(tmp_path: Path):
     new_client.get_me = AsyncMock(return_value=me)
     new_client.disconnect = AsyncMock()
 
-    with (
-        patch("telethon.TelegramClient", side_effect=[old_client, new_client]),
-        patch(
-            "app.services.fresh_session.asyncio.Queue", return_value=_FakeOtpQueue()
-        ),
-    ):
+    with patch("telethon.TelegramClient", side_effect=[old_client, new_client]):
         detail = await freshen_single_session(
             sess, [(123, "hash")], tmp_path, password_2fa=None
         )
 
     assert detail.status == "ok"
     assert "New session created" in detail.message
+

@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from app.keyboards import (
@@ -879,5 +880,68 @@ async def test_process_quick_action_mass_message(tmp_path: Path):
     assert current_state == MassMessage.waiting_for_recipients.state
     data = await state.get_data()
     assert len(data["session_files"]) == 1
+
+
+async def test_extract_contacts_parallel_bounded_and_staggered(tmp_path: Path):
+    """Contact fetches must overlap (bounded), and each session must start at a
+    different credential pair (round-robin) instead of piling onto api_id #0."""
+    import asyncio
+    import sqlite3
+    from unittest.mock import AsyncMock, patch
+
+    sessions = []
+    for i in range(6):
+        path = tmp_path / f"sess{i}.session"
+        with sqlite3.connect(path) as conn:
+            conn.execute(
+                "CREATE TABLE sessions (dc_id integer primary key, server_address text, port integer, auth_key blob, takeout_id integer)"
+            )
+            conn.execute(
+                "INSERT INTO sessions VALUES (2, '149.154.167.50', 443, ?, 0)",
+                (b"a" * 256,),
+            )
+        sessions.append(path)
+
+    active = 0
+    max_active = 0
+    lock = asyncio.Lock()
+
+    class FakeUser:
+        id = 42
+        username = "u"
+        phone = None
+
+    async def fake_client_call(*_args, **_kwargs):
+        nonlocal active, max_active
+        async with lock:
+            active += 1
+            max_active = max(max_active, active)
+        await asyncio.sleep(0.05)
+        async with lock:
+            active -= 1
+        return SimpleNamespace(users=[FakeUser()])
+
+    from app.services.mass_message import (
+        _CONTACTS_FETCH_CONCURRENCY,
+        extract_contacts_from_sessions,
+    )
+
+    with patch("telethon.TelegramClient") as mock_client:
+        client = AsyncMock(side_effect=fake_client_call)
+        client.connect = AsyncMock()
+        client.is_user_authorized = AsyncMock(return_value=True)
+        client.disconnect = AsyncMock()
+        mock_client.return_value = client
+
+        creds = [(101, "h1"), (202, "h2"), (303, "h3")]
+        result = await extract_contacts_from_sessions(sessions, creds)
+
+    assert result.stats[0].status == "ok"
+    assert max_active >= 2, "fetches ran strictly one-by-one (no overlap)"
+    assert max_active <= _CONTACTS_FETCH_CONCURRENCY
+    first_api_ids = [call.args[1] for call in mock_client.call_args_list]
+    assert first_api_ids == [101, 202, 303, 101, 202, 303], (
+        "credential start must be round-robin staggered"
+    )
 
 

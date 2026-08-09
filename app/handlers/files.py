@@ -55,6 +55,7 @@ from app.keyboards import (
     file_split_result_menu,
     fresh_session_2fa_menu,
     fresh_session_confirm_menu,
+    fresh_session_new_password_menu,
     fresh_session_result_menu,
     kill_sessions_confirm_menu,
     kill_sessions_result_menu,
@@ -120,6 +121,7 @@ from app.locales import (
     FRESH_SESSION_2FA_PROMPT,
     FRESH_SESSION_CONFIRM_PROMPT,
     FRESH_SESSION_MESSAGES,
+    FRESH_SESSION_NEW_PASSWORD_PROMPT,
     KILL_SESSIONS_CONFIRM_PROMPT,
     KILL_SESSIONS_MESSAGES,
     LIST_CHECKER_MESSAGES,
@@ -154,6 +156,7 @@ from app.services.account_age import (
     AccountAgeInfo,
     AccountAgeResult,
     format_account_age_report,
+    format_registration_report_summary,
     process_account_age_check,
 )
 from app.services.account_to_txt import process_account_to_txt
@@ -185,7 +188,7 @@ from app.services.files import (
     safe_filename,
 )
 from app.services.fresh_session import process_fresh_sessions
-from app.services.jobs import JobCancelled, JobProgress
+from app.services.jobs import AutoProfileProgress, JobCancelled, JobProgress
 from app.services.kill_sessions import process_kill_sessions
 from app.services.list_checker import compare_archive_files
 from app.services.mass_message import (
@@ -199,9 +202,17 @@ from app.services.mass_message import (
     send_mass_message_to_recipient,
 )
 from app.services.privacy_settings import process_privacy_settings
+from app.services.profile_automation import (
+    auto_apply_account_profile,
+    country_nat,
+    download_profile_photo,
+    generate_profile_draft,
+)
 from app.services.profile_setup import (
+    AccountProfileInfo,
     fetch_account_profile,
     package_profile_setup_results,
+    prefetch_account_profiles,
     update_account_profile,
 )
 from app.services.proxy import resolve_user_proxy
@@ -274,6 +285,10 @@ ACTIVE_MASS_MESSAGE_JOBS: dict[int, dict[str, Any]] = {}
 # of concurrent mass campaigns saturating the Telegram API credentials pool.
 MASS_MESSAGE_MAX_CONCURRENT_JOBS = 3
 MASS_MESSAGE_SEMAPHORE = asyncio.Semaphore(MASS_MESSAGE_MAX_CONCURRENT_JOBS)
+
+# Max concurrent session-client bootstraps per mass-message job (shared api
+# credentials / IP flood ceiling).
+_MASS_BOOTSTRAP_CONCURRENCY = 8
 
 # Cancel events for running contacts checks, keyed by user id.
 ACTIVE_CONTACTS_JOBS: dict[int, asyncio.Event] = {}
@@ -444,6 +459,56 @@ async def update_conversion_progress(
                 await message.edit_text(body, reply_markup=cancel_markup)
             except Exception as exc:  # noqa: BLE001
                 LOGGER.debug("Conversion progress update skipped: %s", exc)
+            if total and done >= total:
+                break
+            await asyncio.sleep(1.2)
+    except asyncio.CancelledError:
+        pass
+
+
+async def update_auto_profile_progress(
+    message: Message,
+    progress: AutoProfileProgress,
+    base_text: str,
+    language: str = "en",
+) -> None:
+    """Live progress loop for the auto profile job: real bar + live stats."""
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    cancel_markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"❌ {cancel_label}",
+                    callback_data="conv:cancel:profile_setup_auto",
+                    style=ButtonStyle.DANGER.value,
+                )
+            ]
+        ]
+    )
+    divider = EmojiRegistry.divider_line()
+    try:
+        while True:
+            total = progress.total
+            done = progress.done
+            if total:
+                pct = round(done * 100 / total)
+                width = 12
+                filled = round(width * pct / 100)
+                bar = "▓" * filled + "░" * (width - filled)
+                stats = f"✅ {done}/{total} · ✨ {progress.modified} · ❌ {progress.failed}"
+                current = f"📍 {progress.region} · {progress.identifier} · @{progress.username}"
+                body = (
+                    f"{base_text}\n{divider}\n"
+                    f"{stats}\n"
+                    f"<code>{bar}</code>  {pct:3d}%\n"
+                    f"{current}"
+                )
+            else:
+                body = f"{base_text}\n{divider}\n⏳"
+            try:
+                await message.edit_text(body, reply_markup=cancel_markup)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("Auto profile progress update skipped: %s", exc)
             if total and done >= total:
                 break
             await asyncio.sleep(1.2)
@@ -725,6 +790,7 @@ async def analyze_document(
                 cancel_event = asyncio.Event()
                 ACTIVE_CONTACTS_JOBS[user_id] = cancel_event
                 progress = ContactsProgress()
+                await _stop_progress(progress_task)
                 progress_task = asyncio.create_task(
                     update_contacts_progress(
                         status, progress, cnt_msgs["checking"], language
@@ -1287,7 +1353,7 @@ async def _begin_two_factor_batch(
 ) -> None:
     batch_dir = Path(tempfile.mkdtemp(prefix=f"ftgc_2fa_{operation}_batch_"))
     try:
-        sessions = stage_two_factor_sessions(
+        sessions = await stage_two_factor_sessions(
             source, batch_dir, original_name=original_name
         )
         if not sessions:
@@ -1916,7 +1982,7 @@ async def confirm_clean_chat_selection(
 
     last_progress_edit = 0.0
 
-    async def _report_clean_progress(done: int) -> None:
+    async def _report_clean_progress(done: int, sessions_done: int) -> None:
         nonlocal last_progress_edit
         if not isinstance(status_msg, Message):
             return
@@ -1926,7 +1992,9 @@ async def confirm_clean_chat_selection(
         last_progress_edit = now
         with suppress(Exception):
             await status_msg.edit_text(
-                msgs_clean["processing_progress"].format(done=done)
+                msgs_clean["processing_progress"].format(
+                    done=done, sessions=sessions_done
+                )
             )
 
     out_res: Path | None = None
@@ -2259,15 +2327,32 @@ async def delete_contact_noop(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+def _cached_profile_info(
+    profiles_raw: object, index: int
+) -> AccountProfileInfo | None:
+    """Return the prefetched profile for *index*, or None when missing."""
+    if not isinstance(profiles_raw, list) or index >= len(profiles_raw):
+        return None
+    raw = profiles_raw[index]
+    if not isinstance(raw, dict):
+        return None
+    return AccountProfileInfo(**raw)
+
+
 async def _render_profile_setup_current_account(
     target_msg: Message,
     state: FSMContext,
     settings: Settings,
     language: str,
+    *,
+    done_text: str | None = None,
+    progress: JobProgress | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> None:
     data = await state.get_data()
     temp_dir_str = data.get("temp_dir")
     session_files_str = data.get("session_files", [])
+    profiles_raw = data.get("profiles")
     current_index = data.get("current_index", 0)
     modified_count = data.get("modified_count", 0)
     skipped_count = data.get("skipped_count", 0)
@@ -2299,6 +2384,10 @@ async def _render_profile_setup_current_account(
         )
         if res.modified == 0 and res.skipped == 0:
             report = msgs_prof["failed_report"].format(failed=res.failed)
+        elif done_text:
+            report = done_text.format(
+                modified=res.modified, skipped=res.skipped, failed=res.failed
+            )
         else:
             report = msgs_prof["done"].format(
                 modified=res.modified, skipped=res.skipped, failed=res.failed
@@ -2322,17 +2411,14 @@ async def _render_profile_setup_current_account(
         return
 
     cur_file = session_files[current_index]
-    info = await fetch_account_profile(cur_file, settings.api_credential_list)
-
-    if info is None:
+    info = _cached_profile_info(profiles_raw, current_index)
+    if info is None and profiles_raw:
         await state.update_data(
             current_index=current_index + 1,
             failed_count=failed_count + 1,
             pending={},
         )
-        await _render_profile_setup_current_account(
-            target_msg, state, settings, language
-        )
+        await _render_profile_setup_current_account(target_msg, state, settings, language)
         return
 
     identifier = info.phone if info.phone else cur_file.name
@@ -2448,10 +2534,44 @@ async def receive_profile_setup_file(
             )
             return
 
+        tool = "prof_setup"
+        cancel_event = asyncio.Event()
+        progress = JobProgress(total=len(extracted_files))
+        ACTIVE_CONVERSION_JOBS[(message.from_user.id, tool)] = (cancel_event, progress)
+        progress_task = asyncio.create_task(
+            update_conversion_progress(
+                status, progress, msgs_prof["fetching"], tool, language
+            )
+        )
+
+        profiles = await prefetch_account_profiles(
+            extracted_files,
+            settings.api_credential_list,
+            concurrency=settings.profile_setup_concurrency,
+            progress=progress,
+            cancel_event=cancel_event,
+        )
+        await _stop_progress(progress_task)
+
+        valid_pairs = [
+            (f, p) for f, p in zip(extracted_files, profiles) if p is not None
+        ]
+        if not valid_pairs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            await state.clear()
+            await status.edit_text(
+                msgs_prof["no_sessions"], reply_markup=main_menu(language)
+            )
+            return
+
+        valid_files = [f for f, p in valid_pairs]
+        valid_profiles = [p.to_dict() for f, p in valid_pairs]
+
         await state.set_state(ProfileSetup.managing_account)
         await state.update_data(
             temp_dir=str(temp_dir),
-            session_files=[str(f) for f in extracted_files],
+            session_files=[str(f) for f in valid_files],
+            profiles=valid_profiles,
             current_index=0,
             modified_count=0,
             skipped_count=0,
@@ -2460,7 +2580,21 @@ async def receive_profile_setup_file(
             pending={},
         )
 
-        await _render_profile_setup_current_account(status, state, settings, language)
+        try:
+            await _render_profile_setup_current_account(
+                status, state, settings, language
+            )
+        except JobCancelled:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            await state.clear()
+            await status.edit_text(
+                msgs_prof["cancelled"], reply_markup=main_menu(language)
+            )
+            return
+        finally:
+            ACTIVE_CONVERSION_JOBS.pop((message.from_user.id, tool), None)
+            with suppress(Exception):
+                await _stop_progress(progress_task)
     except Exception as exc:  # noqa: BLE001
         if path is not None and path.exists():
             path.unlink(missing_ok=True)
@@ -2733,6 +2867,124 @@ async def action_profile_setup_skip(
     )
 
 
+@router.callback_query(ProfileSetup.managing_account, F.data == "prof_setup:auto")
+async def action_profile_setup_auto(
+    callback: CallbackQuery,
+    state: FSMContext,
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if not isinstance(callback.message, Message) or callback.from_user is None:
+        return
+    language = user_language(session_factory, callback.from_user.id)
+    msgs_prof = PROFILE_SETUP_MESSAGES.get(language, PROFILE_SETUP_MESSAGES["en"])
+    cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
+    await callback.answer()
+
+    data = await state.get_data()
+    session_files_str = data.get("session_files", [])
+    profiles_raw = data.get("profiles")
+    current_index = data.get("current_index", 0)
+    skipped_count = data.get("skipped_count", 0)
+
+    tool = "profile_setup_auto"
+    if (callback.from_user.id, tool) in ACTIVE_CONVERSION_JOBS:
+        await callback.message.answer(msgs_prof["auto_running"])
+        return
+
+    if current_index >= len(session_files_str):
+        await _render_profile_setup_current_account(
+            callback.message, state, settings, language
+        )
+        return
+
+    cancel_event = asyncio.Event()
+    total = len(session_files_str) - current_index
+    progress = AutoProfileProgress(total=total)
+    ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
+
+    cancel_markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"❌ {cancel_label}",
+                    callback_data=f"conv:cancel:{tool}",
+                    style=ButtonStyle.DANGER.value,
+                )
+            ]
+        ]
+    )
+    status_msg = await callback.message.edit_text(
+        msgs_prof["auto_running"], reply_markup=cancel_markup
+    )
+
+    photo_dir = Path(tempfile.mkdtemp(prefix="ftgc_auto_prof_"))
+    used_usernames: set[str] = set()
+    progress_task = asyncio.create_task(
+        update_auto_profile_progress(status_msg, progress, msgs_prof["auto_running"], language)
+    )
+    try:
+        for idx, path_str in enumerate(
+            session_files_str[current_index:], start=current_index
+        ):
+            if cancel_event.is_set():
+                raise JobCancelled
+
+            cur_file = Path(path_str)
+            cached_info = _cached_profile_info(profiles_raw, idx)
+            phone = (
+                cached_info.phone
+                if cached_info and cached_info.phone
+                else cur_file.stem
+            )
+            identifier = phone if phone else cur_file.name
+            draft = generate_profile_draft(phone, used_usernames)
+            region = draft.region
+            username = draft.username
+
+            photo_bytes = await download_profile_photo(
+                draft.gender, country_nat(phone)
+            )
+            ok = await auto_apply_account_profile(
+                cur_file,
+                settings.api_credential_list,
+                draft,
+                photo_bytes,
+                photo_dir,
+            )
+            if ok:
+                progress.modified += 1
+            else:
+                progress.failed += 1
+
+            progress.done = idx - current_index + 1
+            progress.region = region
+            progress.identifier = identifier
+            progress.username = username
+            await asyncio.sleep(0.3)
+
+        await _stop_progress(progress_task)
+        await state.update_data(
+            current_index=len(session_files_str),
+            modified_count=progress.modified,
+            skipped_count=skipped_count,
+            failed_count=progress.failed,
+            pending={},
+        )
+        await _render_profile_setup_current_account(
+            status_msg, state, settings, language, done_text=msgs_prof["auto_done"]
+        )
+    except JobCancelled:
+        await _stop_progress(progress_task)
+        await state.clear()
+        await status_msg.edit_text(
+            msgs_prof["auto_cancelled"], reply_markup=main_menu(language)
+        )
+    finally:
+        ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
+        shutil.rmtree(photo_dir, ignore_errors=True)
+
+
 @router.callback_query(F.data == "prof_setup:noop")
 async def profile_setup_noop(callback: CallbackQuery) -> None:
     await callback.answer()
@@ -2765,6 +3017,9 @@ async def receive_account_age_file(
     language = user_language(session_factory, message.from_user.id)
     msgs_age = ACCOUNT_AGE_MESSAGES.get(language, ACCOUNT_AGE_MESSAGES["en"])
     path: Path | None = None
+    tool = "age"
+    progress_task: asyncio.Task[None] | None = None
+    res: AccountAgeResult | None = None
     try:
         path, name = await download_document(message, bot, settings, language)
         status = await message.answer(msgs_age["fetching"])
@@ -2773,13 +3028,27 @@ async def receive_account_age_file(
             await state.clear()
             return
 
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(message.from_user.id, tool)] = (cancel_event, progress)
+        progress_task = asyncio.create_task(
+            update_conversion_progress(
+                status, progress, msgs_age["fetching"], tool, language
+            )
+        )
+
         user_proxy = resolve_user_proxy(session_factory, message.from_user.id)
         res = await process_account_age_check(
             path,
             settings.api_credential_list,
             original_name=name,
             proxy=user_proxy,
+            concurrency=settings.account_age_concurrency,
+            progress=progress,
+            cancel_event=cancel_event,
+            output_dir=settings.storage_dir / "outbox",
         )
+        await _stop_progress(progress_task)
         if res.total == 0 or res.checked == 0 or not res.accounts:
             path.unlink(missing_ok=True)
             await state.clear()
@@ -2788,55 +3057,97 @@ async def receive_account_age_file(
             )
             return
 
-        if len(res.accounts) > 1:
-            await state.set_state(AccountAge.viewing_results)
-            await state.update_data(
-                accounts=[
-                    {
-                        "session_name": a.session_name,
-                        "user_id": a.user_id,
-                        "phone": a.phone,
-                        "username": a.username,
-                        "first_name": a.first_name,
-                        "last_name": a.last_name,
-                        "is_premium": a.is_premium,
-                        "dc_id": a.dc_id,
-                        "creation_estimate": a.creation_estimate,
-                        "exact_creation_date": a.exact_creation_date,
-                        "is_scam": a.is_scam,
-                        "is_fake": a.is_fake,
-                        "is_verified": a.is_verified,
-                    }
-                    for a in res.accounts
-                ],
-                res_total=res.total,
-                res_checked=res.checked,
-                res_failed=res.failed,
-                page=0,
-            )
-        else:
-            await state.clear()
+        total_pages = len(res.accounts) + 1
+        await state.set_state(AccountAge.viewing_results)
+        await state.update_data(
+            accounts=[
+                {
+                    "session_name": a.session_name,
+                    "user_id": a.user_id,
+                    "phone": a.phone,
+                    "username": a.username,
+                    "first_name": a.first_name,
+                    "last_name": a.last_name,
+                    "is_premium": a.is_premium,
+                    "dc_id": a.dc_id,
+                    "creation_estimate": a.creation_estimate,
+                    "exact_creation_date": a.exact_creation_date,
+                    "is_scam": a.is_scam,
+                    "is_fake": a.is_fake,
+                    "is_verified": a.is_verified,
+                }
+                for a in res.accounts
+            ],
+            res_total=res.total,
+            res_checked=res.checked,
+            res_failed=res.failed,
+            page=0,
+        )
 
-        report = format_account_age_report(res, msgs_age, page=0)
+        summary = format_registration_report_summary(res)
         await status.edit_text(
-            report,
+            summary,
             reply_markup=account_age_result_menu(
                 res.total,
                 res.checked,
                 res.failed,
                 language,
                 page=0,
-                total_pages=len(res.accounts),
+                total_pages=total_pages,
             ),
         )
+
+        report_path = res.report_path
+        if report_path is not None and report_path.exists():
+            await message.answer_document(
+                FSInputFile(report_path, filename=report_path.name),
+                caption=msgs_age.get(
+                    "report_caption", "📋 Registration Time Query Detailed Report"
+                ),
+            )
+        if res.classified_zip_path is not None and res.classified_zip_path.exists():
+            await message.answer_document(
+                FSInputFile(res.classified_zip_path, filename=res.classified_zip_path.name),
+                caption=msgs_age.get(
+                    "all_zip_caption",
+                    "📦 Registration time classified accounts ({count} accounts, sorted into folders by date)",
+                ).format(count=len(res.accounts)),
+            )
+        if res.failed_zip_path is not None and res.failed_zip_path.exists():
+            await message.answer_document(
+                FSInputFile(res.failed_zip_path, filename=res.failed_zip_path.name),
+                caption=msgs_age.get(
+                    "failed_zip_caption",
+                    "❌ Failed query accounts ({count}, with detailed failure reasons)",
+                ).format(count=res.failed),
+            )
+    except JobCancelled:
+        if progress_task is not None:
+            await _stop_progress(progress_task)
+        await status.edit_text(msgs_age["cancelled"], reply_markup=main_menu(language))
+        await state.clear()
     except Exception:
         LOGGER.exception("Account age check failed for user %s", message.from_user.id)
-        await message.answer(msgs_age["no_sessions"], reply_markup=main_menu(language))
+        if progress_task is not None:
+            await _stop_progress(progress_task)
+        await message.answer(msgs_age["request_failed"], reply_markup=main_menu(language))
         await state.clear()
     finally:
+        ACTIVE_CONVERSION_JOBS.pop((message.from_user.id, tool), None)
+        with suppress(Exception):
+            if progress_task is not None:
+                await _stop_progress(progress_task)
         if path is not None:
             path.unlink(missing_ok=True)
-
+        if res is not None:
+            with suppress(Exception):
+                for candidate in (
+                    res.report_path,
+                    res.classified_zip_path,
+                    res.failed_zip_path,
+                ):
+                    if candidate is not None and candidate.exists():
+                        candidate.unlink(missing_ok=True)
 
 @router.callback_query(F.data == "acc_age:noop")
 async def account_age_noop(callback: CallbackQuery) -> None:
@@ -2866,7 +3177,7 @@ async def account_age_page_navigate(
         accounts=accounts,
     )
 
-    total_pages = len(accounts)
+    total_pages = len(accounts) + 1
     page = max(0, min(page, total_pages - 1))
     await state.update_data(page=page)
     await callback.answer()
@@ -2874,7 +3185,10 @@ async def account_age_page_navigate(
     language = user_language(session_factory, callback.from_user.id)
     msgs_age = ACCOUNT_AGE_MESSAGES.get(language, ACCOUNT_AGE_MESSAGES["en"])
 
-    report = format_account_age_report(res, msgs_age, page=page)
+    if page == 0:
+        report = format_registration_report_summary(res)
+    else:
+        report = format_account_age_report(res, msgs_age, page=page - 1)
     await callback.message.edit_text(
         report,
         reply_markup=account_age_result_menu(
@@ -3200,12 +3514,14 @@ async def receive_fresh_session_2fa(
     with suppress(Exception):
         await message.delete()
     await state.update_data(password_2fa=password)
-    await state.set_state(FreshSession.confirming)
+    await state.set_state(FreshSession.waiting_for_new_password)
     await message.answer(
         EmojiRegistry.enrich(
-            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+            FRESH_SESSION_NEW_PASSWORD_PROMPT.get(
+                language, FRESH_SESSION_NEW_PASSWORD_PROMPT["en"]
+            )
         ),
-        reply_markup=fresh_session_confirm_menu(language),
+        reply_markup=fresh_session_new_password_menu(language),
     )
 
 
@@ -3222,12 +3538,14 @@ async def skip_fresh_session_2fa(
     language = user_language(session_factory, callback.from_user.id)
     await callback.answer()
     await state.update_data(password_2fa=None)
-    await state.set_state(FreshSession.confirming)
+    await state.set_state(FreshSession.waiting_for_new_password)
     await callback.message.edit_text(
         EmojiRegistry.enrich(
-            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+            FRESH_SESSION_NEW_PASSWORD_PROMPT.get(
+                language, FRESH_SESSION_NEW_PASSWORD_PROMPT["en"]
+            )
         ),
-        reply_markup=fresh_session_confirm_menu(language),
+        reply_markup=fresh_session_new_password_menu(language),
     )
 
 
@@ -3251,6 +3569,9 @@ async def confirm_fresh_session(
     file_path_str = data.get("file_path")
     original_name = data.get("original_name")
     password_2fa = data.get("password_2fa")
+    new_password = data.get("new_password")       # may be None (skip) or str
+    remove_password = bool(data.get("remove_password", False))
+    user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
 
     if not file_path_str:
         await callback.message.edit_text(
@@ -3260,7 +3581,20 @@ async def confirm_fresh_session(
         return
 
     input_path = Path(file_path_str)
-    await callback.message.edit_text(msgs["processing"])
+    status_message = await callback.message.edit_text(msgs["processing"])
+    if not isinstance(status_message, Message):
+        status_message = callback.message
+
+    tool = "fresh"
+    user_id = callback.from_user.id
+    cancel_event = asyncio.Event()
+    progress = JobProgress()
+    ACTIVE_CONVERSION_JOBS[(user_id, tool)] = (cancel_event, progress)
+    progress_task = asyncio.create_task(
+        update_conversion_progress(
+            status_message, progress, msgs["processing"], tool, language
+        )
+    )
 
     try:
         res = await process_fresh_sessions(
@@ -3268,6 +3602,11 @@ async def confirm_fresh_session(
             credentials=settings.api_credential_list,
             original_name=original_name,
             password_2fa=password_2fa or None,
+            new_password=new_password or None,
+            remove_password=remove_password,
+            proxy=user_proxy,
+            progress=progress,
+            cancel_event=cancel_event,
         )
 
         # Send new sessions ZIP
@@ -3297,24 +3636,44 @@ async def confirm_fresh_session(
         for d in res.details:
             old_name = html.quote(d.session_name)
             if d.status == "ok":
+                kick_tag = " 🦵" if d.kicked else ""
                 new_name = html.quote(f"{d.phone}.session") if d.phone else old_name
                 detail_lines.append(
-                    f"✅ <code>{old_name}</code> → <code>{new_name}</code>"
+                    f"✅ <code>{old_name}</code> → <code>{new_name}</code>{kick_tag}"
                 )
             else:
-                reason = html.quote(d.message[:60])
+                reason = html.quote(d.message[:50])
                 detail_lines.append(f"❌ <code>{old_name}</code> — {reason}")
-        details_str = "\n".join(detail_lines)
+
+        # Telegram hard limit: 4096 chars. Truncate gracefully.
+        MAX_DETAIL_LINES = 25
+        if len(detail_lines) > MAX_DETAIL_LINES:
+            shown = detail_lines[:MAX_DETAIL_LINES]
+            remaining = len(detail_lines) - MAX_DETAIL_LINES
+            shown.append(f"<i>... and {remaining} more</i>")
+            details_str = "\n".join(shown)
+        else:
+            details_str = "\n".join(detail_lines)
 
         summary_key = "done" if res.new_sessions_zip else "no_new"
         report = msgs[summary_key].format(
-            succeeded=res.succeeded, failed=res.failed, details=details_str
+            succeeded=res.succeeded, kicked=res.kicked, failed=res.failed,
+            details=details_str,
         )
+        # Guard: Telegram max message length is 4096 chars
+        if len(report) > 4000:
+            report = report[:3950] + "\n<i>... (truncated)</i>"
         await callback.message.edit_text(
             report,
             reply_markup=fresh_session_result_menu(
-                res.total, res.succeeded, res.failed, language
+                res.total, res.succeeded, res.kicked, res.failed, language
             ),
+        )
+    except JobCancelled:
+        await _stop_progress(progress_task)
+        await callback.message.edit_text(
+            msgs["cancelled"] if "cancelled" in msgs else msgs["processing"],
+            reply_markup=main_menu(language),
         )
     except Exception:
         LOGGER.exception("Fresh session error for user %s", callback.from_user.id)
@@ -3322,6 +3681,8 @@ async def confirm_fresh_session(
             msgs["request_failed"], reply_markup=main_menu(language)
         )
     finally:
+        ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
+        await _stop_progress(progress_task)
         input_path.unlink(missing_ok=True)
         await state.clear()
 
@@ -3329,6 +3690,79 @@ async def confirm_fresh_session(
 @router.callback_query(F.data == "fresh_sess:noop")
 async def fresh_session_noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+# ── New Password handlers ──────────────────────────────────────────────────────
+
+@router.message(FreshSession.waiting_for_new_password, F.text)
+async def receive_fresh_session_new_password(
+    message: Message,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """User typed a new 2FA password to set after re-authorization."""
+    if message.from_user is None or not message.text:
+        return
+    language = user_language(session_factory, message.from_user.id)
+    new_password = message.text.strip()
+    with suppress(Exception):
+        await message.delete()
+    await state.update_data(new_password=new_password, remove_password=False)
+    await state.set_state(FreshSession.confirming)
+    await message.answer(
+        EmojiRegistry.enrich(
+            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+        ),
+        reply_markup=fresh_session_confirm_menu(language),
+    )
+
+
+@router.callback_query(
+    StateFilter(FreshSession.waiting_for_new_password),
+    F.data == "fresh_sess:skip_new_password",
+)
+async def skip_fresh_session_new_password(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Skip new password — keep whatever password is already set."""
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+    language = user_language(session_factory, callback.from_user.id)
+    await callback.answer()
+    await state.update_data(new_password=None, remove_password=False)
+    await state.set_state(FreshSession.confirming)
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(
+            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+        ),
+        reply_markup=fresh_session_confirm_menu(language),
+    )
+
+
+@router.callback_query(
+    StateFilter(FreshSession.waiting_for_new_password),
+    F.data == "fresh_sess:remove_password",
+)
+async def remove_fresh_session_password(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """User chose to remove 2FA entirely on the new session."""
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+    language = user_language(session_factory, callback.from_user.id)
+    await callback.answer()
+    await state.update_data(new_password=None, remove_password=True)
+    await state.set_state(FreshSession.confirming)
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(
+            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
+        ),
+        reply_markup=fresh_session_confirm_menu(language),
+    )
 
 
 # ─── List Checker Flow ─────────────────────────────────────────────────────────
@@ -4570,12 +5004,12 @@ async def process_session_to_tdata_file(
         await status.edit_text(
             s2t_msgs.get("no_valid_sessions", "❌ Conversion failed."),
             reply_markup=main_menu(language),
-        )
+)
     finally:
         ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
-        if output_zip and output_zip.exists():
+        if output_zip is not None:
             output_zip.unlink(missing_ok=True)
-        if path and path.exists():
+        if path is not None:
             path.unlink(missing_ok=True)
         await state.clear()
 
@@ -4768,7 +5202,7 @@ async def process_account_to_txt_file(
         )
         detail_lines = [
             f"{'✅' if entry.status == 'active' else ('⚠️' if entry.status == 'invalid' else '❌')} "
-            f"{html.quote(entry.name)}"
+            f"{html.quote(entry.profile.identifier)}"
             + ("" if entry.status == "active" else f" — {html.quote(entry.reason)}")
             for entry in result.entries
         ]
@@ -4777,7 +5211,7 @@ async def process_account_to_txt_file(
             report = f"{report}\n{details}"
         if skipped:
             report += msgs["more"].format(count=skipped)
-        if output_zip is None:
+        if output_zip is None and result.phones_path is None:
             await status.edit_text(
                 f"{report}\n\n{msgs['no_output']}",
                 reply_markup=main_menu(language),
@@ -4793,6 +5227,16 @@ async def process_account_to_txt_file(
                 FSInputFile(output_zip, filename="account_txt.zip"),
                 caption=msgs.get("caption"),
             )
+            if result.phones_path is not None:
+                await message.answer_document(
+                    FSInputFile(result.phones_path, filename="phones.txt"),
+                    caption=msgs.get("phones_caption", "📄 Phone numbers"),
+                )
+            if result.status_path is not None:
+                await message.answer_document(
+                    FSInputFile(result.status_path, filename="phones_status.txt"),
+                    caption=msgs.get("status_caption", "📄 Phone numbers with status"),
+                )
     except JobCancelled:
         await _stop_progress(progress_task)
         await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
@@ -4811,6 +5255,10 @@ async def process_account_to_txt_file(
         ACTIVE_CONVERSION_JOBS.pop((user_id, tool), None)
         if output_zip is not None:
             output_zip.unlink(missing_ok=True)
+        if result.phones_path is not None:
+            result.phones_path.unlink(missing_ok=True)
+        if result.status_path is not None:
+            result.status_path.unlink(missing_ok=True)
         if path is not None:
             path.unlink(missing_ok=True)
         await state.clear()
@@ -5808,7 +6256,7 @@ async def process_quick_action(
                 report = f"{report}\n{details}"
             if skipped:
                 report += msgs["more"].format(count=skipped)
-            if txt_out is None:
+            if txt_out is None and result_txt.phones_path is None:
                 await status.edit_text(
                     f"{report}\n\n{msgs['no_output']}",
                     reply_markup=main_menu(language),
@@ -5823,10 +6271,21 @@ async def process_quick_action(
                         language,
                     ),
                 )
-                await callback.message.answer_document(
-                    FSInputFile(txt_out, filename="account_txt.zip"),
-                    caption=msgs.get("caption"),
-                )
+                if txt_out is not None:
+                    await callback.message.answer_document(
+                        FSInputFile(txt_out, filename="account_txt.zip"),
+                        caption=msgs.get("caption"),
+                    )
+                if result_txt.phones_path is not None:
+                    await callback.message.answer_document(
+                        FSInputFile(result_txt.phones_path, filename="phones.txt"),
+                        caption=msgs.get("phones_caption", "📄 Phone numbers"),
+                    )
+                if result_txt.status_path is not None:
+                    await callback.message.answer_document(
+                        FSInputFile(result_txt.status_path, filename="phones_status.txt"),
+                        caption=msgs.get("status_caption", "📄 Phone numbers with status"),
+                    )
         except JobCancelled:
             await _stop_progress(progress_task)
             await status.edit_text(msgs["cancelled"], reply_markup=main_menu(language))
@@ -5843,6 +6302,10 @@ async def process_quick_action(
                 await _stop_progress(progress_task)
             if txt_out and txt_out.exists():
                 txt_out.unlink(missing_ok=True)
+            if result_txt.phones_path and result_txt.phones_path.exists():
+                result_txt.phones_path.unlink(missing_ok=True)
+            if result_txt.status_path and result_txt.status_path.exists():
+                result_txt.status_path.unlink(missing_ok=True)
             file_path.unlink(missing_ok=True)
             await state.clear()
 
@@ -6068,6 +6531,16 @@ async def process_quick_action(
             await state.clear()
             return
 
+        tool = "prof"
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
+        progress_task = asyncio.create_task(
+            update_conversion_progress(
+                status, progress, msgs_prof["fetching"], tool, language
+            )
+        )
+
         temp_dir = Path(tempfile.mkdtemp(prefix="ftgc_prof_dir_"))
         extracted_files: list[Path] = []
         if file_path.suffix.lower() == ".zip":
@@ -6080,6 +6553,8 @@ async def process_quick_action(
         file_path.unlink(missing_ok=True)
 
         if not extracted_files:
+            await _stop_progress(progress_task)
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
             shutil.rmtree(temp_dir, ignore_errors=True)
             await state.clear()
             await status.edit_text(
@@ -6087,10 +6562,35 @@ async def process_quick_action(
             )
             return
 
+        profiles = await prefetch_account_profiles(
+            extracted_files,
+            settings.api_credential_list,
+            concurrency=settings.profile_setup_concurrency,
+            progress=progress,
+            cancel_event=cancel_event,
+        )
+        await _stop_progress(progress_task)
+        ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
+
+        valid_pairs = [
+            (f, p) for f, p in zip(extracted_files, profiles) if p is not None
+        ]
+        if not valid_pairs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            await state.clear()
+            await status.edit_text(
+                msgs_prof["no_sessions"], reply_markup=main_menu(language)
+            )
+            return
+
+        valid_files = [f for f, p in valid_pairs]
+        valid_profiles = [p.to_dict() for f, p in valid_pairs]
+
         await state.set_state(ProfileSetup.managing_account)
         await state.update_data(
             temp_dir=str(temp_dir),
-            session_files=[str(f) for f in extracted_files],
+            session_files=[str(f) for f in valid_files],
+            profiles=valid_profiles,
             current_index=0,
             modified_count=0,
             skipped_count=0,
@@ -6099,7 +6599,20 @@ async def process_quick_action(
             pending={},
         )
 
-        await _render_profile_setup_current_account(status, state, settings, language)
+        try:
+            await _render_profile_setup_current_account(
+                status, state, settings, language
+            )
+        except JobCancelled:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            await state.clear()
+            await status.edit_text(
+                msgs_prof["cancelled"], reply_markup=main_menu(language)
+            )
+        finally:
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
+            with contextlib.suppress(Exception):
+                await _stop_progress(progress_task)
 
     elif action == "account_age":
         if not isinstance(callback.message, Message):
@@ -6114,6 +6627,16 @@ async def process_quick_action(
             await state.clear()
             return
 
+        tool = "age"
+        cancel_event = asyncio.Event()
+        progress = JobProgress()
+        ACTIVE_CONVERSION_JOBS[(callback.from_user.id, tool)] = (cancel_event, progress)
+        progress_task = asyncio.create_task(
+            update_conversion_progress(
+                status, progress, msgs_age["fetching"], tool, language
+            )
+        )
+
         keep_state = False
         try:
             user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
@@ -6122,7 +6645,12 @@ async def process_quick_action(
                 settings.api_credential_list,
                 original_name=original_name,
                 proxy=user_proxy,
+                concurrency=settings.account_age_concurrency,
+                progress=progress,
+                cancel_event=cancel_event,
+                output_dir=settings.storage_dir / "outbox",
             )
+            await _stop_progress(progress_task)
 
             if res.total == 0 or res.checked == 0 or not res.accounts:
                 await status.edit_text(
@@ -6130,47 +6658,82 @@ async def process_quick_action(
                 )
                 return
 
-            if len(res.accounts) > 1:
-                await state.set_state(AccountAge.viewing_results)
-                await state.update_data(
-                    accounts=[
-                        {
-                            "session_name": a.session_name,
-                            "user_id": a.user_id,
-                            "phone": a.phone,
-                            "username": a.username,
-                            "first_name": a.first_name,
-                            "last_name": a.last_name,
-                            "is_premium": a.is_premium,
-                            "dc_id": a.dc_id,
-                            "creation_estimate": a.creation_estimate,
-                            "exact_creation_date": a.exact_creation_date,
-                            "is_scam": a.is_scam,
-                            "is_fake": a.is_fake,
-                            "is_verified": a.is_verified,
-                        }
-                        for a in res.accounts
-                    ],
-                    res_total=res.total,
-                    res_checked=res.checked,
-                    res_failed=res.failed,
-                    page=0,
-                )
-                keep_state = True
-            else:
-                await state.clear()
+            total_pages = len(res.accounts) + 1
+            await state.set_state(AccountAge.viewing_results)
+            await state.update_data(
+                accounts=[
+                    {
+                        "session_name": a.session_name,
+                        "user_id": a.user_id,
+                        "phone": a.phone,
+                        "username": a.username,
+                        "first_name": a.first_name,
+                        "last_name": a.last_name,
+                        "is_premium": a.is_premium,
+                        "dc_id": a.dc_id,
+                        "creation_estimate": a.creation_estimate,
+                        "exact_creation_date": a.exact_creation_date,
+                        "is_scam": a.is_scam,
+                        "is_fake": a.is_fake,
+                        "is_verified": a.is_verified,
+                    }
+                    for a in res.accounts
+                ],
+                res_total=res.total,
+                res_checked=res.checked,
+                res_failed=res.failed,
+                page=0,
+            )
+            keep_state = True
 
-            report = format_account_age_report(res, msgs_age, page=0)
+            summary = format_registration_report_summary(res)
             await status.edit_text(
-                report,
+                summary,
                 reply_markup=account_age_result_menu(
                     res.total,
                     res.checked,
                     res.failed,
                     language,
                     page=0,
-                    total_pages=len(res.accounts),
+                    total_pages=total_pages,
                 ),
+            )
+
+            report_path = res.report_path
+            if report_path is not None and report_path.exists():
+                await callback.message.answer_document(
+                    FSInputFile(report_path, filename=report_path.name),
+                    caption=msgs_age.get(
+                        "report_caption", "📋 Registration Time Query Detailed Report"
+                    ),
+                )
+            if (
+                res.classified_zip_path is not None
+                and res.classified_zip_path.exists()
+            ):
+                await callback.message.answer_document(
+                    FSInputFile(
+                        res.classified_zip_path, filename=res.classified_zip_path.name
+                    ),
+                    caption=msgs_age.get(
+                        "all_zip_caption",
+                        "📦 Registration time classified accounts ({count} accounts, sorted into folders by date)",
+                    ).format(count=len(res.accounts)),
+                )
+            if res.failed_zip_path is not None and res.failed_zip_path.exists():
+                await callback.message.answer_document(
+                    FSInputFile(
+                        res.failed_zip_path, filename=res.failed_zip_path.name
+                    ),
+                    caption=msgs_age.get(
+                        "failed_zip_caption",
+                        "❌ Failed query accounts ({count}, with detailed failure reasons)",
+                    ).format(count=res.failed),
+                )
+        except JobCancelled:
+            await _stop_progress(progress_task)
+            await status.edit_text(
+                msgs_age["cancelled"], reply_markup=main_menu(language)
             )
         except Exception:
             LOGGER.exception(
@@ -6182,6 +6745,9 @@ async def process_quick_action(
                     msgs_age["request_failed"], reply_markup=main_menu(language)
                 )
         finally:
+            ACTIVE_CONVERSION_JOBS.pop((callback.from_user.id, tool), None)
+            with contextlib.suppress(Exception):
+                await _stop_progress(progress_task)
             file_path.unlink(missing_ok=True)
             if not keep_state:
                 await state.clear()
@@ -6888,13 +7454,28 @@ async def run_mass_message_job_loop(
                     file_info.file_path, destination=media_file_path
                 )
 
-        # Initialize Telethon clients for session pool
-        for sf in session_files:
-            cli, run_sess, tmp = await create_telethon_client_for_session(
-                sf, settings.api_credential_list
-            )
-            if cli and run_sess and tmp:
-                clients.append((cli, sf, tmp))
+        # Initialize Telethon clients for session pool. Bootstrap is a connect
+        # + authorize check per session; run it in bounded parallel (shared api
+        # credentials / IP) instead of one-by-one.
+        bootstrap_semaphore = asyncio.Semaphore(
+            min(_MASS_BOOTSTRAP_CONCURRENCY, len(session_files) or 1)
+        )
+
+        async def bootstrap_one(
+            sf: Path,
+        ) -> tuple[Any, Path, tempfile.TemporaryDirectory[str]] | None:
+            async with bootstrap_semaphore:
+                cli, run_sess, tmp = await create_telethon_client_for_session(
+                    sf, settings.api_credential_list
+                )
+                if cli and run_sess and tmp:
+                    return cli, sf, tmp
+            return None
+
+        bootstrapped = await asyncio.gather(
+            *(bootstrap_one(sf) for sf in session_files)
+        )
+        clients = [entry for entry in bootstrapped if entry is not None]
 
         if not clients:
             completed_set = {d["recipient"] for d in details}

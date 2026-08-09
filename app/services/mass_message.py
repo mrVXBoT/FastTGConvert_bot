@@ -189,124 +189,158 @@ async def extract_contacts_from_sessions(
     seen: set[str] = set()
     stats: list[SessionContactStat] = []
 
-    for sess_file in session_files:
+    # Each session needs a connect + GetContactsRequest. Sequential fetching
+    # made multi-session batches slow; a bounded semaphore parallelizes while
+    # keeping the shared api_id / IP flood-safe. The starting credential pair
+    # is staggered round-robin so sessions do not all pile onto api_id #0.
+    fetch_semaphore = asyncio.Semaphore(
+        min(_CONTACTS_FETCH_CONCURRENCY, len(session_files) or 1)
+    )
+
+    async def fetch_one(index: int) -> tuple[SessionContactStat, list[Recipient]]:
+        sess_file = session_files[index]
         if not _is_valid_sqlite_session(sess_file):
-            stats.append(
+            return (
                 SessionContactStat(
                     session_name=sess_file.name,
                     status="invalid_sqlite",
                     contacts_found=0,
                     error_detail="Invalid SQLite database structure or missing auth_key",
-                )
+                ),
+                [],
             )
-            continue
 
-        sess_ok = False
-        last_err: str | None = None
+        async with fetch_semaphore:
+            last_err: str | None = None
+            session_recipients: list[Recipient] = []
 
-        for api_id, api_hash in credentials:
-            try:
-                from telethon import (  # type: ignore[import-untyped]
-                    TelegramClient,
-                    functions,
-                )
-            except ModuleNotFoundError:
-                last_err = "Telethon not installed"
-                break
+            if credentials:
+                start = index % len(credentials)
+                creds = credentials[start:] + credentials[:start]
+            else:
+                creds = credentials
 
-            with tempfile.TemporaryDirectory(prefix="ftgc_contacts_fetch_") as tmp:
-                run_sess = Path(tmp) / "acc.session"
-                shutil.copy2(sess_file, run_sess)
-                client = TelegramClient(
-                    str(run_sess.with_suffix("")),
-                    api_id,
-                    api_hash,
-                    receive_updates=False,
-                )
+            for api_id, api_hash in creds:
                 try:
-                    await client.connect()
-                    if not await client.is_user_authorized():
-                        last_err = "Session unauthorized or revoked"
-                        continue
-
-                    contacts_res = await client(
-                        functions.contacts.GetContactsRequest(hash=0)
+                    from telethon import (  # type: ignore[import-untyped]
+                        TelegramClient,
+                        functions,
                     )
-                    users = getattr(contacts_res, "users", [])
-                    found_count = len(users)
-                    sess_ok = True
+                except ModuleNotFoundError:
+                    last_err = "Telethon not installed"
+                    break
 
-                    for u in users:
-                        uid = getattr(u, "id", None)
-                        uname = getattr(u, "username", None)
-                        phone = getattr(u, "phone", None)
-                        key = str(uid or uname or phone)
-                        if not key or key in seen:
-                            continue
-                        seen.add(key)
+                with tempfile.TemporaryDirectory(prefix="ftgc_contacts_fetch_") as tmp:
+                    run_sess = Path(tmp) / "acc.session"
+                    shutil.copy2(sess_file, run_sess)
+                    from app.services.device_params import get_stable_device_params
+                    device_kwargs = get_stable_device_params(sess_file)
+                    client = TelegramClient(
+                        str(run_sess.with_suffix("")),
+                        api_id,
+                        api_hash,
+                        receive_updates=False,
+                        **device_kwargs,
+                    )
+                    try:
+                        await client.connect()
+                        if not await client.is_user_authorized():
+                            # Dead auth key: unauthorized under any api_id, so
+                            # stop rotating through the credential list.
+                            last_err = "Session unauthorized or revoked"
+                            break
 
-                        if uname:
-                            recipients.append(
-                                Recipient(
-                                    raw_identifier=f"@{uname}",
-                                    recipient_type="username",
-                                    username=uname,
-                                    user_id=uid,
-                                )
-                            )
-                        elif uid:
-                            recipients.append(
-                                Recipient(
-                                    raw_identifier=str(uid),
-                                    recipient_type="id",
-                                    user_id=uid,
-                                )
-                            )
-                        elif phone:
-                            recipients.append(
-                                Recipient(
-                                    raw_identifier=f"+{phone}",
-                                    recipient_type="phone",
-                                    phone=f"+{phone}",
-                                )
-                            )
-
-                    if found_count > 0:
-                        stats.append(
-                            SessionContactStat(
-                                session_name=sess_file.name,
-                                status="ok",
-                                contacts_found=found_count,
-                            )
+                        contacts_res = await client(
+                            functions.contacts.GetContactsRequest(hash=0)
                         )
-                    else:
-                        stats.append(
+                        users = getattr(contacts_res, "users", [])
+                        found_count = len(users)
+
+                        for u in users:
+                            uid = getattr(u, "id", None)
+                            uname = getattr(u, "username", None)
+                            phone = getattr(u, "phone", None)
+
+                            if uname:
+                                session_recipients.append(
+                                    Recipient(
+                                        raw_identifier=f"@{uname}",
+                                        recipient_type="username",
+                                        username=uname,
+                                        user_id=uid,
+                                    )
+                                )
+                            elif uid:
+                                session_recipients.append(
+                                    Recipient(
+                                        raw_identifier=str(uid),
+                                        recipient_type="id",
+                                        user_id=uid,
+                                    )
+                                )
+                            elif phone:
+                                session_recipients.append(
+                                    Recipient(
+                                        raw_identifier=f"+{phone}",
+                                        recipient_type="phone",
+                                        phone=f"+{phone}",
+                                    )
+                                )
+
+                        if found_count > 0:
+                            return (
+                                SessionContactStat(
+                                    session_name=sess_file.name,
+                                    status="ok",
+                                    contacts_found=found_count,
+                                ),
+                                session_recipients,
+                            )
+                        return (
                             SessionContactStat(
                                 session_name=sess_file.name,
                                 status="no_contacts",
                                 contacts_found=0,
                                 error_detail="Account has 0 saved Telegram contacts",
-                            )
+                            ),
+                            session_recipients,
                         )
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    last_err = str(exc)
-                    LOGGER.debug(
-                        "Contacts fetch failed for session %s: %s", sess_file.name, exc
-                    )
-                finally:
-                    with suppress(Exception):
-                        await client.disconnect()
+                    except Exception as exc:  # noqa: BLE001
+                        last_err = str(exc)
+                        LOGGER.debug(
+                            "Contacts fetch failed for session %s: %s",
+                            sess_file.name,
+                            exc,
+                        )
+                    finally:
+                        with suppress(Exception):
+                            await client.disconnect()
 
-        if not sess_ok:
-            stats.append(
+            return (
                 SessionContactStat(
                     session_name=sess_file.name,
-                    status="unauthorized" if last_err and "unauthorized" in last_err else "error",
+                    status="unauthorized"
+                    if last_err and "unauthorized" in last_err
+                    else "error",
                     contacts_found=0,
                     error_detail=last_err or "Connection failed",
-                )
+                ),
+                session_recipients,
             )
+
+    fetched = await asyncio.gather(
+        *(fetch_one(index) for index in range(len(session_files)))
+    )
+
+    for stat, session_recipients in fetched:
+        # Global dedupe in session order keeps recipients deterministic.
+        for r in session_recipients:
+            key = str(r.user_id or r.username or r.phone)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            recipients.append(r)
+        stats.append(stat)
 
     return ContactExtractionResult(recipients=recipients, stats=stats)
 
@@ -434,6 +468,11 @@ class ProcessRateLimiter:
 
 # Alias for backward compatibility
 GlobalRateLimiter = ProcessRateLimiter
+
+# Max concurrent contact fetches / client bootstraps. All sessions share the
+# global api_credential pairs (one IP / api_id), so the ceiling stays low.
+_CONTACTS_FETCH_CONCURRENCY = 8
+_BOOTSTRAP_CONCURRENCY = 8
 
 
 def format_mass_message_summary(
@@ -637,8 +676,10 @@ async def create_telethon_client_for_session(
         run_sess = Path(tmp.name) / "account.session"
         shutil.copy2(sess_file, run_sess)
 
+        from app.services.device_params import get_stable_device_params
+        device_kwargs = get_stable_device_params(sess_file)
         client = TelegramClient(
-            str(run_sess.with_suffix("")), api_id, api_hash, receive_updates=False
+            str(run_sess.with_suffix("")), api_id, api_hash, receive_updates=False, **device_kwargs
         )
         try:
             await client.connect()
@@ -760,12 +801,27 @@ async def resume_mass_message_job(
             await bot.download_file(file_info.file_path, destination=media_file_path)
 
     clients: list[tuple[Any, Path, tempfile.TemporaryDirectory[str]]] = []
-    for sf in session_files:
-        cli, run_sess, tmp = await create_telethon_client_for_session(
-            sf, api_credentials
-        )
-        if cli and run_sess and tmp:
-            clients.append((cli, sf, tmp))
+
+    # Client bootstrap is a connect + authorize check per session. Sequential
+    # bootstrap made resumes with many sessions slow (N×M connects worst
+    # case); a bounded semaphore keeps the shared api_id / IP flood-safe.
+    bootstrap_semaphore = asyncio.Semaphore(
+        min(_BOOTSTRAP_CONCURRENCY, len(session_files) or 1)
+    )
+
+    async def bootstrap_one(
+        sf: Path,
+    ) -> tuple[Any, Path, tempfile.TemporaryDirectory[str]] | None:
+        async with bootstrap_semaphore:
+            cli, run_sess, tmp = await create_telethon_client_for_session(
+                sf, api_credentials
+            )
+            if cli and run_sess and tmp:
+                return cli, sf, tmp
+        return None
+
+    bootstrapped = await asyncio.gather(*(bootstrap_one(sf) for sf in session_files))
+    clients = [entry for entry in bootstrapped if entry is not None]
 
     if not clients:
         for rec in recipients:

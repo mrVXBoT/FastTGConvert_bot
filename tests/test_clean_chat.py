@@ -416,6 +416,50 @@ def test_clean_chat_locales_and_keyboards():
     assert len(res_kb.inline_keyboard) == 4
 
 
+@pytest.mark.asyncio
+async def test_unauthorized_session_stops_credential_rotation(
+    dummy_session: Path,
+):
+    """A dead auth key is unauthorized under every api_id — the credential
+    loop must not burn a fresh connect handshake for each of the 10 pairs."""
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = False
+
+    with patch("telethon.TelegramClient", return_value=mock_client) as tc_mock:
+        res = await clean_session_chats(
+            dummy_session, [(1, "a"), (2, "b"), (3, "c")], mode="all"
+        )
+
+    assert res is False
+    assert tc_mock.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_deactivated_session_stops_credential_rotation(
+    dummy_session: Path,
+):
+    """AUTH_KEY_UNREGISTERED / USER_DEACTIVATED errors mean the session is
+    dead regardless of credentials; report failure instead of retrying."""
+    from telethon.errors import AuthKeyUnregisteredError
+
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+
+    async def mock_iter_dialogs():
+        raise AuthKeyUnregisteredError(request=None)
+        yield  # pragma: no cover
+
+    mock_client.iter_dialogs = mock_iter_dialogs
+
+    with patch("telethon.TelegramClient", return_value=mock_client) as tc_mock:
+        res = await clean_session_chats(
+            dummy_session, [(1, "a"), (2, "b"), (3, "c")], mode="all"
+        )
+
+    assert res is False
+    assert tc_mock.call_count == 1
+
+
 def test_clean_chat_choice_menu_premium_emojis():
     from app.ui import EmojiRegistry
 

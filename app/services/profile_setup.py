@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -10,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.services.file_merge import _is_valid_sqlite_session
+from app.services.jobs import JobCancelled, JobProgress
 from app.services.session_to_tdata import _ensure_opentele_patched
 
 LOGGER = logging.getLogger(__name__)
@@ -59,11 +61,14 @@ async def fetch_account_profile(
         for api_id, api_hash in credentials:
             client = None
             try:
-                client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_file)
+                client = TelegramClient(stem, api_id, api_hash, receive_updates=False, **device_kwargs)
                 await client.connect()
                 if not await client.is_user_authorized():
                     await client.disconnect()
-                    continue
+                    # Dead auth key: unauthorized under any api_id.
+                    break
 
                 me = await client.get_me()
                 uid = getattr(me, "id", 0)
@@ -97,6 +102,37 @@ async def fetch_account_profile(
     return None
 
 
+async def prefetch_account_profiles(
+    session_files: list[Path],
+    credentials: list[tuple[int, str]],
+    *,
+    concurrency: int = 50,
+    progress: JobProgress | None = None,
+    cancel_event: asyncio.Event | None = None,
+) -> list[AccountProfileInfo | None]:
+    """Fetch all session profiles concurrently (bounded by *concurrency*).
+
+    Returns a list aligned with *session_files*; ``None`` marks sessions
+    that failed to authorize.  Live progress/cancel support included.
+    """
+    total = len(session_files)
+    if progress is not None:
+        progress.total = total
+
+    semaphore = asyncio.Semaphore(max(1, min(concurrency, total or 1)))
+
+    async def tracked(index: int) -> AccountProfileInfo | None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise JobCancelled()
+        async with semaphore:
+            info = await fetch_account_profile(session_files[index], credentials)
+        if progress is not None:
+            progress.done += 1
+        return info
+
+    return await asyncio.gather(*(tracked(i) for i in range(total)))
+
+
 async def update_account_profile(
     session_file: Path,
     credentials: list[tuple[int, str]],
@@ -124,12 +160,16 @@ async def update_account_profile(
         for api_id, api_hash in credentials:
             client = None
             try:
-                client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_file)
+                client = TelegramClient(stem, api_id, api_hash, receive_updates=False, **device_kwargs)
                 await client.connect()
                 if not await client.is_user_authorized():
                     await client.disconnect()
-                    continue
+                    # Dead auth key: unauthorized under any api_id.
+                    break
 
+                applied = False
                 if first_name is not None or last_name is not None or about is not None:
                     me = await client.get_me()
                     cur_fn = (
@@ -149,22 +189,32 @@ async def update_account_profile(
                     if about is not None:
                         kwargs["about"] = about
                     await client(functions.account.UpdateProfileRequest(**kwargs))
+                    applied = True
 
                 if username is not None:
                     clean_un = username.lstrip("@").strip()
-                    await client(
-                        functions.account.UpdateUsernameRequest(username=clean_un)
-                    )
+                    try:
+                        await client(
+                            functions.account.UpdateUsernameRequest(username=clean_un)
+                        )
+                        applied = True
+                    except Exception as exc:  # noqa: BLE001
+                        LOGGER.warning("Username update skipped (%s): %s", clean_un, exc)
 
                 if photo_path is not None and photo_path.exists():
-                    uploaded = await client.upload_file(str(photo_path))
-                    await client(
-                        functions.photos.UploadProfilePhotoRequest(file=uploaded)
-                    )
+                    try:
+                        uploaded = await client.upload_file(str(photo_path))
+                        await client(
+                            functions.photos.UploadProfilePhotoRequest(file=uploaded)
+                        )
+                        applied = True
+                    except Exception as exc:  # noqa: BLE001
+                        LOGGER.warning("Photo upload skipped: %s", exc)
 
-                shutil.copy2(run_sess, session_file)
+                if applied:
+                    shutil.copy2(run_sess, session_file)
                 await client.disconnect()
-                return True
+                return applied
             except Exception as exc:  # noqa: BLE001
                 LOGGER.debug("Update profile failed with api_id=%d: %s", api_id, exc)
                 if client is not None:

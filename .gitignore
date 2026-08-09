@@ -15,6 +15,7 @@ x
 logs/
 *.log
 *.zip
+!device_params.zip
 *.db
 *.sqlite*
 merge_json_tdata/

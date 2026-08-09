@@ -19,8 +19,13 @@ from app.db.repositories import (
     save_broadcast_job_record,
     update_broadcast_job_progress,
 )
+from app.services.mass_message import ProcessRateLimiter
 
 LOGGER = logging.getLogger(__name__)
+
+# How many parallel senders one broadcast job may run. The global limiter
+# (0.04s pacing) keeps the bot at ~25 msg/s regardless of the pool size.
+_BROADCAST_WORKER_COUNT = 8
 
 
 @dataclass
@@ -160,76 +165,106 @@ class BroadcastQueueWorker:
         # Resume from current_index if restarted
         users_to_process = users[job.current_index :]
 
+        # Bounded worker pool with a global pacing limiter. Sequential sends
+        # are latency-bound (~2-5 msg/s); the pool raises throughput toward the
+        # shared limiter ceiling (25 msg/s) while keeping bot API flood-safe.
+        limiter = ProcessRateLimiter(min_interval_seconds=0.04)
+        work_queue: asyncio.Queue[tuple[int, Any]] = asyncio.Queue()
         for idx, user in enumerate(users_to_process, start=job.current_index):
-            if job.cancel_requested:
-                LOGGER.info("Broadcast job %s cancelled by admin.", job.job_id)
-                job.status = "cancelled"
-                break
+            work_queue.put_nowait((idx, user))
 
-            job.current_index = idx
+        # Resume-safety: current_index must stay the longest *contiguous*
+        # completed prefix, even though workers finish out of order.
+        attempted: set[int] = set()
+        completed_prefix = job.current_index
+        last_persist_prefix = job.current_index
+        state_lock = asyncio.Lock()
 
-            try:
-                if job.message_type == "forward" and job.from_chat_id and job.message_id:
-                    await bot.forward_message(
-                        chat_id=user.telegram_id,
-                        from_chat_id=job.from_chat_id,
-                        message_id=job.message_id,
-                    )
-                elif job.photo:
-                    await bot.send_photo(
-                        chat_id=user.telegram_id,
-                        photo=job.photo,
-                        caption=job.text,
-                        reply_markup=job.reply_markup,
-                    )
-                elif job.video:
-                    await bot.send_video(
-                        chat_id=user.telegram_id,
-                        video=job.video,
-                        caption=job.text,
-                        reply_markup=job.reply_markup,
-                    )
-                elif job.document:
-                    await bot.send_document(
-                        chat_id=user.telegram_id,
-                        document=job.document,
-                        caption=job.text,
-                        reply_markup=job.reply_markup,
-                    )
-                elif job.text:
-                    await bot.send_message(
-                        chat_id=user.telegram_id,
-                        text=job.text,
-                        reply_markup=job.reply_markup,
-                    )
-                job.sent_count += 1
-                await asyncio.sleep(0.04)
-            except TelegramRetryAfter as retry_err:
-                job.failed_count += 1
-                job.failed_user_ids.append(user.telegram_id)
-                await asyncio.sleep(retry_err.retry_after + 1)
-            except TelegramUnauthorizedError:
-                user.status = "banned"
-                job.failed_count += 1
-                job.failed_user_ids.append(user.telegram_id)
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.debug("Broadcast to %d failed: %s", user.telegram_id, exc)
-                job.failed_count += 1
-                job.failed_user_ids.append(user.telegram_id)
+        async def broadcast_worker() -> None:
+            nonlocal completed_prefix, last_persist_prefix
+            while not job.cancel_requested:
+                try:
+                    idx, user = work_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    return
+                await limiter.acquire()
 
-            # Persist DB progress batch every 10 users
-            if idx % 10 == 0:
-                update_broadcast_job_progress(
-                    session=session,
-                    job_id=job.job_id,
-                    total_users=job.total_users,
-                    sent_count=job.sent_count,
-                    failed_count=job.failed_count,
-                    current_index=idx,
-                    status="running",
-                )
+                try:
+                    if job.message_type == "forward" and job.from_chat_id and job.message_id:
+                        await bot.forward_message(
+                            chat_id=user.telegram_id,
+                            from_chat_id=job.from_chat_id,
+                            message_id=job.message_id,
+                        )
+                    elif job.photo:
+                        await bot.send_photo(
+                            chat_id=user.telegram_id,
+                            photo=job.photo,
+                            caption=job.text,
+                            reply_markup=job.reply_markup,
+                        )
+                    elif job.video:
+                        await bot.send_video(
+                            chat_id=user.telegram_id,
+                            video=job.video,
+                            caption=job.text,
+                            reply_markup=job.reply_markup,
+                        )
+                    elif job.document:
+                        await bot.send_document(
+                            chat_id=user.telegram_id,
+                            document=job.document,
+                            caption=job.text,
+                            reply_markup=job.reply_markup,
+                        )
+                    elif job.text:
+                        await bot.send_message(
+                            chat_id=user.telegram_id,
+                            text=job.text,
+                            reply_markup=job.reply_markup,
+                        )
+                    job.sent_count += 1
+                except TelegramRetryAfter as retry_err:
+                    job.failed_count += 1
+                    job.failed_user_ids.append(user.telegram_id)
+                    await asyncio.sleep(retry_err.retry_after + 1)
+                except TelegramUnauthorizedError:
+                    user.status = "banned"
+                    job.failed_count += 1
+                    job.failed_user_ids.append(user.telegram_id)
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.debug("Broadcast to %d failed: %s", user.telegram_id, exc)
+                    job.failed_count += 1
+                    job.failed_user_ids.append(user.telegram_id)
 
-        if job.status != "cancelled":
+                async with state_lock:
+                    attempted.add(idx)
+                    while completed_prefix in attempted:
+                        attempted.discard(completed_prefix)
+                        completed_prefix += 1
+                    job.current_index = completed_prefix
+                    if completed_prefix - last_persist_prefix >= 10:
+                        last_persist_prefix = completed_prefix
+                        update_broadcast_job_progress(
+                            session=session,
+                            job_id=job.job_id,
+                            total_users=job.total_users,
+                            sent_count=job.sent_count,
+                            failed_count=job.failed_count,
+                            current_index=completed_prefix,
+                            status="running",
+                        )
+
+        workers = [
+            asyncio.create_task(broadcast_worker())
+            for _ in range(min(_BROADCAST_WORKER_COUNT, len(users_to_process) or 1))
+        ]
+        await asyncio.gather(*workers)
+
+        if job.cancel_requested:
+            LOGGER.info("Broadcast job %s cancelled by admin.", job.job_id)
+            job.status = "cancelled"
+        elif job.status != "cancelled":
             job.status = "completed"
 
         update_broadcast_job_progress(

@@ -27,6 +27,9 @@ DC_IP_MAP = {
     5: "91.108.56.130",
 }
 
+# Max concurrent network probes (see account_to_txt._PROBE_CONCURRENCY).
+_PROBE_CONCURRENCY = 8
+
 
 @dataclass(frozen=True)
 class SessionJsonEntry:
@@ -139,15 +142,20 @@ async def process_session_to_json(
         outputs: list[tuple[str, str, bool]] = []
         entries: list[SessionJsonEntry] = []
 
-        for index, session_file in enumerate(session_files, start=1):
+        fetch_semaphore = asyncio.Semaphore(
+            min(_PROBE_CONCURRENCY, len(session_files) or 1)
+        )
+
+        async def probe_session(
+            index: int,
+        ) -> tuple[int, str, SessionJsonEntry, tuple[str, str, bool] | None]:
             if cancel_event is not None and cancel_event.is_set():
                 raise JobCancelled()
-            if progress is not None:
-                progress.done = index - 1
-
+            session_file = session_files[index]
             if not _is_structural_session(session_file):
-                failed += 1
-                entries.append(
+                return (
+                    index,
+                    "failed",
                     SessionJsonEntry(
                         profile=AccountProfile(
                             identifier=session_file.stem,
@@ -158,14 +166,14 @@ async def process_session_to_json(
                         ),
                         authorized=False,
                         reason="structural",
-                    )
+                    ),
+                    None,
                 )
-                continue
-
             connection = _session_connection(session_file)
             if connection is None:
-                failed += 1
-                entries.append(
+                return (
+                    index,
+                    "failed",
                     SessionJsonEntry(
                         profile=AccountProfile(
                             identifier=session_file.stem,
@@ -176,22 +184,21 @@ async def process_session_to_json(
                         ),
                         authorized=False,
                         reason="no_connection",
-                    )
+                    ),
+                    None,
                 )
-                continue
-
-            status, profile, reason = await fetch_account_profile(
-                session_file, credentials
-            )
+            async with fetch_semaphore:
+                status, profile, reason = await fetch_account_profile(
+                    session_file, credentials
+                )
             if status == "active" and profile is not None:
                 authorized = True
-                active += 1
             elif status == "invalid" and profile is not None:
                 authorized = False
-                invalid_converted += 1
             else:
-                failed += 1
-                entries.append(
+                return (
+                    index,
+                    "failed",
                     SessionJsonEntry(
                         profile=AccountProfile(
                             identifier=session_file.stem,
@@ -202,28 +209,47 @@ async def process_session_to_json(
                         ),
                         authorized=False,
                         reason=reason,
-                    )
+                    ),
+                    None,
                 )
-                continue
 
             dc_id, server_address = connection
-            entries.append(
-                SessionJsonEntry(profile=profile, authorized=authorized, reason=reason)
+            entry = SessionJsonEntry(
+                profile=profile, authorized=authorized, reason=reason
             )
-            outputs.append(
-                (
-                    f"{profile.identifier}.json",
-                    render_session_json(
-                        profile,
-                        dc_id=dc_id,
-                        server_address=server_address,
-                        authorized=authorized,
-                    ),
-                    authorized,
-                )
+            output = (
+                f"{profile.identifier}.json",
+                render_session_json(
+                    profile,
+                    dc_id=dc_id,
+                    server_address=server_address,
+                    authorized=authorized,
+                ),
+                authorized,
             )
+            return index, status, entry, output
+
+        async def tracked_probe(
+            index: int,
+        ) -> tuple[int, str, SessionJsonEntry, tuple[str, str, bool] | None]:
+            outcome = await probe_session(index)
             if progress is not None:
-                progress.done = index
+                progress.done += 1
+            return outcome
+
+        outcomes = await asyncio.gather(
+            *(tracked_probe(index) for index in range(len(session_files)))
+        )
+        for index, status, entry, output in sorted(outcomes, key=lambda item: item[0]):
+            if status == "active":
+                active += 1
+            elif status == "invalid":
+                invalid_converted += 1
+            else:
+                failed += 1
+            entries.append(entry)
+            if output is not None:
+                outputs.append(output)
 
         output_zip: Path | None = None
         if outputs:

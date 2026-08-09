@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -18,6 +19,10 @@ def _mask_api_id(api_id: int) -> str:
     """Mask an API credential id for log safety."""
     s = str(api_id)
     return f"{s[:3]}***" if len(s) > 3 else "***"
+
+
+# Max concurrent kill operations (shared api credentials / IP flood ceiling).
+_KILL_CONCURRENCY = 8
 
 
 @dataclass(frozen=True)
@@ -70,8 +75,10 @@ async def kill_single_session_others(
             shutil.copy2(session_file, run_sess)
             stem = str(run_sess.with_suffix(""))
 
+            from app.services.device_params import get_stable_device_params
+            device_kwargs = get_stable_device_params(session_file)
             client = TelegramClient(
-                stem, api_id, api_hash, receive_updates=False, proxy=proxy
+                stem, api_id, api_hash, receive_updates=False, proxy=proxy, **device_kwargs
             )
             try:
                 await client.connect()
@@ -118,7 +125,9 @@ async def process_kill_sessions(
         suffix = Path(original_name or input_path.name).suffix.lower()
         if suffix == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_kill_zip_")
-            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+            session_files = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, Path(temp_dir.name)
+            )
         elif suffix == ".session":
             if original_name:
                 temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_kill_one_")
@@ -134,8 +143,19 @@ async def process_kill_sessions(
         failed = 0
         details: list[SessionKillDetail] = []
 
-        for sess_file in session_files:
-            st, msg = await kill_single_session_others(sess_file, credentials, proxy=proxy)
+        # Each kill is a connect + ResetAuthorizationsRequest chain. Sequential
+        # execution made large batches slow; a bounded semaphore (shared api
+        # credentials / IP) keeps the flood risk in check while parallelizing.
+        kill_semaphore = asyncio.Semaphore(min(_KILL_CONCURRENCY, total or 1))
+
+        async def kill_one(index: int) -> tuple[str, str]:
+            async with kill_semaphore:
+                return await kill_single_session_others(
+                    session_files[index], credentials, proxy=proxy
+                )
+
+        outcomes = await asyncio.gather(*(kill_one(i) for i in range(total)))
+        for sess_file, (st, msg) in zip(session_files, outcomes):
             if st == "ok":
                 killed += 1
             elif st == "fresh_forbidden":

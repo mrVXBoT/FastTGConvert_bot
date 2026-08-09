@@ -1,3 +1,4 @@
+import asyncio
 import bisect
 import datetime
 import logging
@@ -5,13 +6,21 @@ import shutil
 import sqlite3
 import tempfile
 import threading
+import zipfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from aiogram import html
 
 from app.services.contacts_checker import extract_zip_sessions_safe
+from app.services.jobs import JobCancelled, JobProgress
+from app.services.tdata_to_session import (
+    _convert_tdata_dir_sync,
+    extract_zip_tdata_safe,
+    find_tdata_dirs,
+)
 from app.ui import EmojiRegistry
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +44,18 @@ _CACHE_LOCK = threading.Lock()
 _CACHED_MILESTONES: list[tuple[int, int, int, int]] | None = None
 _CACHED_MILESTONE_IDS: list[int] | None = None
 _CACHED_MTIME: float = 0.0
+
+# The official "@Telegram" service chat. Telegram sends the very first
+# message to every new account there, making its date equal to the
+# day the account registered (most accurate registration signal).
+_REGISTRATION_CHAT_ID = 777000
+
+# Human-readable labels for the registration-time source methods.
+SOURCE_LABELS = {
+    "telegram_chat": "From @Telegram official chat (✅ Most accurate)",
+    "saved_messages": "From Saved Messages (✅ Accurate)",
+    "estimation": "Estimated based on user ID (⚠️ May be inaccurate, error could be months or years)",
+}
 
 
 def load_dataset_milestones(
@@ -202,8 +223,7 @@ def estimate_account_creation(
     now = datetime.datetime.now(datetime.UTC).date()
     months_diff = max(0, (now.year - est_date.year) * 12 + (now.month - est_date.month))
 
-    month_name = _MONTH_NAMES[est_date.month - 1]
-    month_abbr = month_name[:3]
+    full_month = _MONTH_NAMES[est_date.month - 1]
 
     if months_diff < 1:
         rel_str = "newer than 1 month"
@@ -215,7 +235,7 @@ def estimate_account_creation(
 
     created_str = (
         f"~ {est_date.day}/{est_date.month}/{est_date.year}\n"
-        f"Estimated {est_date.day} {month_abbr} {est_date.year} ({rel_str})"
+        f"Estimated {est_date.day} {full_month[:3]} {est_date.year} ({rel_str})"
     )
 
     return est_date.year, est_date.month, created_str
@@ -245,6 +265,10 @@ class AccountAgeInfo:
     is_scam: bool = False
     is_fake: bool = False
     is_verified: bool = False
+    # New: how the registration time was resolved + extra metrics.
+    registration_source: str = ""
+    registration_common_groups: int = 0
+    registration_error: str = ""
 
     @property
     def dc_name(self) -> str:
@@ -256,6 +280,11 @@ class AccountAgeInfo:
         name = " ".join(p for p in parts if p).strip()
         return name if name else "N/A"
 
+    @property
+    def registration_date(self) -> str | None:
+        """Exact YYYY-MM-DD registration date when a precise method hit."""
+        return self.exact_creation_date
+
 
 @dataclass(frozen=True)
 class AccountAgeResult:
@@ -263,6 +292,14 @@ class AccountAgeResult:
     checked: int
     failed: int
     accounts: tuple[AccountAgeInfo, ...]
+    failure_entries: tuple[tuple[str, str], ...] = ()
+    report_path: Path | None = None
+    classified_zip_path: Path | None = None
+    failed_zip_path: Path | None = None
+
+    @property
+    def failures(self) -> tuple[tuple[str, str], ...]:
+        return self.failure_entries
 
 
 def _is_valid_session(path: Path) -> bool:
@@ -271,10 +308,59 @@ def _is_valid_session(path: Path) -> bool:
     try:
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
             row = conn.execute("SELECT auth_key FROM sessions LIMIT 1").fetchone()
-        auth_key = bytes(row[0]) if row and row[0] is not None else b""
-        return len(auth_key) == 256 and any(auth_key)
+        auth_key = bytes(row[0]) if row is not None and row[0] else b""
+        return len(auth_key) == 256 and any(byte != 0 for byte in auth_key)
     except (OSError, sqlite3.DatabaseError):
         return False
+
+
+async def _oldest_message_date(client: Any, entity: Any) -> datetime.datetime | None:
+    """Date of the oldest message in a chat, or None (incl. on errors)."""
+    try:
+        messages = await client.get_messages(entity, limit=1, reverse=True)
+        if messages and len(messages) > 0 and messages[0].date:
+            return messages[0].date
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.debug("Oldest-message probe failed for %r: %s", entity, exc)
+    return None
+
+
+async def _resolve_registration(
+    client: Any, user_id: int
+) -> tuple[str | None, str, str]:
+    """Best-effort registration date + human label.
+
+    Methods by priority (as in the product spec):
+      1. The date of Telegram's first message to the account in the
+         official lib chat: exactly = registration day (most accurate).
+      2. Saved Messages first entry (fairly accurate).
+      3. Estimate from the user ID over the bundled dataset.
+    Returns (date_str, source_key, human_label). date_str is None when no
+    precise signal exists and estimation failed.
+    """
+    date = await _oldest_message_date(client, _REGISTRATION_CHAT_ID)
+    if date is not None:
+        return date.strftime("%Y-%m-%d"), "telegram_chat", SOURCE_LABELS["telegram_chat"]
+
+    date = await _oldest_message_date(client, "me")
+    if date is not None:
+        return (
+            date.strftime("%Y-%m-%d"),
+            "saved_messages",
+            SOURCE_LABELS["saved_messages"],
+        )
+
+    try:
+        year, month, _ = estimate_account_creation(user_id)
+        est = datetime.date(year, month, 1)
+        return (
+            est.strftime("%Y-%m-%d"),
+            "estimation",
+            SOURCE_LABELS["estimation"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.debug("Registration estimation failed for user %d: %s", user_id, exc)
+        return None, "estimation", SOURCE_LABELS["estimation"]
 
 
 async def fetch_single_account_age(
@@ -282,6 +368,11 @@ async def fetch_single_account_age(
     credentials: list[tuple[int, str]],
     proxy: tuple | None = None,
 ) -> AccountAgeInfo | None:
+    """Resolve profile + registration time for one session file.
+
+    Returns a full :class:`AccountAgeInfo` on success, or None when the
+    session could not be authorized with any credential pair.
+    """
     if not _is_valid_session(session_path):
         return None
 
@@ -295,24 +386,27 @@ async def fetch_single_account_age(
         with tempfile.TemporaryDirectory(prefix="ftgc_age_client_") as tmp_dir:
             run_session = Path(tmp_dir) / "account.session"
             shutil.copy2(session_path, run_session)
+            from app.services.device_params import get_stable_device_params
+            device_kwargs = get_stable_device_params(session_path)
             client = TelegramClient(
                 str(run_session.with_suffix("")),
                 api_id,
                 api_hash,
                 receive_updates=False,
                 proxy=proxy,
+                **device_kwargs,
             )
             try:
                 await client.connect()
                 if not await client.is_user_authorized():
-                    return None
+                    continue
 
                 me = await client.get_me()
                 if not me:
-                    return None
+                    continue
 
-                user_id = me.id
-                phone = getattr(me, "phone", "") or "Unknown"
+                user_id = int(me.id)
+                phone = getattr(me, "phone", "") or ""
                 username = getattr(me, "username", "") or ""
                 first_name = getattr(me, "first_name", "") or ""
                 last_name = getattr(me, "last_name", "") or ""
@@ -320,36 +414,43 @@ async def fetch_single_account_age(
                 is_scam = bool(getattr(me, "scam", False))
                 is_fake = bool(getattr(me, "fake", False))
                 is_verified = bool(getattr(me, "verified", False))
-
                 dc_id = getattr(client.session, "dc_id", 0) or 0
 
                 _, _, estimate_str = estimate_account_creation(user_id)
 
-                exact_date_str: str | None = None
+                date_value, source, _ = await _resolve_registration(client, user_id)
+
+                # Count the account's group chat dialogs (bounded sample) as
+                # the "common groups" metric shown in the report.
+                common_groups = 0
                 with suppress(Exception):
-                    # Check for earliest service message from Telegram (777000)
-                    messages = await client.get_messages(777000, limit=1, reverse=True)
-                    if messages and len(messages) > 0 and messages[0].date:
-                        msg_date = messages[0].date
-                        exact_date_str = msg_date.strftime("%Y-%m-%d")
+                    dialog_count = 0
+                    async for dialog in client.iter_dialogs():
+                        if dialog.is_group or dialog.is_channel:
+                            common_groups += 1
+                        dialog_count += 1
+                        if dialog_count >= 2000:
+                            break
 
                 return AccountAgeInfo(
                     session_name=session_path.name,
                     user_id=user_id,
-                    phone=phone,
+                    phone=phone or "Unknown",
                     username=username,
                     first_name=first_name,
                     last_name=last_name,
                     is_premium=is_premium,
                     dc_id=dc_id,
                     creation_estimate=estimate_str,
-                    exact_creation_date=exact_date_str,
+                    exact_creation_date=date_value,
                     is_scam=is_scam,
                     is_fake=is_fake,
                     is_verified=is_verified,
+                    registration_source=source,
+                    registration_common_groups=common_groups,
                 )
             except RPCError as exc:
-                LOGGER.debug("Account age Telethon RPC error: %s", exc)
+                LOGGER.debug("Account age RPC error: %s", exc)
                 continue
             except (OSError, TimeoutError) as exc:
                 LOGGER.debug("Account age connection error: %s", exc)
@@ -370,38 +471,273 @@ async def process_account_age_check(
     *,
     original_name: str | None = None,
     proxy: tuple | None = None,
+    concurrency: int = 100,
+    progress: JobProgress | None = None,
+    cancel_event: asyncio.Event | None = None,
+    output_dir: Path | None = None,
 ) -> AccountAgeResult:
-    """Extract sessions and fetch account age information for all accounts."""
+    """Batch process sessions (or tdata) for accurate registration times.
+
+    Accepts a zip of sessions, a zip of tdata folders, or a single
+    ``.session`` file.  Processing is concurrent (bounded by *concurrency*,
+    default 100 — tune up to thousands of sessions per job).
+
+    When *output_dir* is given, three artifacts are produced there:
+
+    - ``registration_report_<ts>.txt``  — detailed per-account report;
+    - ``registration_all_<ts>.zip``     — session files sorted into
+      ``YYYY-MM-DD`` folders by registration date;
+    - ``query_failed_<ts>.zip``         — failed session files plus a
+      ``failed_reasons.txt`` inside.
+    """
+    session_files: list[Path] = []
     with tempfile.TemporaryDirectory(prefix="ftgc_age_work_") as work_dir:
-        work_path = Path(work_dir)
+        work = Path(work_dir)
         suffix = Path(original_name or input_path.name).suffix.lower()
 
         if suffix == ".zip":
-            sessions = extract_zip_sessions_safe(input_path, work_path)
+            sessions = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, work
+            )
+            session_files = sessions
+            if not session_files:
+                # TData archive fallback
+                tdata_work = work / "tdata"
+                tdata_work.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(extract_zip_tdata_safe, input_path, tdata_work)
+                tdata_dirs = await asyncio.to_thread(find_tdata_dirs, tdata_work)
+                for tdir in tdata_dirs:
+                    converted = await asyncio.to_thread(
+                        _convert_tdata_dir_sync, tdir, work
+                    )
+                    session_files.extend(converted)
         elif suffix == ".session":
-            target = work_path / Path(original_name or input_path.name).name
+            target = work / Path(original_name or input_path.name).name
             shutil.copy2(input_path, target)
-            sessions = [target]
-        else:
-            return AccountAgeResult(total=0, checked=0, failed=0, accounts=())
+            session_files = [target]
 
-        total = len(sessions)
+        total = len(session_files)
+        if progress is not None:
+            progress.total = total
+
         accounts: list[AccountAgeInfo] = []
-        failed = 0
+        failure_entries: list[tuple[str, str]] = []
+        fetch_semaphore = asyncio.Semaphore(max(1, min(concurrency, total or 1)))
 
-        for session_file in sessions:
-            info = await fetch_single_account_age(session_file, credentials, proxy=proxy)
+        async def tracked_fetch(index: int) -> AccountAgeInfo | None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise JobCancelled()
+            async with fetch_semaphore:
+                info = await fetch_single_account_age(
+                    session_files[index], credentials, proxy=proxy
+                )
+            if progress is not None:
+                progress.done += 1
+            return info
+
+        infos = await asyncio.gather(
+            *(tracked_fetch(index) for index in range(total))
+        )
+
+        failed = 0
+        for index, info in enumerate(infos):
             if info is not None:
                 accounts.append(info)
             else:
                 failed += 1
+                filename = session_files[index].name
+                if not _is_valid_session(session_files[index]):
+                    reason = "Invalid or corrupted session file"
+                else:
+                    reason = "Account unauthorized or expired"
+                failure_entries.append((filename, reason))
 
-        return AccountAgeResult(
+        result = AccountAgeResult(
             total=total,
             checked=len(accounts),
             failed=failed,
             accounts=tuple(accounts),
+            failure_entries=tuple(failure_entries),
         )
+
+        if output_dir is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            report_path, classified_zip, failed_zip = await asyncio.to_thread(
+                _build_outputs, work, result, session_files, output_dir
+            )
+            result = AccountAgeResult(
+                total=total,
+                checked=len(accounts),
+                failed=failed,
+                accounts=tuple(accounts),
+                failure_entries=tuple(failure_entries),
+                report_path=report_path,
+                classified_zip_path=classified_zip,
+                failed_zip_path=failed_zip,
+            )
+
+        return result
+
+
+def _build_outputs(
+    work: Path,
+    result: AccountAgeResult,
+    session_files: list[Path],
+    output_dir: Path,
+) -> tuple[Path | None, Path | None, Path | None]:
+    """Write the report txt + sorted/failed zips into *output_dir*.
+
+    Returns (report_path, classified_zip_path, failed_zip_path).
+    """
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    report_path: Path | None = None
+    if result.total > 0:
+        report_path = output_dir / f"registration_report_{timestamp}.txt"
+        report_path.write_text(format_registration_report(result), encoding="utf-8")
+
+    classified_zip: Path | None = None
+    if result.accounts:
+        classified_root = work / "classified"
+        classified_root.mkdir(exist_ok=True)
+        for info in result.accounts:
+            date_key = info.registration_date
+            if not date_key:
+                continue
+            src = next(
+                (p for p in session_files if p.name == info.session_name),
+                None,
+            )
+            if src is None or not src.exists():
+                continue
+            dest_dir = classified_root / date_key
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest_dir / src.name)
+        candidate = output_dir / f"registration_all_{timestamp}.zip"
+        if _zip_folder(classified_root, candidate):
+            classified_zip = candidate
+
+    failed_zip: Path | None = None
+    if result.failure_entries:
+        failed_root = work / "failed"
+        failed_root.mkdir(exist_ok=True)
+        for name, _reason in result.failure_entries:
+            src = next((p for p in session_files if p.name == name), None)
+            if src is None or not src.exists():
+                continue
+            shutil.copy2(src, failed_root / src.name)
+        (failed_root / "failed_reasons.txt").write_text(
+            "\n".join(
+                f"{name} | {reason}" for name, reason in result.failure_entries
+            ),
+            encoding="utf-8",
+        )
+        candidate = output_dir / f"query_failed_{timestamp}.zip"
+        if _zip_folder(failed_root, candidate):
+            failed_zip = candidate
+
+    return report_path, classified_zip, failed_zip
+
+
+def _zip_folder(folder: Path, out_zip: Path) -> bool:
+    """Zip *folder*'s contents (recursively) into *out_zip*.
+
+    Returns True when at least one file was archived.
+    """
+    files = sorted(p for p in folder.rglob("*") if p.is_file())
+    if not files:
+        return False
+    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in files:
+            archive.write(path, arcname=path.relative_to(folder).as_posix())
+    return True
+
+
+def format_registration_report(res: AccountAgeResult) -> str:
+    """Plain-text registration report (downloadable .txt).
+
+    Classified by full date (Year-Month-Day); every account shows File,
+    Phone, User ID, Name, Common Groups and the data source used.
+    """
+    lines: list[str] = [
+        "Registration Time Query Report",
+        "═" * 42,
+        "",
+        f"Total Accounts: {res.total}",
+        f"Success: {res.checked}",
+        f"Failed: {res.failed}",
+        "",
+        "Data sources:",
+        f"  1. {SOURCE_LABELS['telegram_chat']}",
+        f"  2. {SOURCE_LABELS['saved_messages']}",
+        f"  3. {SOURCE_LABELS['estimation']}",
+        "",
+    ]
+
+    if res.checked == 0 or not res.accounts:
+        lines.append("No accounts in the report.")
+        lines.append("")
+    else:
+        buckets: dict[str, list[AccountAgeInfo]] = {}
+        for acc in res.accounts:
+            key = acc.registration_date or "?"
+            if key == "?":
+                continue
+            buckets.setdefault(key, []).append(acc)
+
+        for date_key in sorted(buckets):
+            block = buckets[date_key]
+            lines.append(f"📅 {date_key} | {len(block)} account{'s' if len(block) > 1 else ''}")
+            lines.append("─" * 42)
+            for acc in sorted(block, key=lambda a: a.session_name):
+                source = SOURCE_LABELS.get(acc.registration_source, "?")
+                uname = f"@{acc.username}" if acc.username else "N/A"
+                lines.append(f"  File: {acc.session_name}")
+                lines.append(f"  Phone: {acc.phone}")
+                lines.append(f"  User ID: {acc.user_id}")
+                lines.append(f"  Name: {acc.full_name}")
+                lines.append(f"  Username: {uname}")
+                lines.append(f"  Common Groups: {acc.registration_common_groups}")
+                lines.append(f"  Source: {source}")
+                lines.append("")
+            lines.append("")
+
+    failed_entries = res.failure_entries
+    if failed_entries:
+        lines.append("Failed accounts:")
+        lines.append("─" * 42)
+        for name, err in failed_entries:
+            lines.append(f"  File: {name}")
+            lines.append(f"  Error: {err}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_registration_report_summary(res: AccountAgeResult) -> str:
+    """Bot chat summary message: stats + accounts per registration date."""
+    lines = [
+        "✅ Registration Time Query Complete",
+        "",
+        "Statistics:",
+        f"• Total: {res.total}",
+        f"• ✅ Success: {res.checked}",
+        f"• ❌ Failed: {res.failed}",
+        "",
+        "Classified by registration date:",
+    ]
+    buckets: dict[str, int] = {}
+    for acc in res.accounts:
+        date_key = acc.registration_date
+        if date_key:
+            buckets[date_key] = buckets.get(date_key, 0) + 1
+    if buckets:
+        for date_key in sorted(buckets):
+            lines.append(f"• {date_key}: {buckets[date_key]}")
+    else:
+        lines.append("• No accounts")
+    lines.extend(["", "📄 See detailed report in files below"])
+    return "\n".join(lines)
 
 
 def format_account_age_report(
@@ -429,18 +765,21 @@ def format_account_age_report(
     if acc.exact_creation_date:
         created_val = f"{acc.exact_creation_date} (Exact)"
         confidence_val = "🟢 High"
+        source_desc = "Community Dataset"
     elif (
         "after November 2025" in acc.creation_estimate
         or "after 11/2025" in acc.creation_estimate
     ):
         created_val = "After November 2025"
         confidence_val = "🟡 Low"
+        source_desc = "Community Dataset"
     elif (
         "before August 2013" in acc.creation_estimate
         or "before 8/2013" in acc.creation_estimate
     ):
         created_val = "Before August 2013"
         confidence_val = "🟡 Low"
+        source_desc = "Community Dataset"
     else:
         lines = [
             line.strip() for line in acc.creation_estimate.splitlines() if line.strip()
@@ -449,6 +788,7 @@ def format_account_age_report(
         # Interpolated between two dataset milestones — informative but not
         # exact, so Medium (never High) confidence.
         confidence_val = "🟡 Medium"
+        source_desc = "Community Dataset"
 
     header = (
         f"📦 <b>Accounts ({target_page + 1}/{len(res.accounts)})</b>\n\n"
@@ -470,7 +810,7 @@ def format_account_age_report(
         f"{divider}\n\n"
         f"Created     {created_val}\n"
         f"Confidence  {confidence_val}\n"
-        f"Source      Community Dataset\n\n"
+        f"Source      {source_desc}\n\n"
         f"📊 <b>Statistics</b>\n"
         f"{divider}\n\n"
         f"Gifts       0\n"

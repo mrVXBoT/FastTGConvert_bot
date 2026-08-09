@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -80,10 +81,13 @@ async def fetch_session_contacts(
         for api_id, api_hash in credentials:
             client = None
             try:
-                client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_file)
+                client = TelegramClient(stem, api_id, api_hash, receive_updates=False, **device_kwargs)
                 await client.connect()
                 if not await client.is_user_authorized():
-                    continue
+                    # Dead auth key: unauthorized under any api_id.
+                    break
 
                 res = await client(functions.contacts.GetContactsRequest(hash=0))
                 return _contacts_from_response(res)
@@ -110,7 +114,9 @@ async def fetch_input_contacts(
         suffix = Path(original_name or input_path.name).suffix.lower()
         if suffix == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_fetch_cnt_zip_")
-            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+            session_files = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, Path(temp_dir.name)
+            )
         elif suffix == ".session":
             session_files = [input_path]
 
@@ -167,10 +173,13 @@ async def delete_session_contacts(
             client = None
             deleted = False
             try:
-                client = TelegramClient(stem, api_id, api_hash, receive_updates=False)
+                from app.services.device_params import get_stable_device_params
+                device_kwargs = get_stable_device_params(session_file)
+                client = TelegramClient(stem, api_id, api_hash, receive_updates=False, **device_kwargs)
                 await client.connect()
                 if not await client.is_user_authorized():
-                    continue
+                    # Dead auth key: unauthorized under any api_id.
+                    break
 
                 response = await client(functions.contacts.GetContactsRequest(hash=0))
                 contacts = _contacts_from_response(response)
@@ -222,7 +231,9 @@ async def process_delete_contacts(
         suffix = Path(original_name or input_path.name).suffix.lower()
         if suffix == ".zip":
             temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_delcnt_zip_")
-            session_files = extract_zip_sessions_safe(input_path, Path(temp_dir.name))
+            session_files = await asyncio.to_thread(
+                extract_zip_sessions_safe, input_path, Path(temp_dir.name)
+            )
         elif suffix == ".session":
             if original_name:
                 temp_dir = tempfile.TemporaryDirectory(prefix="ftgc_delcnt_one_")

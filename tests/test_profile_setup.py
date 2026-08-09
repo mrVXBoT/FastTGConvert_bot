@@ -1,3 +1,4 @@
+import asyncio
 import re
 import sqlite3
 import zipfile
@@ -18,8 +19,10 @@ from app.locales import (
     PROFILE_SETUP_MESSAGES,
 )
 from app.services.profile_setup import (
+    JobCancelled,
     fetch_account_profile,
     package_profile_setup_results,
+    prefetch_account_profiles,
     update_account_profile,
 )
 
@@ -75,6 +78,95 @@ async def test_fetch_account_profile(dummy_session: Path):
     assert info.last_name == "Smith"
     assert info.username == "alicesmith"
     assert info.about == "Bio text"
+
+
+@pytest.mark.asyncio
+async def test_prefetch_account_profiles(dummy_session: Path):
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+
+    class DummyMe:
+        id = 12345
+        phone = "989123456789"
+        first_name = "Alice"
+        last_name = "Smith"
+        username = "alicesmith"
+
+    mock_client.get_me.return_value = DummyMe()
+
+    with patch("telethon.TelegramClient", return_value=mock_client):
+        results = await prefetch_account_profiles(
+            [dummy_session], [(123, "hash")], concurrency=5
+        )
+
+    assert len(results) == 1
+    assert results[0] is not None
+    assert results[0].user_id == 12345
+    assert results[0].first_name == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_prefetch_account_profiles_cancel(dummy_session: Path):
+    mock_client = AsyncMock()
+    mock_client.is_user_authorized.return_value = True
+
+    class DummyMe:
+        id = 12345
+        phone = "989123456789"
+        first_name = "Alice"
+        last_name = "Smith"
+        username = "alicesmith"
+
+    mock_client.get_me.return_value = DummyMe()
+    mock_client.connect.side_effect = RuntimeError("connection refused")
+
+    cancel_event = asyncio.Event()
+    cancel_event.set()
+
+    with pytest.raises(JobCancelled):
+        await prefetch_account_profiles(
+            [dummy_session],
+            [(123, "hash")],
+            concurrency=5,
+            cancel_event=cancel_event,
+        )
+
+
+def test_ensure_profile_photo_size_upscales(tmp_path: Path):
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.services.profile_automation import (
+        MIN_PROFILE_PHOTO_SIZE,
+        _ensure_profile_photo_size,
+    )
+
+    small = Image.new("RGB", (128, 128), (200, 30, 30))
+    buf = BytesIO()
+    small.save(buf, "JPEG", quality=90)
+    raw = buf.getvalue()
+
+    out = _ensure_profile_photo_size(raw)
+    assert out is not None
+    with Image.open(BytesIO(out)) as resized:
+        assert resized.width >= MIN_PROFILE_PHOTO_SIZE
+        assert resized.height >= MIN_PROFILE_PHOTO_SIZE
+
+
+def test_ensure_profile_photo_size_passthrough(tmp_path: Path):
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.services.profile_automation import _ensure_profile_photo_size
+
+    big = Image.new("RGB", (640, 640), (10, 200, 30))
+    buf = BytesIO()
+    big.save(buf, "JPEG", quality=90)
+    raw = buf.getvalue()
+
+    assert _ensure_profile_photo_size(raw) is raw
 
 
 @pytest.mark.asyncio
@@ -166,7 +258,7 @@ def test_profile_setup_locales_and_keyboards():
 
     kb_acc = profile_setup_account_menu("en")
     assert kb_acc is not None
-    assert len(kb_acc.inline_keyboard) == 5
+    assert len(kb_acc.inline_keyboard) == 6
 
     kb_res = profile_setup_result_menu(5, 3, 1, 1, "en")
     assert kb_res is not None
