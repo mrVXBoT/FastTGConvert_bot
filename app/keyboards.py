@@ -198,7 +198,14 @@ def _main_menu(
                     style=ButtonStyle.DANGER,
                     emoji_key="RESET",
                     is_vip=is_vip("reset_2fa"),
-                )
+                ),
+                button(
+                    "Login Email",
+                    file_action("tool:login_email", "quick:login_email"),
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SECURITY",
+                    is_vip=is_vip("login_email"),
+                ),
             ],
             [
                 button(
@@ -675,15 +682,15 @@ def channel_result_menu(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                button(msgs['btn_total'], "channel:noop", emoji_key="TOTAL"),
+                button(msgs["btn_total"], "channel:noop", emoji_key="TOTAL"),
                 button(str(total), "channel:noop"),
             ],
             [
-                button(msgs['btn_success'], "channel:noop", emoji_key="CONVERTED"),
+                button(msgs["btn_success"], "channel:noop", emoji_key="CONVERTED"),
                 button(str(success), "channel:noop"),
             ],
             [
-                button(msgs['btn_failed'], "channel:noop", emoji_key="FAILED"),
+                button(msgs["btn_failed"], "channel:noop", emoji_key="FAILED"),
                 button(str(failed), "channel:noop"),
             ],
             [
@@ -808,7 +815,11 @@ def _icon_button(
             text=label,
             callback_data=action,
             icon_custom_emoji_id=custom_id,
-            **({"style": style.value if isinstance(style, ButtonStyle) else style} if style else {}),
+            **(
+                {"style": style.value if isinstance(style, ButtonStyle) else style}
+                if style
+                else {}
+            ),
         )
     return Button.create(
         text=label, callback_data=action, emoji_key=emoji_key, style=style
@@ -820,8 +831,16 @@ def otp_initial_menu(language: str = "en") -> InlineKeyboardMarkup:
     cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [_icon_button(msgs["btn_check"], "otp:check", "CHECK", style=ButtonStyle.PRIMARY)],
-            [_icon_button(msgs["btn_skip"], "otp:skip", "SKIP", style=ButtonStyle.PRIMARY)],
+            [
+                _icon_button(
+                    msgs["btn_check"], "otp:check", "CHECK", style=ButtonStyle.PRIMARY
+                )
+            ],
+            [
+                _icon_button(
+                    msgs["btn_skip"], "otp:skip", "SKIP", style=ButtonStyle.PRIMARY
+                )
+            ],
             [
                 Button.create(
                     text=cancel_label,
@@ -840,8 +859,19 @@ def otp_checked_menu(language: str = "en") -> InlineKeyboardMarkup:
     cancel_label = CANCEL_LABELS.get(language, CANCEL_LABELS["en"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [_icon_button(msgs["btn_check_again"], "otp:check_again", "REFRESH", style=ButtonStyle.PRIMARY)],
-            [_icon_button(msgs["btn_skip"], "otp:skip", "SKIP", style=ButtonStyle.PRIMARY)],
+            [
+                _icon_button(
+                    msgs["btn_check_again"],
+                    "otp:check_again",
+                    "REFRESH",
+                    style=ButtonStyle.PRIMARY,
+                )
+            ],
+            [
+                _icon_button(
+                    msgs["btn_skip"], "otp:skip", "SKIP", style=ButtonStyle.PRIMARY
+                )
+            ],
             [
                 Button.create(
                     text=cancel_label,
@@ -866,7 +896,9 @@ def account_txt_result_menu(
                 button(str(total), "account_txt:noop"),
             ],
             [
-                button(msgs["btn_converted"], "account_txt:noop", emoji_key="CONVERTED"),
+                button(
+                    msgs["btn_converted"], "account_txt:noop", emoji_key="CONVERTED"
+                ),
                 button(str(converted), "account_txt:noop"),
             ],
             [
@@ -874,8 +906,18 @@ def account_txt_result_menu(
                 button(str(failed), "account_txt:noop"),
             ],
             [
-                button(msgs["btn_retry"], "account_txt:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
-                button(msgs["btn_home"], "account_txt:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
+                button(
+                    msgs["btn_retry"],
+                    "account_txt:retry",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="REFRESH",
+                ),
+                button(
+                    msgs["btn_home"],
+                    "account_txt:home",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONTACTS",
+                ),
             ],
         ]
     )
@@ -892,7 +934,9 @@ def session_json_result_menu(
                 button(str(total), "session_json:noop"),
             ],
             [
-                button(msgs["btn_converted"], "session_json:noop", emoji_key="CONVERTED"),
+                button(
+                    msgs["btn_converted"], "session_json:noop", emoji_key="CONVERTED"
+                ),
                 button(str(converted), "session_json:noop"),
             ],
             [
@@ -900,8 +944,18 @@ def session_json_result_menu(
                 button(str(failed), "session_json:noop"),
             ],
             [
-                button(msgs["btn_retry"], "session_json:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
-                button(msgs["btn_home"], "session_json:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
+                button(
+                    msgs["btn_retry"],
+                    "session_json:retry",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="REFRESH",
+                ),
+                button(
+                    msgs["btn_home"],
+                    "session_json:home",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONTACTS",
+                ),
             ],
         ]
     )
@@ -918,7 +972,9 @@ def session_to_tdata_result_menu(
                 button(str(total), "session_tdata:noop"),
             ],
             [
-                button(msgs["btn_converted"], "session_tdata:noop", emoji_key="CONVERTED"),
+                button(
+                    msgs["btn_converted"], "session_tdata:noop", emoji_key="CONVERTED"
+                ),
                 button(str(converted), "session_tdata:noop"),
             ],
             [
@@ -926,8 +982,18 @@ def session_to_tdata_result_menu(
                 button(str(failed), "session_tdata:noop"),
             ],
             [
-                button(msgs["btn_retry"], "session_tdata:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
-                button(msgs["btn_home"], "session_tdata:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
+                button(
+                    msgs["btn_retry"],
+                    "session_tdata:retry",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="REFRESH",
+                ),
+                button(
+                    msgs["btn_home"],
+                    "session_tdata:home",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONTACTS",
+                ),
             ],
         ]
     )
@@ -944,7 +1010,9 @@ def tdata_to_session_result_menu(
                 button(str(total), "tdata_session:noop"),
             ],
             [
-                button(msgs["btn_converted"], "tdata_session:noop", emoji_key="CONVERTED"),
+                button(
+                    msgs["btn_converted"], "tdata_session:noop", emoji_key="CONVERTED"
+                ),
                 button(str(converted), "tdata_session:noop"),
             ],
             [
@@ -952,8 +1020,18 @@ def tdata_to_session_result_menu(
                 button(str(failed), "tdata_session:noop"),
             ],
             [
-                button(msgs["btn_retry"], "tdata_session:retry", style=ButtonStyle.PRIMARY, emoji_key="REFRESH"),
-                button(msgs["btn_home"], "tdata_session:home", style=ButtonStyle.PRIMARY, emoji_key="CONTACTS"),
+                button(
+                    msgs["btn_retry"],
+                    "tdata_session:retry",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="REFRESH",
+                ),
+                button(
+                    msgs["btn_home"],
+                    "tdata_session:home",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="CONTACTS",
+                ),
             ],
         ]
     )
@@ -971,7 +1049,9 @@ def clear_contacts_result_menu(
                 button(str(total), "clear_contact:noop"),
             ],
             [
-                button(msgs["btn_success"], "clear_contact:noop", emoji_key="CONVERTED"),
+                button(
+                    msgs["btn_success"], "clear_contact:noop", emoji_key="CONVERTED"
+                ),
                 button(str(cleared), "clear_contact:noop"),
             ],
             [
@@ -1046,13 +1126,17 @@ def fresh_session_2fa_menu(language: str = "en") -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 _premium_icon_button(
-                    msgs["auto_detect_btn"], "fresh_sess:auto_detect", "SEARCH",
+                    msgs["auto_detect_btn"],
+                    "fresh_sess:auto_detect",
+                    "SEARCH",
                     style=ButtonStyle.PRIMARY,
                 )
             ],
             [
                 _premium_icon_button(
-                    msgs["skip_2fa"], "fresh_sess:skip_2fa", "SKIP",
+                    msgs["skip_2fa"],
+                    "fresh_sess:skip_2fa",
+                    "SKIP",
                     style=ButtonStyle.PRIMARY,
                 )
             ],
@@ -1103,7 +1187,11 @@ def fresh_session_result_menu(
                 button(str(succeeded), "fresh_sess:noop"),
             ],
             [
-                button(msgs.get("btn_kicked", "Kicked"), "fresh_sess:noop", emoji_key="KILL"),
+                button(
+                    msgs.get("btn_kicked", "Kicked"),
+                    "fresh_sess:noop",
+                    emoji_key="KILL",
+                ),
                 button(str(kicked), "fresh_sess:noop"),
             ],
             [
@@ -1289,11 +1377,7 @@ def delete_contact_selection_menu(
     for c in page_contacts:
         uid = c["user_id"]
         is_selected = uid in selected_ids
-        prefix = (
-            EmojiRegistry.format_text_emoji("CHECKBOX")
-            if is_selected
-            else "◻️"
-        )
+        prefix = EmojiRegistry.format_text_emoji("CHECKBOX") if is_selected else "◻️"
         first = c.get("first_name") or ""
         last = c.get("last_name") or ""
         phone = c.get("phone") or ""
@@ -1323,9 +1407,7 @@ def delete_contact_selection_menu(
         text=f"📄 {page + 1}/{total_pages}", callback_data="del_cnt:noop"
     )
     next_btn = InlineKeyboardButton(
-        text=EmojiRegistry.format_text_emoji("NEXT")
-        if page < total_pages - 1
-        else " ",
+        text=EmojiRegistry.format_text_emoji("NEXT") if page < total_pages - 1 else " ",
         callback_data=f"del_cnt_page:{page + 1}"
         if page < total_pages - 1
         else "del_cnt:noop",
@@ -1365,9 +1447,7 @@ def delete_contact_selection_menu(
     )
 
     # Cancel row
-    rows.append(
-        [button(cancel_label, "action:cancel", style=ButtonStyle.DANGER)]
-    )
+    rows.append([button(cancel_label, "action:cancel", style=ButtonStyle.DANGER)])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1621,19 +1701,25 @@ def mass_message_delay_menu(language: str = "en") -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 _premium_icon_button(
-                    msgs["btn_delay_fast"], "mass_msg_delay:10_20", "FAST",
+                    msgs["btn_delay_fast"],
+                    "mass_msg_delay:10_20",
+                    "FAST",
                     style=ButtonStyle.PRIMARY,
                 )
             ],
             [
                 _premium_icon_button(
-                    msgs["btn_delay_balanced"], "mass_msg_delay:20_60", "BALANCED",
+                    msgs["btn_delay_balanced"],
+                    "mass_msg_delay:20_60",
+                    "BALANCED",
                     style=ButtonStyle.PRIMARY,
                 )
             ],
             [
                 _premium_icon_button(
-                    msgs["btn_delay_safe"], "mass_msg_delay:60_120", "SPAM",
+                    msgs["btn_delay_safe"],
+                    "mass_msg_delay:60_120",
+                    "SPAM",
                     style=ButtonStyle.PRIMARY,
                 )
             ],
@@ -2034,12 +2120,27 @@ def proxy_menu(has_proxy: bool = False, language: str = "en") -> InlineKeyboardM
     }
     l = labels.get(language, labels["en"])
     rows = [
-        [button(l["set"], "proxy:set", style=ButtonStyle.PRIMARY, emoji_key="SETTINGS")],
-        [button(l["view"], "proxy:view", style=ButtonStyle.PRIMARY, emoji_key="SEARCH")],
+        [
+            button(
+                l["set"], "proxy:set", style=ButtonStyle.PRIMARY, emoji_key="SETTINGS"
+            )
+        ],
+        [
+            button(
+                l["view"], "proxy:view", style=ButtonStyle.PRIMARY, emoji_key="SEARCH"
+            )
+        ],
     ]
     if has_proxy:
         rows.append(
-            [button(l["remove"], "proxy:remove", style=ButtonStyle.DANGER, emoji_key="DELETE")]
+            [
+                button(
+                    l["remove"],
+                    "proxy:remove",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="DELETE",
+                )
+            ]
         )
     rows.append(
         [button(l["back"], "menu:back", style=ButtonStyle.PRIMARY, emoji_key="BACK")]

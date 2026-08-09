@@ -13,6 +13,10 @@ class JobProgress:
 
     total: int = 0
     done: int = 0
+    total_accounts: int = 0
+    processed_accounts: int = 0
+    cancel_requested: bool = False
+
 
 
 @dataclass

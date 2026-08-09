@@ -133,3 +133,9 @@ class PrivacySettings(StatesGroup):
 class ProxyState(StatesGroup):
     waiting_for_proxy = State()
 
+
+class LoginEmail(StatesGroup):
+    waiting_for_file = State()
+    viewing_results = State()
+
+

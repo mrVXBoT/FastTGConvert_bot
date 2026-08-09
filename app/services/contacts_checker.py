@@ -500,10 +500,12 @@ def extract_zip_sessions_safe(zip_path: Path, target_dir: Path) -> list[Path]:
                     raise UnsafeArchiveError("zip_suspicious_ratio")
 
         session_files: list[Path] = []
+        target_dir.mkdir(parents=True, exist_ok=True)
         for idx, info in enumerate(members):
             if Path(info.filename).suffix.lower() != ".session":
                 continue
             dest = target_dir / f"session_{idx}_{Path(info.filename).name}"
+            dest.parent.mkdir(parents=True, exist_ok=True)
             _extract_member_chunked(archive, info, dest)
             session_files.append(dest)
 
