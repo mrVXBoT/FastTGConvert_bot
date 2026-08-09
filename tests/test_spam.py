@@ -30,16 +30,24 @@ def test_limited_replies_are_spam_not_frozen() -> None:
     # The canonical SpamBot "limited" reply must be spam (appealable), NOT
     # frozen.  This was the bug that mislabelled accounts.
     for text in (
-        "This account is limited. If you think this is a mistake, please "
-        "contact us via the buttons below.",
+        (
+            "This account is limited. If you think this is a mistake, please "
+            "contact us via the buttons below."
+        ),
         "The account has been limited for sending spam.",
-        "This account has been limited by mistake, as it was reported by "
-        "other users as spam.",
+        (
+            "This account has been limited by mistake, as it was reported by "
+            "other users as spam."
+        ),
         "You can only send messages to mutual contacts.",
-        "This account is limited for sending unsolicited messages to "
-        "non-contacts.",
-        "This account is limited for sending unsolicited messages to people "
-        "who do not have your number.",
+        (
+            "This account is limited for sending unsolicited messages to "
+            "non-contacts."
+        ),
+        (
+            "This account is limited for sending unsolicited messages to people "
+            "who do not have your number."
+        ),
         "Your complaint has been successfully submitted.",
         "Appeal submitted. Our team of reviewers will look into your case.",
         "حساب شما به اشتباه محدود شده است.",
@@ -50,8 +58,10 @@ def test_limited_replies_are_spam_not_frozen() -> None:
 
 def test_tos_replies_are_frozen() -> None:
     for text in (
-        "This account has been blocked for violations of the Terms of "
-        "Service.",
+        (
+            "This account has been blocked for violations of the Terms of "
+            "Service."
+        ),
         "This account is frozen for violations of the Terms of Service.",
         "Your account has been restricted by the Terms of Service team.",
         "The account is frozen. To appeal, contact the team supervisor.",
@@ -106,7 +116,6 @@ async def test_no_credentials_returns_inconclusive() -> None:
 async def test_deactivated_session_is_banned(tmp_path) -> None:
     """A session that connects but is not authorised is a deactivated/banned
     account, never a corrupt file."""
-    from pathlib import Path
     from unittest.mock import AsyncMock, patch
 
     sess = tmp_path / "deact.session"
@@ -124,7 +133,6 @@ async def test_deactivated_session_is_banned(tmp_path) -> None:
 async def test_auth_key_duplicated_is_banned(tmp_path) -> None:
     """A session whose auth key was force-terminated is a banned/deactivated
     account."""
-    from pathlib import Path
     from unittest.mock import AsyncMock, patch
 
     from telethon.errors import AuthKeyDuplicatedError
@@ -143,7 +151,6 @@ async def test_auth_key_duplicated_is_banned(tmp_path) -> None:
 async def test_auth_key_unregistered_is_banned(tmp_path) -> None:
     """A session whose auth key is no longer registered server-side is a
     deactivated account."""
-    from pathlib import Path
     from unittest.mock import AsyncMock, patch
 
     from telethon.errors import AuthKeyUnregisteredError
@@ -162,7 +169,6 @@ async def test_auth_key_unregistered_is_banned(tmp_path) -> None:
 async def test_api_id_invalid_tries_next_credential(tmp_path) -> None:
     """An invalid api_id is credential-scoped: the next pair is tried and an
     OSError on it ends inconclusive (never a wrong bucket)."""
-    from pathlib import Path
     from unittest.mock import AsyncMock, patch
 
     from telethon.errors import ApiIdInvalidError
@@ -185,7 +191,6 @@ async def test_api_id_invalid_tries_next_credential(tmp_path) -> None:
 async def test_2fa_session_is_inconclusive_not_active(tmp_path) -> None:
     """A session protected by 2FA cannot reach @SpamBot, so it must never be
     reported as clean (active) — that would overclaim a No Restriction status."""
-    from pathlib import Path
     from unittest.mock import AsyncMock, patch
 
     from telethon.errors import SessionPasswordNeededError

@@ -30,13 +30,13 @@ from app.services.spam import (
 )
 from app.session_checker import (
     SessionCheckEntry,
+    SessionProgress,
     _classify_session_file,
     _collect_offline_statuses,
     _summarize,
     build_status_zips,
     check_sessions,
     check_sessions_detailed,
-    SessionProgress,
 )
 from app.session_results import SessionCheckResult
 

@@ -187,7 +187,10 @@ from app.services.files import (
     analyze_file,
     safe_filename,
 )
-from app.services.fresh_session import process_fresh_sessions
+from app.services.fresh_session import (
+    FAILURE_CATEGORY_LABELS,
+    process_fresh_sessions,
+)
 from app.services.jobs import AutoProfileProgress, JobCancelled, JobProgress
 from app.services.kill_sessions import process_kill_sessions
 from app.services.list_checker import compare_archive_files
@@ -201,6 +204,10 @@ from app.services.mass_message import (
     parse_recipients_from_file,
     send_mass_message_to_recipient,
 )
+from app.services.password_detection import (
+    detect_adjacent_passwords,
+    detect_zip_passwords,
+)
 from app.services.privacy_settings import process_privacy_settings
 from app.services.profile_automation import (
     auto_apply_account_profile,
@@ -210,7 +217,6 @@ from app.services.profile_automation import (
 )
 from app.services.profile_setup import (
     AccountProfileInfo,
-    fetch_account_profile,
     package_profile_setup_results,
     prefetch_account_profiles,
     update_account_profile,
@@ -310,6 +316,27 @@ def human_size(size: int) -> str:
             return f"{value:.2f} {unit}"
         value /= 1024
     return f"{value:.2f} GB"
+
+
+async def edit_or_reply_status(
+    bot: Bot,
+    chat_id: int,
+    status_msg_id: int | None,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> Message:
+    """Edit an existing status message if available, or send a new message and return it."""
+    if status_msg_id:
+        with suppress(Exception):
+            msg = await bot.edit_message_text(
+                text=text,
+                chat_id=chat_id,
+                message_id=status_msg_id,
+                reply_markup=reply_markup,
+            )
+            if isinstance(msg, Message):
+                return msg
+    return await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
 
 async def update_progress_bar(message: Message, base_text: str) -> None:
@@ -3444,10 +3471,11 @@ async def request_fresh_session(
     await state.set_state(FreshSession.waiting_for_file)
     await callback.answer()
     if isinstance(callback.message, Message):
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             ENTER_FRESH_SESSION_PROMPT.get(language, ENTER_FRESH_SESSION_PROMPT["en"]),
             reply_markup=cancel_menu(language),
         )
+        await state.update_data(status_msg_id=msg.message_id)
 
 
 @router.message(FreshSession.waiting_for_file, F.document)
@@ -3462,6 +3490,13 @@ async def receive_fresh_session_file(
         return
     language = user_language(session_factory, message.from_user.id)
     msgs = FRESH_SESSION_MESSAGES.get(language, FRESH_SESSION_MESSAGES["en"])
+
+    data = await state.get_data()
+    status_msg_id = data.get("status_msg_id")
+
+    with suppress(Exception):
+        await message.delete()
+
     path: Path | None = None
     saved_file: Path | None = None
     try:
@@ -3470,7 +3505,9 @@ async def receive_fresh_session_file(
         if not sessions:
             path.unlink(missing_ok=True)
             await state.clear()
-            await message.answer(msgs["no_sessions"], reply_markup=main_menu(language))
+            await edit_or_reply_status(
+                bot, message.chat.id, status_msg_id, msgs["no_sessions"], main_menu(language)
+            )
             return
 
         temp_storage = settings.storage_dir / "temp" / f"fresh_{uuid4().hex}"
@@ -3481,19 +3518,20 @@ async def receive_fresh_session_file(
         await state.update_data(file_path=str(saved_file), original_name=name)
         await state.set_state(FreshSession.waiting_for_2fa)
 
-        await message.answer(
-            EmojiRegistry.enrich(
-                FRESH_SESSION_2FA_PROMPT.get(language, FRESH_SESSION_2FA_PROMPT["en"])
-            ),
-            reply_markup=fresh_session_2fa_menu(language),
+        text = EmojiRegistry.enrich(
+            FRESH_SESSION_2FA_PROMPT.get(language, FRESH_SESSION_2FA_PROMPT["en"])
         )
+        msg = await edit_or_reply_status(
+            bot, message.chat.id, status_msg_id, text, fresh_session_2fa_menu(language)
+        )
+        await state.update_data(status_msg_id=msg.message_id)
     except Exception as exc:  # noqa: BLE001
         if saved_file is not None:
             saved_file.unlink(missing_ok=True)
         archive_errors = ARCHIVE_ERRORS.get(language, ARCHIVE_ERRORS["en"])
         error = archive_errors.get(str(exc), str(exc))
-        await message.answer(
-            f"❌ {html.quote(error)}", reply_markup=cancel_menu(language)
+        await edit_or_reply_status(
+            bot, message.chat.id, status_msg_id, f"❌ {html.quote(error)}", cancel_menu(language)
         )
         await state.clear()
     finally:
@@ -3504,6 +3542,7 @@ async def receive_fresh_session_file(
 @router.message(FreshSession.waiting_for_2fa, F.text)
 async def receive_fresh_session_2fa(
     message: Message,
+    bot: Bot,
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -3513,15 +3552,82 @@ async def receive_fresh_session_2fa(
     password = message.text.strip()
     with suppress(Exception):
         await message.delete()
+
     await state.update_data(password_2fa=password)
     await state.set_state(FreshSession.waiting_for_new_password)
-    await message.answer(
-        EmojiRegistry.enrich(
-            FRESH_SESSION_NEW_PASSWORD_PROMPT.get(
+
+    data = await state.get_data()
+    status_msg_id = data.get("status_msg_id")
+
+    text = EmojiRegistry.enrich(
+        FRESH_SESSION_NEW_PASSWORD_PROMPT.get(
+            language, FRESH_SESSION_NEW_PASSWORD_PROMPT["en"]
+        )
+    )
+    msg = await edit_or_reply_status(
+        bot, message.chat.id, status_msg_id, text, fresh_session_new_password_menu(language)
+    )
+    await state.update_data(status_msg_id=msg.message_id)
+
+
+@router.callback_query(
+    StateFilter(FreshSession.waiting_for_2fa), F.data == "fresh_sess:auto_detect"
+)
+async def auto_detect_fresh_session_2fa(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Scan the uploaded files for 2FA passwords and skip manual input."""
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        return
+    language = user_language(session_factory, callback.from_user.id)
+    msgs = FRESH_SESSION_MESSAGES.get(language, FRESH_SESSION_MESSAGES["en"])
+    await callback.answer()
+
+    data = await state.get_data()
+    file_path_str = data.get("file_path")
+    if not file_path_str:
+        await callback.message.edit_text(
+            msgs["no_sessions"], reply_markup=main_menu(language)
+        )
+        await state.clear()
+        return
+
+    input_path = Path(file_path_str)
+    try:
+        if input_path.suffix.lower() == ".zip":
+            per_session, default_password = detect_zip_passwords(input_path)
+        else:
+            per_session, default_password = detect_adjacent_passwords(input_path)
+    except Exception:
+        LOGGER.exception("Fresh session auto-detect failed for user %s", callback.from_user.id)
+        per_session, default_password = {}, None
+
+    found = len(per_session) + (1 if default_password else 0)
+    await state.update_data(
+        auto_passwords=per_session,
+        auto_default_password=default_password,
+        password_2fa=None,
+    )
+    await state.set_state(FreshSession.waiting_for_new_password)
+
+    if found == 0:
+        new_text = msgs["auto_detect_none"]
+        reply_markup = fresh_session_2fa_menu(language)
+        await state.set_state(FreshSession.waiting_for_2fa)
+    else:
+        new_text = (
+            msgs["auto_detect_found"].format(detected=found)
+            + "\n\n"
+            + FRESH_SESSION_NEW_PASSWORD_PROMPT.get(
                 language, FRESH_SESSION_NEW_PASSWORD_PROMPT["en"]
             )
-        ),
-        reply_markup=fresh_session_new_password_menu(language),
+        )
+        reply_markup = fresh_session_new_password_menu(language)
+
+    await callback.message.edit_text(
+        EmojiRegistry.enrich(new_text), reply_markup=reply_markup
     )
 
 
@@ -3537,7 +3643,7 @@ async def skip_fresh_session_2fa(
         return
     language = user_language(session_factory, callback.from_user.id)
     await callback.answer()
-    await state.update_data(password_2fa=None)
+    await state.update_data(password_2fa=None, status_msg_id=callback.message.message_id)
     await state.set_state(FreshSession.waiting_for_new_password)
     await callback.message.edit_text(
         EmojiRegistry.enrich(
@@ -3571,6 +3677,8 @@ async def confirm_fresh_session(
     password_2fa = data.get("password_2fa")
     new_password = data.get("new_password")       # may be None (skip) or str
     remove_password = bool(data.get("remove_password", False))
+    auto_passwords = data.get("auto_passwords") or {}
+    auto_default_password = data.get("auto_default_password")
     user_proxy = resolve_user_proxy(session_factory, callback.from_user.id)
 
     if not file_path_str:
@@ -3607,29 +3715,9 @@ async def confirm_fresh_session(
             proxy=user_proxy,
             progress=progress,
             cancel_event=cancel_event,
+            password_map=dict(auto_passwords),
+            default_password=auto_default_password or None,
         )
-
-        # Send new sessions ZIP
-        if res.new_sessions_zip and res.new_sessions_zip.exists():
-            caption = msgs["new_zip_caption"].format(succeeded=res.succeeded)
-            await bot.send_document(
-                chat_id=callback.from_user.id,
-                document=FSInputFile(
-                    res.new_sessions_zip, filename="fresh_sessions.zip"
-                ),
-                caption=caption,
-            )
-            res.new_sessions_zip.unlink(missing_ok=True)
-
-        # Send failed ZIP
-        if res.failed_zip and res.failed_zip.exists():
-            caption = msgs["fail_zip_caption"].format(failed=res.failed)
-            await bot.send_document(
-                chat_id=callback.from_user.id,
-                document=FSInputFile(res.failed_zip, filename="failed_sessions.zip"),
-                caption=caption,
-            )
-            res.failed_zip.unlink(missing_ok=True)
 
         # Build per-session detail lines: Old → New (or error reason)
         detail_lines: list[str] = []
@@ -3643,7 +3731,9 @@ async def confirm_fresh_session(
                 )
             else:
                 reason = html.quote(d.message[:50])
-                detail_lines.append(f"❌ <code>{old_name}</code> — {reason}")
+                label = FAILURE_CATEGORY_LABELS.get(d.category)
+                prefix = f" — <b>{label}</b>" if label else ""
+                detail_lines.append(f"❌ <code>{old_name}</code>{prefix}: {reason}")
 
         # Telegram hard limit: 4096 chars. Truncate gracefully.
         MAX_DETAIL_LINES = 25
@@ -3660,15 +3750,57 @@ async def confirm_fresh_session(
             succeeded=res.succeeded, kicked=res.kicked, failed=res.failed,
             details=details_str,
         )
-        # Guard: Telegram max message length is 4096 chars
-        if len(report) > 4000:
-            report = report[:3950] + "\n<i>... (truncated)</i>"
-        await callback.message.edit_text(
-            report,
-            reply_markup=fresh_session_result_menu(
-                res.total, res.succeeded, res.kicked, res.failed, language
-            ),
+        result_kb = fresh_session_result_menu(
+            res.total, res.succeeded, res.kicked, res.failed, language
         )
+
+        # Send failed ZIP if any accounts failed
+        if res.failed_zip and res.failed_zip.exists():
+            fail_caption = msgs["fail_zip_caption"].format(failed=res.failed)
+            await bot.send_document(
+                chat_id=callback.from_user.id,
+                document=FSInputFile(res.failed_zip, filename="failed_sessions.zip"),
+                caption=fail_caption,
+            )
+            res.failed_zip.unlink(missing_ok=True)
+
+        # Send new sessions ZIP with caption & keyboard if present
+        if res.new_sessions_zip and res.new_sessions_zip.exists():
+            zip_title = msgs["new_zip_caption"].format(succeeded=res.succeeded)
+            caption = f"{zip_title}\n\n{report}"
+            if len(caption) <= 1024:
+                with suppress(Exception):
+                    await status_message.delete()
+                await bot.send_document(
+                    chat_id=callback.from_user.id,
+                    document=FSInputFile(
+                        res.new_sessions_zip, filename="fresh_sessions.zip"
+                    ),
+                    caption=caption,
+                    reply_markup=result_kb,
+                )
+            else:
+                await bot.send_document(
+                    chat_id=callback.from_user.id,
+                    document=FSInputFile(
+                        res.new_sessions_zip, filename="fresh_sessions.zip"
+                    ),
+                    caption=zip_title,
+                )
+                if len(report) > 4000:
+                    report = report[:3950] + "\n<i>... (truncated)</i>"
+                await status_message.edit_text(
+                    report,
+                    reply_markup=result_kb,
+                )
+            res.new_sessions_zip.unlink(missing_ok=True)
+        else:
+            if len(report) > 4000:
+                report = report[:3950] + "\n<i>... (truncated)</i>"
+            await status_message.edit_text(
+                report,
+                reply_markup=result_kb,
+            )
     except JobCancelled:
         await _stop_progress(progress_task)
         await callback.message.edit_text(
@@ -3697,6 +3829,7 @@ async def fresh_session_noop(callback: CallbackQuery) -> None:
 @router.message(FreshSession.waiting_for_new_password, F.text)
 async def receive_fresh_session_new_password(
     message: Message,
+    bot: Bot,
     state: FSMContext,
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -3707,14 +3840,20 @@ async def receive_fresh_session_new_password(
     new_password = message.text.strip()
     with suppress(Exception):
         await message.delete()
+
     await state.update_data(new_password=new_password, remove_password=False)
     await state.set_state(FreshSession.confirming)
-    await message.answer(
-        EmojiRegistry.enrich(
-            FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
-        ),
-        reply_markup=fresh_session_confirm_menu(language),
+
+    data = await state.get_data()
+    status_msg_id = data.get("status_msg_id")
+
+    text = EmojiRegistry.enrich(
+        FRESH_SESSION_CONFIRM_PROMPT.get(language, FRESH_SESSION_CONFIRM_PROMPT["en"])
     )
+    msg = await edit_or_reply_status(
+        bot, message.chat.id, status_msg_id, text, fresh_session_confirm_menu(language)
+    )
+    await state.update_data(status_msg_id=msg.message_id)
 
 
 @router.callback_query(
@@ -3731,7 +3870,7 @@ async def skip_fresh_session_new_password(
         return
     language = user_language(session_factory, callback.from_user.id)
     await callback.answer()
-    await state.update_data(new_password=None, remove_password=False)
+    await state.update_data(new_password=None, remove_password=False, status_msg_id=callback.message.message_id)
     await state.set_state(FreshSession.confirming)
     await callback.message.edit_text(
         EmojiRegistry.enrich(
@@ -3755,7 +3894,7 @@ async def remove_fresh_session_password(
         return
     language = user_language(session_factory, callback.from_user.id)
     await callback.answer()
-    await state.update_data(new_password=None, remove_password=True)
+    await state.update_data(new_password=None, remove_password=True, status_msg_id=callback.message.message_id)
     await state.set_state(FreshSession.confirming)
     await callback.message.edit_text(
         EmojiRegistry.enrich(

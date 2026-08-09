@@ -1,7 +1,7 @@
 """tests/test_fresh_session.py — Tests for the Fresh Session migration service."""
 
-from datetime import datetime, timezone
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -24,7 +24,7 @@ class _FakeSent:
 
 
 class _FakeMsg:
-    date = datetime.now(timezone.utc)
+    date = datetime.now(UTC)
     message = "Login code: 12345"
 
 
@@ -71,6 +71,53 @@ async def test_freshen_single_session_invalid_2fa_password(tmp_path: Path):
 
     assert detail.status == "2fa_required"
     assert "Invalid 2FA password" in detail.message
+    assert detail.category == "wrong_password"
+
+
+@pytest.mark.asyncio
+async def test_freshen_single_session_invalid_2fa_detected_from_map(tmp_path: Path):
+    from telethon.errors import (
+        PasswordHashInvalidError,
+        SessionPasswordNeededError,
+    )
+
+    from app.services.fresh_session import freshen_single_session
+
+    sess = tmp_path / "session_0_acc1.session"
+    _make_valid_session(sess)
+
+    me = _FakeMe()
+    sent = _FakeSent()
+    msg = _FakeMsg()
+
+    old_client = AsyncMock()
+    old_client.connect = AsyncMock()
+    old_client.is_user_authorized = AsyncMock(return_value=True)
+    old_client.get_me = AsyncMock(return_value=me)
+    old_client.get_messages = AsyncMock(return_value=[msg])
+    old_client.disconnect = AsyncMock()
+
+    new_client = AsyncMock()
+    new_client.connect = AsyncMock()
+    new_client.send_code_request = AsyncMock(return_value=sent)
+    new_client.sign_in = AsyncMock(
+        side_effect=[
+            SessionPasswordNeededError(request=None),
+            PasswordHashInvalidError(request=None),
+        ]
+    )
+    new_client.disconnect = AsyncMock()
+
+    with patch("telethon.TelegramClient", side_effect=[old_client, new_client]):
+        detail = await freshen_single_session(
+            sess,
+            [(123, "hash")],
+            tmp_path,
+            password_map={"acc1.session": "wrong-from-json"},
+        )
+
+    assert detail.status == "2fa_required"
+    assert detail.category == "wrong_password"
 
 
 @pytest.mark.asyncio
@@ -108,3 +155,61 @@ async def test_freshen_single_session_otp_success(tmp_path: Path):
     assert detail.status == "ok"
     assert "New session created" in detail.message
 
+
+@pytest.mark.asyncio
+async def test_freshen_single_session_banned_category(tmp_path: Path):
+    from telethon.errors import PhoneNumberBannedError
+
+    from app.services.fresh_session import freshen_single_session
+
+    sess = tmp_path / "banned.session"
+    _make_valid_session(sess)
+
+    old_client = AsyncMock()
+    old_client.connect = AsyncMock()
+    old_client.is_user_authorized = AsyncMock(return_value=True)
+    old_client.get_me = AsyncMock(side_effect=PhoneNumberBannedError(request=None))
+    old_client.disconnect = AsyncMock()
+
+    new_client = AsyncMock()
+    new_client.connect = AsyncMock()
+    new_client.disconnect = AsyncMock()
+
+    with patch("telethon.TelegramClient", side_effect=[old_client, new_client]):
+        detail = await freshen_single_session(sess, [(123, "hash")], tmp_path)
+
+    assert detail.status == "unauthorized"
+    assert detail.category == "banned"
+
+
+@pytest.mark.asyncio
+async def test_freshen_single_session_otp_timeout_category(tmp_path: Path):
+    from app.services.fresh_session import freshen_single_session
+
+    sess = tmp_path / "timeout.session"
+    _make_valid_session(sess)
+
+    me = _FakeMe()
+    sent = _FakeSent()
+
+    old_client = AsyncMock()
+    old_client.connect = AsyncMock()
+    old_client.is_user_authorized = AsyncMock(return_value=True)
+    old_client.get_me = AsyncMock(return_value=me)
+    old_client.get_messages = AsyncMock(return_value=[])
+    old_client.disconnect = AsyncMock()
+
+    new_client = AsyncMock()
+    new_client.connect = AsyncMock()
+    new_client.send_code_request = AsyncMock(return_value=sent)
+    new_client.disconnect = AsyncMock()
+
+    with (
+        patch("app.services.fresh_session.OTP_WAIT_SECONDS", 0.6),
+        patch("app.services.fresh_session.OTP_POLL_INTERVAL", 0.05),
+        patch("telethon.TelegramClient", side_effect=[old_client, new_client]),
+    ):
+        detail = await freshen_single_session(sess, [(123, "hash")], tmp_path)
+
+    assert detail.status == "otp_timeout"
+    assert detail.category == "network_error"

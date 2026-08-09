@@ -1046,6 +1046,12 @@ def fresh_session_2fa_menu(language: str = "en") -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 _premium_icon_button(
+                    msgs["auto_detect_btn"], "fresh_sess:auto_detect", "SEARCH",
+                    style=ButtonStyle.PRIMARY,
+                )
+            ],
+            [
+                _premium_icon_button(
                     msgs["skip_2fa"], "fresh_sess:skip_2fa", "SKIP",
                     style=ButtonStyle.PRIMARY,
                 )

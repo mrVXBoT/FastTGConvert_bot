@@ -1,7 +1,8 @@
 """Tests for device_params service."""
-from pathlib import Path
 import sqlite3
 import tempfile
+from pathlib import Path
+
 from app.services.device_params import (
     get_device_params_store,
     get_random_device_params,

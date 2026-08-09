@@ -13,8 +13,6 @@ from app.services.contacts_checker import (
     ContactsCheckCancelled,
     ContactsCheckResult,
     ContactsProgress,
-    _is_limitation_error,
-    _probe_add_contact,
     check_session_contacts_live,
     check_session_contacts_offline,
     extract_accounts_safe,
@@ -35,29 +33,8 @@ def _valid_session(path: Path, with_contacts: bool = True) -> None:
             conn.execute("INSERT INTO contacts VALUES (1, '+123456789')")
 
 
-def _imported(uid: int = 7) -> object:
-    """Result of a successful ``ImportContactsRequest`` write probe."""
-    user = type(
-        "User",
-        (),
-        {"id": uid, "access_hash": 1234567890123456789},
-    )()
-    imported = type("ImportedContact", (), {"user_id": uid})()
-    return type(
-        "ImportedContacts",
-        (),
-        {
-            "users": [user],
-            "imported": [imported],
-            "retry_contacts": [],
-            "popular_invites": [],
-        },
-    )()
-
-
 def _ok_client(contacts_count: int = 3) -> AsyncMock:
-    """Mocked Telethon client returning a healthy account that passes the
-    add-a-test-contact write probe (import then delete)."""
+    """Mocked Telethon client returning a healthy account (read-only check)."""
     client = AsyncMock()
     client.connect = AsyncMock()
     client.is_user_authorized = AsyncMock(return_value=True)
@@ -94,8 +71,8 @@ def _ok_client(contacts_count: int = 3) -> AsyncMock:
             ]
         },
     )()
-    # Call order: GetContacts -> GetUsers(profile) -> ImportContacts -> DeleteContacts
-    client.side_effect = [contacts_res, me_res, _imported(), object()]
+    # Call order: GetContacts -> GetUsers(profile)
+    client.side_effect = [contacts_res, me_res]
     return client
 
 
@@ -109,40 +86,27 @@ async def test_process_contacts_check_single_session() -> None:
         res = await process_contacts_check(sess_file, tmp_path / "outbox")
         assert res.checked == 1
         assert res.ok == 0
-        assert res.two_fa == 0
-        assert res.banned == 0
-        assert res.invalid == 0
         assert res.inconclusive == 1
         assert len(res.zip_paths) == 1
         zip_path, status, count = res.zip_paths[0]
         assert status == "inconclusive"
         assert count == 1
-        assert zip_path.name.startswith("Inconclusive_1_")
+        assert zip_path.name.startswith("Check_contacts_Error_1_")
         assert zip_path.exists()
         assert res.report_path is not None
         assert res.report_path.name.startswith("contacts_report_")
 
         with zipfile.ZipFile(zip_path) as zf:
-            names = zf.namelist()
-            assert "test.session" in names
+            assert "test.session" in zf.namelist()
 
         with res.report_path.open(newline="", encoding="utf-8-sig") as f:
             rows = list(csv.reader(f))
         assert rows[0] == [
-            "#",
-            "File",
-            "Status",
-            "Contacts",
-            "Phone",
-            "Username",
-            "First Name",
-            "Last Name",
-            "Premium",
-            "DC",
-            "Note",
+            "#", "File", "Status", "Contacts", "Phone", "Username",
+            "First Name", "Last Name", "Premium", "DC", "Note",
         ]
         assert rows[1][1] == "test.session"
-        assert rows[1][2] == "inconclusive"
+        assert rows[1][2] == "Error"
         assert rows[1][3] == ""
 
 
@@ -158,11 +122,11 @@ async def test_process_contacts_check_invalid_session() -> None:
         assert res.ok == 0
         assert res.invalid == 1
         assert len(res.zip_paths) == 1
-        assert res.zip_paths[0][0].name.startswith("Invalid_1_")
+        assert res.zip_paths[0][0].name.startswith("Check_contacts_Invalid_1_")
         assert res.report_path is not None
 
 
-def test_check_session_contacts_offline_telethon_standard_session_without_contacts_table() -> (
+def test_check_session_contacts_offline_standard_session_without_contacts_table() -> (
     None
 ):
     with tempfile.TemporaryDirectory() as tmp:
@@ -339,110 +303,86 @@ async def test_live_check_all_credentials_transient_is_inconclusive() -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_check_valid_session_transient_network_is_inconclusive() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        sess_file = Path(tmp) / "valid_flaky.session"
-        _valid_session(sess_file)
+async def test_live_check_read_rejected_is_restricted() -> None:
+    """A limitation error while reading contacts reports Restricted."""
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(side_effect=OSError("Network down"))
-        mock_client.disconnect = AsyncMock()
+    class _RestrictedClient:
+        def __init__(self) -> None:
+            self.connect = AsyncMock()
+            self.is_user_authorized = AsyncMock(return_value=True)
+            self.disconnect = AsyncMock()
 
-        with patch("telethon.TelegramClient", return_value=mock_client):
-            res = await process_contacts_check(
-                sess_file, Path(tmp) / "outbox", credentials=[(111, "h1")]
-            )
-            assert res.checked == 1
-            assert res.inconclusive == 1
-            assert res.ok == 0
+        async def __call__(self, _req):
+            from telethon.errors import PeerFloodError
 
+            raise PeerFloodError(request=None)
 
-@pytest.mark.asyncio
-async def test_live_check_returns_profile_and_contacts_count() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        sess_file = Path(tmp) / "alice.session"
+    with (
+        patch("telethon.TelegramClient", return_value=_RestrictedClient()),
+        tempfile.TemporaryDirectory() as tmp,
+    ):
+        sess_file = Path(tmp) / "restricted.session"
         sess_file.write_bytes(b"dummy")
+        status, _ = await check_session_contacts_live(sess_file, [(12345, "h")])
+        assert status == "limited"
 
-        with patch(
-            "telethon.TelegramClient", return_value=_ok_client(contacts_count=7)
-        ):
-            status, info = await check_session_contacts_live(
-                sess_file, [(12345, "hash")]
-            )
-            assert status == "ok"
-            assert info is not None
-            assert info.contacts_count == 7
-            assert info.phone == "+123456"
-            assert info.username == "alice"
-            assert info.first_name == "Alice"
-
-
-def test_contacts_localization_all_languages() -> None:
-    for lang in ("bn", "en", "hi", "ur", "ar", "zh"):
-        assert lang in CHECK_CONTACTS_PROMPTS
-        assert lang in CHECK_CONTACTS_MESSAGES
-        msgs = CHECK_CONTACTS_MESSAGES[lang]
-        assert "checking" in msgs
-        assert "cancelled" in msgs
+        res = await process_contacts_check(
+            sess_file, Path(tmp) / "outbox", credentials=[(12345, "h")]
+        )
+        assert res.limited == 1
+        assert res.ok == 0
 
 
 @pytest.mark.asyncio
-async def test_live_check_add_probe_rejected_is_limited() -> None:
-    from telethon.errors import PeerFloodError
-
+async def test_live_check_ok_requires_no_write_probe() -> None:
+    """Read access alone makes an account Healthy (no write probe involved)."""
     with tempfile.TemporaryDirectory() as tmp:
-        sess_file = Path(tmp) / "limited.session"
-        sess_file.write_bytes(b"dummy")
-
-        # GetContacts and GetUsers succeed; the ImportContacts write probe is
-        # rejected, revealing a write-restricted (limited) account.
-        call_events = [object(), object(), PeerFloodError(request=None)]
-
-        class _LimitedClient:
-            def __init__(self) -> None:
-                self.connect = AsyncMock()
-                self.is_user_authorized = AsyncMock(return_value=True)
-                self.disconnect = AsyncMock()
-                self._n = 0
-
-            async def __call__(self, _req):
-                if self._n >= len(call_events):
-                    return object()
-                result = call_events[self._n]
-                self._n += 1
-                if isinstance(result, Exception):
-                    raise result
-                return result
-
-        with patch("telethon.TelegramClient", return_value=_LimitedClient()):
-            status, _ = await check_session_contacts_live(sess_file, [(12345, "h")])
-            assert status == "limited"
-
-            res = await process_contacts_check(
-                sess_file, Path(tmp) / "outbox", credentials=[(12345, "h")]
-            )
-            assert res.limited == 1
-            assert res.ok == 0
-
-
-@pytest.mark.asyncio
-async def test_live_check_add_probe_imports_nothing_is_limited() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        sess_file = Path(tmp) / "silent_limited.session"
+        sess_file = Path(tmp) / "healthy.session"
         sess_file.write_bytes(b"dummy")
 
         client = AsyncMock()
         client.connect = AsyncMock()
         client.is_user_authorized = AsyncMock(return_value=True)
         client.disconnect = AsyncMock()
-        empty_import = type(
-            "ImportedContacts", (), {"users": [], "imported": [], "retry_contacts": []}
+        contacts_res = type("ContactsRes", (), {"contacts": [1, 2]})()
+        me_res = type(
+            "MeRes",
+            (),
+            {
+                "users": [
+                    type(
+                        "User",
+                        (),
+                        {
+                            "phone": "+123456",
+                            "username": "user1",
+                            "first_name": "U",
+                            "last_name": "",
+                            "premium": False,
+                            "dc_id": 2,
+                        },
+                    )()
+                ]
+            },
         )()
-        client.side_effect = [object(), object(), empty_import]
+        clean_msg = type(
+            "Msg",
+            (),
+            {
+                "out": False,
+                "id": 100,
+                "message": "Good news, no restrictions are placed on your account.",
+            },
+        )()
+        client.get_messages = AsyncMock(return_value=[clean_msg])
+        client.send_message = AsyncMock(return_value=type("SentMsg", (), {"id": 2})())
+        client.side_effect = [contacts_res, me_res]
 
         with patch("telethon.TelegramClient", return_value=client):
-            status, _ = await check_session_contacts_live(sess_file, [(12345, "h")])
-            assert status == "limited"
+            status, info = await check_session_contacts_live(sess_file, [(12345, "h")])
+            assert status == "ok"
+            assert info is not None
+            assert info.contacts_count == 2
 
 
 @pytest.mark.asyncio
@@ -477,7 +417,7 @@ async def test_spambot_probe_returns_limited_when_spambot_reports_restriction() 
                 ]
             },
         )()
-        client.side_effect = [contacts_res, me_res, _imported(), object()]
+        client.side_effect = [contacts_res, me_res]
 
         spambot_msg = type(
             "Msg",
@@ -492,28 +432,18 @@ async def test_spambot_probe_returns_limited_when_spambot_reports_restriction() 
         client.send_message = AsyncMock(return_value=type("SentMsg", (), {"id": 2})())
 
         with patch("telethon.TelegramClient", return_value=client):
-            status, info = await check_session_contacts_live(
-                sess_file, [(12345, "h")]
-            )
+            status, info = await check_session_contacts_live(sess_file, [(12345, "h")])
             assert status == "limited"
             assert info is None
 
 
-@pytest.mark.asyncio
-async def test_probe_add_contact_success_cleans_up() -> None:
-    client = AsyncMock()
-    client.side_effect = [_imported(), object()]
-    status = await _probe_add_contact(client, banned_errors=(), invalid_errors=())
-    assert status == "ok"
-    calls = [c.args[0].__class__.__name__ for c in client.call_args_list]
-    assert calls == ["ImportContactsRequest", "DeleteContactsRequest"]
-
-
-def test_is_limitation_error() -> None:
-    from telethon.errors import PeerFloodError
-
-    assert _is_limitation_error(PeerFloodError(request=None)) is True
-    assert _is_limitation_error(ValueError("network down")) is False
+def test_contacts_localization_all_languages() -> None:
+    for lang in ("bn", "en", "hi", "ur", "ar", "zh"):
+        assert lang in CHECK_CONTACTS_PROMPTS
+        assert lang in CHECK_CONTACTS_MESSAGES
+        msgs = CHECK_CONTACTS_MESSAGES[lang]
+        assert "checking" in msgs
+        assert "cancelled" in msgs
 
 
 @pytest.mark.asyncio

@@ -90,11 +90,6 @@ _STATUS_BUCKET_LABEL: dict[ContactStatus, str] = {
     "inconclusive": "Error",
 }
 
-# Fictional, reserved test number used by the live "add a contact" probe.
-# US 555-prefix numbers are reserved by NANP for fictitious use and are not
-# assigned to real users, so importing one is safe as a functional probe.
-_PROBE_PHONE_PREFIX = "+1555"
-
 
 class ContactsCheckCancelled(Exception):
     """Raised when the user cancels a running contacts check."""
@@ -243,72 +238,12 @@ async def _probe_add_contact(
     invalid_errors: tuple[type, ...] | None = None,
 ) -> ContactStatus:
     """
-    Live functional probe implementing the detection principle:
+    Read-first permission probe.
 
-    1. Attempt to add a test contact to the account (``contacts.
-       ImportContactsRequest`` with a fictional 555 number).
-    2. Determine the account status from the result.
-    3. Automatically delete the just-added test contact so no trace remains.
-
-    Returns a status: ``ok`` when the write succeeded (and was cleaned up),
-    ``limited`` when the account rejects writes, ``banned``/``invalid`` when
-    the credential errors surface here, otherwise ``inconclusive``.
+    Classification is read-based (an account is Healthy when it can connect
+    and read); kept as a thin no-op wrapper so the read path never downgrades
+    an account because of a write attempt.
     """
-    from telethon.tl.functions.contacts import (
-        ImportContactsRequest,  # type: ignore[import-untyped]
-    )
-    from telethon.tl.types import InputPhoneContact  # type: ignore[import-untyped]
-
-    marker = uuid4().hex[:8]
-    try:
-        result = await client(
-            ImportContactsRequest(
-                [
-                    InputPhoneContact(
-                        client_id=uuid4().int & 0x7FFFFFFFFFFFFFFF,
-                        phone=f"{_PROBE_PHONE_PREFIX}0{marker[:6]}",
-                        first_name=f"_ftgc_{marker}",
-                        last_name="_probe",
-                    )
-                ]
-            )
-        )
-    except Exception as exc:  # noqa: BLE001
-        if banned_errors and isinstance(exc, banned_errors):
-            return "banned"
-        if invalid_errors and isinstance(exc, invalid_errors):
-            return "invalid"
-        if _is_limitation_error(exc):
-            return "limited"
-        LOGGER.debug("Contacts add-probe failed (non-classified): %s", exc)
-        return "inconclusive"
-
-    imported_users = list(getattr(result, "users", None) or [])
-    if not imported_users:
-        # The add silently went nowhere -> the account cannot register a
-        # contact; treat it as functionally limited.
-        return "limited"
-
-    # Automatic cleanup: delete the just-imported test contact.  Never let a
-    # cleanup failure downgrade a successful result.
-    try:
-        # fmt: off
-        from telethon.tl.functions.contacts import (  # type: ignore[import-untyped]
-            DeleteContactsRequest,
-        )
-        from telethon.tl.types import InputUser  # type: ignore[import-untyped]
-        # fmt: on
-        await client(
-            DeleteContactsRequest(
-                [
-                    InputUser(u.id, u.access_hash)
-                    for u in imported_users
-                ]
-            )
-        )
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("Contacts add-probe cleanup failed: %s", exc)
-
     return "ok"
 
 
@@ -407,17 +342,13 @@ async def check_session_contacts_live(
                     res = await client(GetContactsRequest(hash=0))
                     count = len(getattr(res, "contacts", []))
                     info = await _fetch_me_profile(client, count)
-                    probe_status = await _probe_add_contact(
-                        client,
-                        banned_errors=banned_errors,
-                        invalid_errors=invalid_errors,
-                    )
-                    if probe_status != "ok":
-                        return probe_status, None
 
                     # Secondary probe: check @SpamBot for spam restrictions
                     with suppress(Exception):
-                        from app.services.spam import _parse_spambot_reply, _spambot_status_reply
+                        from app.services.spam import (
+                            _parse_spambot_reply,
+                            _spambot_status_reply,
+                        )
                         spambot_reply = await _spambot_status_reply(
                             client, timeout=5, FloodWaitError=flood_error or Exception
                         )
@@ -445,6 +376,13 @@ async def check_session_contacts_live(
                     )
                     return "invalid", None
                 except Exception as exc:  # noqa: BLE001
+                    if _is_limitation_error(exc) and not (
+                        flood_error is not None and isinstance(exc, flood_error)
+                    ):
+                        LOGGER.debug(
+                            "Contacts check restricted with api_id=%d: %s", api_id, exc
+                        )
+                        return "limited", None
                     if (
                         flood_error is not None
                         and isinstance(exc, flood_error)
@@ -649,7 +587,7 @@ def build_contacts_zips(
     output_dir: Path,
 ) -> list[tuple[Path, ContactStatus, int]]:
     """
-    Build one ZIP per status bucket from the extracted account files.
+    Build one ZIP per user-facing bucket from the extracted account files.
 
     Original member names (and relative paths) are restored inside the
     archives so ``123.session`` + ``123.json`` pairs stay together.
@@ -657,21 +595,19 @@ def build_contacts_zips(
     if not extracted or not entries:
         return []
 
+    buckets: dict[str, list[tuple[_ExtractedSession, ContactCheckEntry]]] = {}
+    for ex, entry in zip(extracted, entries, strict=False):
+        stem = _STATUS_ZIP_STEM[entry.status]
+        buckets.setdefault(stem, []).append((ex, entry))
+
     archives: list[tuple[Path, ContactStatus, int]] = []
-    for status, stem in _STATUS_ZIP_STEM.items():
-        matched = [
-            (ex, entry)
-            for ex, entry in zip(extracted, entries, strict=False)
-            if entry.status == status
-        ]
-        if not matched:
-            continue
+    for stem, matched in buckets.items():
         out = output_dir / f"{stem}_{len(matched)}_{uuid4().hex[:8]}.zip"
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
             for ex, _entry in matched:
                 for extracted_path, original_name in ex.files:
                     archive.write(extracted_path, arcname=original_name)
-        archives.append((out, status, len(matched)))
+        archives.append((out, matched[0][1].status, len(matched)))
     return archives
 
 
@@ -691,11 +627,11 @@ _REPORT_HEADERS = [
 
 _REPORT_STATUS_NOTES: dict[ContactStatus, str] = {
     "ok": "",
-    "limited": "Write-restricted / add-contact rejected",
+    "limited": "Restricted / read permission denied",
     "2fa": "2FA password required",
     "banned": "Banned / deactivated",
     "invalid": "Invalid / expired session",
-    "inconclusive": "Network error / timeout",
+    "inconclusive": "Network error / timeout — retry",
 }
 
 
@@ -711,7 +647,7 @@ def build_contacts_report(entries: list[ContactCheckEntry], output_dir: Path) ->
                 [
                     idx,
                     entry.name,
-                    entry.status,
+                    _STATUS_BUCKET_LABEL.get(entry.status, entry.status),
                     info.contacts_count if info else "",
                     info.phone if info else "",
                     info.username if info else "",

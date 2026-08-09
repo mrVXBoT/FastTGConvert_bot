@@ -589,7 +589,7 @@ def _build_outputs(
 
     Returns (report_path, classified_zip_path, failed_zip_path).
     """
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
     report_path: Path | None = None
     if result.total > 0:

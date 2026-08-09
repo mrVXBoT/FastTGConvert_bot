@@ -83,8 +83,8 @@ def _extract_seed_from_file(path: Path) -> str | None:
                     auth_key = bytes(row[0])
                     if len(auth_key) == 256 and any(auth_key):
                         return f"authkey:{hashlib.sha256(auth_key).hexdigest()}"
-    except Exception:
-        pass
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        LOGGER.debug("Could not read auth_key from sqlite %s: %s", path, exc)
 
     return None
 
@@ -105,7 +105,7 @@ def _load_zip_params(zip_path: Path) -> dict[str, list[str]]:
                 ]
                 if lines:
                     params[name] = lines
-    except Exception as exc:
+    except (zipfile.BadZipFile, OSError, KeyError) as exc:
         LOGGER.warning("Could not parse device_params.zip at %s: %s", zip_path, exc)
     return params
 
