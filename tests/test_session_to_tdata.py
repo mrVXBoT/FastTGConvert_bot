@@ -167,6 +167,31 @@ async def test_process_session_to_tdata_single_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_process_session_to_tdata_single_upload_uses_original_name() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        # Disk path is the `-<uuid>` temp rename; folders/reports must use
+        # the original upload name.
+        sess_file = tmp_path / "787c6fda56944d6a9385340e6a98b82f.session"
+        _create_telethon_session(sess_file)
+
+        outbox = tmp_path / "outbox"
+        res = await process_session_to_tdata_conversion(
+            sess_file, outbox, original_name="+989121234567.session"
+        )
+
+        assert res.total == 1
+        assert res.converted == 1
+        assert [(entry.name, entry.ok) for entry in res.entries] == [
+            ("+989121234567", True)
+        ]
+        with zipfile.ZipFile(res.output_zip_path, "r") as z:
+            names = z.namelist()
+            assert any(n.endswith("key_datas") for n in names)
+            assert not any("787c6fda" in n for n in names)
+
+
+@pytest.mark.asyncio
 async def test_process_session_to_tdata_zip_input() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)

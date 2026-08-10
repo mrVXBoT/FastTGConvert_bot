@@ -104,9 +104,7 @@ async def _create_mail_account_single(
 
     for attempt in range(1, retries + 1):
         domain = random.choice(domains)
-        username = "".join(
-            random.choices(string.ascii_lowercase + string.digits, k=10)
-        )
+        username = "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
         address = f"{username}@{domain}"
         password = "Pass_" + "".join(
             random.choices(string.ascii_letters + string.digits, k=12)
@@ -297,7 +295,10 @@ def _append_api_credential_to_env(api_id: int, api_hash: str) -> None:
             new_lines.append(f"API_CREDENTIALS={pair_str}")
 
         env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        LOGGER.info("✨ Automatically registered new API Key %d to .env and runtime pool!", api_id)
+        LOGGER.info(
+            "✨ Automatically registered new API Key %d to .env and runtime pool!",
+            api_id,
+        )
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Could not update .env with new API credential: %s", exc)
 
@@ -370,8 +371,12 @@ async def _create_api_on_my_telegram_org(
         ) as res:
             html = await res.text()
 
-        api_id_match = re.search(r"<strong>API id:</strong>\s*<span>(\d+)</span>", html) or re.search(r'name="app_id"\s+value="(\d+)"', html)
-        api_hash_match = re.search(r"<strong>API hash:</strong>\s*<span>([a-f0-9]{32})</span>", html) or re.search(r'name="app_hash"\s+value="([a-f0-9]{32})"', html)
+        api_id_match = re.search(
+            r"<strong>API id:</strong>\s*<span>(\d+)</span>", html
+        ) or re.search(r'name="app_id"\s+value="(\d+)"', html)
+        api_hash_match = re.search(
+            r"<strong>API hash:</strong>\s*<span>([a-f0-9]{32})</span>", html
+        ) or re.search(r'name="app_hash"\s+value="([a-f0-9]{32})"', html)
 
         if api_id_match and api_hash_match:
             api_id = int(api_id_match.group(1))
@@ -400,8 +405,12 @@ async def _create_api_on_my_telegram_org(
         ) as res:
             create_html = await res.text()
 
-        api_id_match = re.search(r"<strong>API id:</strong>\s*<span>(\d+)</span>", create_html) or re.search(r'name="app_id"\s+value="(\d+)"', create_html)
-        api_hash_match = re.search(r"<strong>API hash:</strong>\s*<span>([a-f0-9]{32})</span>", create_html) or re.search(r'name="app_hash"\s+value="([a-f0-9]{32})"', create_html)
+        api_id_match = re.search(
+            r"<strong>API id:</strong>\s*<span>(\d+)</span>", create_html
+        ) or re.search(r'name="app_id"\s+value="(\d+)"', create_html)
+        api_hash_match = re.search(
+            r"<strong>API hash:</strong>\s*<span>([a-f0-9]{32})</span>", create_html
+        ) or re.search(r'name="app_hash"\s+value="([a-f0-9]{32})"', create_html)
 
         if api_id_match and api_hash_match:
             api_id = int(api_id_match.group(1))
@@ -410,7 +419,9 @@ async def _create_api_on_my_telegram_org(
             return api_id, api_hash
 
     except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("Auto my.telegram.org API creation failed for %s: %s", session_name, exc)
+        LOGGER.warning(
+            "Auto my.telegram.org API creation failed for %s: %s", session_name, exc
+        )
 
     return None
 
@@ -436,9 +447,7 @@ async def process_single_login_email(
         if extra not in all_creds:
             all_creds.append(extra)
 
-    creds_shuffled = (
-        random.sample(all_creds, len(all_creds)) if all_creds else []
-    )
+    creds_shuffled = random.sample(all_creds, len(all_creds)) if all_creds else []
     last_flood_error = ""
 
     for api_id, api_hash in creds_shuffled:
@@ -605,6 +614,7 @@ async def process_batch_login_email(
     progress_callback: Callable[[JobProgress], Any] | None = None,
     job_progress: JobProgress | None = None,
     max_concurrency: int = 30,
+    original_name: str | None = None,
 ) -> LoginEmailBatchResult:
     """Process a batch zip archive or single session for login email management in parallel."""
     result = LoginEmailBatchResult()
@@ -626,7 +636,11 @@ async def process_batch_login_email(
             extract_zip_sessions_safe(input_path, extract_target)
             session_files = list(extract_target.rglob("*.session"))
         elif input_path.suffix.lower() == ".session":
-            target = tmp_dir / "sessions" / input_path.name
+            target = (
+                tmp_dir
+                / "sessions"
+                / (Path(original_name).name if original_name else input_path.name)
+            )
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(input_path, target)
             session_files = [target]

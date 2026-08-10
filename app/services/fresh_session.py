@@ -289,8 +289,8 @@ async def freshen_single_session(
                     )
 
                 me = await asyncio.wait_for(old_client.get_me(), timeout=30)
-                phone = me.phone or str(me.id)
-                if not phone.startswith("+"):
+                phone = (me.phone or "").strip()
+                if phone and not phone.startswith("+"):
                     phone = "+" + phone
 
                 LOGGER.info(
@@ -299,7 +299,10 @@ async def freshen_single_session(
                 )
 
                 # ── Step 3: Create new client with stable device params ────
-                new_sess_path = output_dir / f"{phone}.session"
+                # Name the new session by phone number; only when the profile
+                # has no phone at all do we fall back to the source name.
+                new_account_name = phone or Path(session_file).stem
+                new_sess_path = output_dir / f"{new_account_name}.session"
                 new_stem = str(new_sess_path.with_suffix(""))
                 new_device_kwargs = get_stable_device_params(new_sess_path)
 

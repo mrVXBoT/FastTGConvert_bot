@@ -852,6 +852,7 @@ async def analyze_document(
                         flood_wait_ceiling=settings.contacts_flood_ceiling,
                         progress=progress,
                         cancel_event=cancel_event,
+                        original_name=name,
                     )
                 except ContactsCheckCancelled:
                     await _stop_progress(progress_task)
@@ -919,7 +920,9 @@ async def analyze_document(
                         result, language, spam_mode=live_check
                     ),
                 )
-                await _send_status_zips(message, path, entries, language, original_name=name)
+                await _send_status_zips(
+                    message, path, entries, language, original_name=name
+                )
                 await state.clear()
                 return
             analysis = await asyncio.to_thread(analyze_file, path, name)
@@ -3890,6 +3893,7 @@ async def _execute_login_email_job(
     settings: Settings,
     language: str,
     state: FSMContext,
+    original_name: str | None = None,
 ) -> None:
     """Core executor for batch login email jobs."""
     output_dir = settings.storage_dir / "login_email_output"
@@ -3916,6 +3920,7 @@ async def _execute_login_email_job(
             output_dir,
             job_progress=progress,
             max_concurrency=30,
+            original_name=original_name,
         )
     except JobCancelled:
         await _stop_progress(progress_task)
@@ -4065,6 +4070,7 @@ async def receive_login_email_file(
             settings=settings,
             language=language,
             state=state,
+            original_name=str(input_path.name),
         )
 
 
@@ -4108,7 +4114,6 @@ async def handle_login_email_organize(
         caption=caption,
     )
     await callback.answer()
-
 
 
 # ── New Password handlers ──────────────────────────────────────────────────────
@@ -5374,7 +5379,7 @@ async def process_session_to_tdata_file(
     path: Path | None = None
     output_zip: Path | None = None
     try:
-        path, _name = await download_document(message, bot, settings, language)
+        path, original_name = await download_document(message, bot, settings, language)
         started = time.monotonic()
         res = await process_session_to_tdata_conversion(
             path,
@@ -5382,6 +5387,7 @@ async def process_session_to_tdata_file(
             progress=progress,
             cancel_event=cancel_event,
             credentials=settings.api_credential_list,
+            original_name=original_name,
         )
         elapsed = time.monotonic() - started
         output_zip = res.output_zip_path
@@ -5972,6 +5978,7 @@ async def process_file_merge_choice(
             merge_type,
             settings.storage_dir / "outbox",
             settings.api_credential_list,
+            original_name=str(data.get("original_name") or ""),
         )
 
         output_path = result.output_path
@@ -6265,6 +6272,7 @@ async def process_quick_action(
                     flood_wait_ceiling=settings.contacts_flood_ceiling,
                     progress=progress,
                     cancel_event=cancel_event,
+                    original_name=str(original_name),
                 )
             except ContactsCheckCancelled:
                 await _stop_progress(progress_task)
@@ -6430,6 +6438,7 @@ async def process_quick_action(
                 progress=progress,
                 cancel_event=cancel_event,
                 credentials=settings.api_credential_list,
+                original_name=str(original_name),
             )
             elapsed = time.monotonic() - started
             tdata_zip = result_tdata.output_zip_path
@@ -7303,6 +7312,7 @@ async def process_quick_action(
                 settings=settings,
                 language=language,
                 state=state,
+                original_name=str(original_name),
             )
         finally:
             file_path.unlink(missing_ok=True)

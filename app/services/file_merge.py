@@ -188,6 +188,8 @@ async def process_file_merge(
     merge_type: str,
     output_dir: Path,
     credentials: list[tuple[int, str]] | None = None,
+    *,
+    original_name: str | None = None,
 ) -> FileMergeResult:
     """
     Merge sessions into ``merged_all.zip`` or a Session+JSON+Tdata archive.
@@ -228,7 +230,9 @@ async def process_file_merge(
 
         elif input_path.suffix.lower() == ".session":
             if _is_valid_sqlite_session(input_path):
-                copied = tmp_path / input_path.name
+                copied = tmp_path / (
+                    Path(original_name).name if original_name else input_path.name
+                )
                 shutil.copy2(input_path, copied)
                 session_files = [copied]
 
@@ -293,7 +297,10 @@ async def process_file_merge(
             async def merge_one(
                 idx: int,
             ) -> tuple[
-                int, FileMergeAccountEntry, str | None, tuple[Path, str, str, Path] | None
+                int,
+                FileMergeAccountEntry,
+                str | None,
+                tuple[Path, str, str, Path] | None,
             ]:
                 sess_file = session_files[idx - 1]
                 identifier, uid, phone = extract_account_identifier(sess_file)
@@ -303,21 +310,35 @@ async def process_file_merge(
                         sess_file, credentials or []
                     )
                     if connection is None or profile is None or status == "failed":
-                        return idx, FileMergeAccountEntry(identifier, uid, phone, False), None, None
+                        return (
+                            idx,
+                            FileMergeAccountEntry(identifier, uid, phone, False),
+                            None,
+                            None,
+                        )
 
                     display_identifier = (
                         profile.phone if profile.phone != "N/A" else profile.identifier
                     )
                     clean_id = _safe_account_name(
-                        profile.identifier.removeprefix("+"), f"account_{idx}"
+                        profile.phone if profile.phone != "N/A" else profile.identifier,
+                        f"account_{idx}",
                     )
 
                     tdata_temp_dir = tmp_path / f"tdata_out_{idx}"
                     tdata_created = await convert_session_to_tdata(
                         sess_file, tdata_temp_dir
                     )
-                    if not tdata_created or not (tdata_temp_dir / "key_datas").is_file():
-                        return idx, FileMergeAccountEntry(identifier, uid, phone, False), clean_id, None
+                    if (
+                        not tdata_created
+                        or not (tdata_temp_dir / "key_datas").is_file()
+                    ):
+                        return (
+                            idx,
+                            FileMergeAccountEntry(identifier, uid, phone, False),
+                            clean_id,
+                            None,
+                        )
 
                     dc_id, server_address = connection
                     json_content = render_session_json(

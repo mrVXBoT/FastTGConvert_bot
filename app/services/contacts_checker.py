@@ -697,6 +697,7 @@ async def process_contacts_check(
     flood_wait_ceiling: int = 5,
     progress: ContactsProgress | None = None,
     cancel_event: asyncio.Event | None = None,
+    original_name: str | None = None,
 ) -> ContactsCheckResult:
     """
     Check every account in *input_path* (single ``.session`` or ``.zip``).
@@ -718,11 +719,12 @@ async def process_contacts_check(
                 extract_accounts_safe, input_path, Path(temp_dir.name)
             )
         else:
+            display_name = original_name or input_path.name
             extracted = [
                 _ExtractedSession(
                     session_path=input_path,
-                    member_name=input_path.name,
-                    files=((input_path, input_path.name),),
+                    member_name=display_name,
+                    files=((input_path, display_name),),
                 )
             ]
 

@@ -178,10 +178,10 @@ async def test_process_file_merge_session_json_tdata(
 
         with zipfile.ZipFile(res.output_path, "r") as zf:
             names = zf.namelist()
-            assert "573118508561.session" in names
-            assert "573118508561.json" in names
+            assert "+573118508561.session" in names
+            assert "+573118508561.json" in names
             assert "tdata/key_datas" in names
-            payload = json.loads(zf.read("573118508561.json"))
+            payload = json.loads(zf.read("+573118508561.json"))
             assert payload == {
                 "name": "573118508561",
                 "phone": "+573118508561",
@@ -195,6 +195,41 @@ async def test_process_file_merge_session_json_tdata(
                 "two_fa": None,
                 "registered": "N/A",
             }
+
+
+@pytest.mark.asyncio
+async def test_process_file_merge_single_upload_falls_back_to_original_filename(
+    tmp_path: Path,
+) -> None:
+    # Single-file uploads land on a `-<uuid>` temp path; without DB identity
+    # the merged member must fall back to the ORIGINAL upload name, never the
+    # uuid temp name.
+    sess = tmp_path / "787c6fda56944d6a9385340e6a98b82f.session"
+    with sqlite3.connect(sess) as conn:
+        conn.execute("CREATE TABLE version (version integer primary key)")
+        conn.execute("INSERT INTO version VALUES (7)")
+        conn.execute(
+            "CREATE TABLE sessions (dc_id integer primary key, server_address"
+            " text, port integer, auth_key blob, takeout_id integer)"
+        )
+        conn.execute(
+            "INSERT INTO sessions VALUES (2, '149.154.167.50', 443, ?, 0)",
+            (b"\x07" * 256,),
+        )
+
+    out_dir = tmp_path / "out"
+    res = await process_file_merge(
+        sess,
+        "multi_type",
+        out_dir,
+        original_name="+12167587713.session",
+    )
+
+    assert res.total == 1
+    assert res.merged == 1
+    assert res.output_path is not None
+    with zipfile.ZipFile(res.output_path, "r") as zf:
+        assert zf.namelist() == ["+12167587713.session"]
 
 
 @pytest.mark.asyncio
@@ -273,10 +308,11 @@ async def test_multi_account_tdata_uses_separate_zip_folders(tmp_path: Path):
     assert result.output_path is not None
     with zipfile.ZipFile(result.output_path) as archive:
         names = set(archive.namelist())
-    assert "573118508561/tdata/key_datas" in names
-    assert "989121234567/tdata/key_datas" in names
-    assert "573118508561/573118508561.json" in names
-    assert "989121234567/989121234567.json" in names
+    assert "573118508561/tdata/key_datas" not in names
+    assert "+573118508561/tdata/key_datas" in names
+    assert "+989121234567/tdata/key_datas" in names
+    assert "+573118508561/+573118508561.json" in names
+    assert "+989121234567/+989121234567.json" in names
 
 
 @pytest.mark.asyncio

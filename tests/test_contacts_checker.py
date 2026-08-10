@@ -120,6 +120,29 @@ async def test_process_contacts_check_single_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_process_contacts_check_single_upload_uses_original_name() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        # Disk path carries the `-<uuid>` temp name; outputs must use the
+        # user's original upload name instead.
+        sess_file = tmp_path / "787c6fda56944d6a9385340e6a98b82f.session"
+        _valid_session(sess_file)
+
+        res = await process_contacts_check(
+            sess_file, tmp_path / "outbox", original_name="+12167587713.session"
+        )
+
+        assert res.checked == 1
+        assert len(res.zip_paths) == 1
+        zip_path = res.zip_paths[0][0]
+        with zipfile.ZipFile(zip_path) as zf:
+            assert zf.namelist() == ["+12167587713.session"]
+        with res.report_path.open(newline="", encoding="utf-8-sig") as f:
+            rows = list(csv.reader(f))
+        assert rows[1][1] == "+12167587713.session"
+
+
+@pytest.mark.asyncio
 async def test_process_contacts_check_invalid_session() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)

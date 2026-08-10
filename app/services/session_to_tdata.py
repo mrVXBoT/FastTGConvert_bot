@@ -187,12 +187,19 @@ async def _live_session_probe(
             client = None
             try:
                 from app.services.device_params import get_stable_device_params
+
                 device_kwargs = get_stable_device_params(session_path)
                 client = TelegramClient(
-                    session_stem, api_id, api_hash, receive_updates=False, **device_kwargs
+                    session_stem,
+                    api_id,
+                    api_hash,
+                    receive_updates=False,
+                    **device_kwargs,
                 )
                 await _probe_connect(client, timeout, ApiIdInvalidError)
-                me = await _probe_get_me(client, timeout, invalid_errors, FloodWaitError)
+                me = await _probe_get_me(
+                    client, timeout, invalid_errors, FloodWaitError
+                )
                 if me is None or not getattr(me, "id", None):
                     return LiveProbeResult(False, reason="no_profile")
                 return LiveProbeResult(True, user_id=int(me.id))
@@ -311,12 +318,17 @@ def extract_zip_sessions_safe(zip_path: Path, target_dir: Path) -> list[Path]:
     return session_files
 
 
-def clean_session_stem(path: Path) -> str:
-    """Strip the ``session_<idx>_`` extraction prefix, keeping the rest intact."""
-    match = re.fullmatch(r"session_\d+_(\d{7,15})", path.stem)
+def clean_session_stem(path: Path, original_name: str | None = None) -> str:
+    """Strip the ``session_<idx>_`` extraction prefix, keeping the rest intact.
+
+    ``original_name`` (the user's upload name) is preferred over the on-disk
+    name, which for single-file uploads is a ``-<uuid>`` suffixed temp name.
+    """
+    source = Path(original_name).stem if original_name else path.stem
+    match = re.fullmatch(r"session_\d+_(\d{7,15})", source)
     if match:
         return match.group(1)
-    return path.stem
+    return source
 
 
 def extract_user_id_from_session(
@@ -397,7 +409,9 @@ def _inspect_session(session_path: Path) -> tuple[int, bytes, int | None, str] |
             if len(auth_key) != 256 or not any(b != 0 for b in auth_key):
                 return None
 
-            dc_id = int(sess_row["dc_id"]) if "dc_id" in cols and sess_row["dc_id"] else 2
+            dc_id = (
+                int(sess_row["dc_id"]) if "dc_id" in cols and sess_row["dc_id"] else 2
+            )
             server_address = (
                 str(sess_row["server_address"])
                 if "server_address" in cols and sess_row["server_address"]
@@ -419,7 +433,9 @@ def _convert_session_sync(
 ) -> bool:
     """Offline opentele conversion of a session into a tdata folder (blocking)."""
     return asyncio.run(
-        _convert_session_coro(auth_key, dc_id, user_id, server_address, output_tdata_dir)
+        _convert_session_coro(
+            auth_key, dc_id, user_id, server_address, output_tdata_dir
+        )
     )
 
 
@@ -544,6 +560,7 @@ async def process_session_to_tdata_conversion(
     credentials: list[tuple[int, str]] | None = None,
     progress: JobProgress | None = None,
     cancel_event: asyncio.Event | None = None,
+    original_name: str | None = None,
 ) -> SessionToTdataResult:
     """
     Process input file (.session or .zip) converting all valid sessions into tdata.
@@ -589,13 +606,22 @@ async def process_session_to_tdata_conversion(
 
             sem = asyncio.Semaphore(8)
 
-            async def _convert_one(idx: int, sess_file: Path) -> tuple[TdataConversionEntry, tuple[str, Path] | None]:
+            async def _convert_one(
+                idx: int, sess_file: Path
+            ) -> tuple[TdataConversionEntry, tuple[str, Path] | None]:
                 async with sem:
                     try:
                         if cancel_event is not None and cancel_event.is_set():
                             raise JobCancelled()
-                        clean_stem = clean_session_stem(sess_file)
-                        target_tdata_dir = work_path / f"acc_{idx}_{clean_stem}" / "tdata"
+                        clean_stem_source = (
+                            Path(original_name).stem
+                            if original_name and input_path.suffix.lower() == ".session"
+                            else None
+                        )
+                        clean_stem = clean_session_stem(sess_file, clean_stem_source)
+                        target_tdata_dir = (
+                            work_path / f"acc_{idx}_{clean_stem}" / "tdata"
+                        )
                         inspected = _inspect_session(sess_file)
                         if inspected is None:
                             return (
@@ -618,7 +644,8 @@ async def process_session_to_tdata_conversion(
                             offset = (idx - 1) % len(probe_credentials)
                             if offset:
                                 probe_credentials = (
-                                    probe_credentials[offset:] + probe_credentials[:offset]
+                                    probe_credentials[offset:]
+                                    + probe_credentials[:offset]
                                 )
                             probe = await _live_session_probe(
                                 sess_file, probe_credentials
@@ -639,7 +666,9 @@ async def process_session_to_tdata_conversion(
                         effective_user_id: int | None = live_user_id or user_id
                         if effective_user_id is None:
                             return (
-                                TdataConversionEntry(name=clean_stem, ok=False, reason="no_user_id"),
+                                TdataConversionEntry(
+                                    name=clean_stem, ok=False, reason="no_user_id"
+                                ),
                                 None,
                             )
 
@@ -661,7 +690,10 @@ async def process_session_to_tdata_conversion(
                             success = False
 
                         if success:
-                            return (TdataConversionEntry(name=clean_stem, ok=True), (clean_stem, target_tdata_dir))
+                            return (
+                                TdataConversionEntry(name=clean_stem, ok=True),
+                                (clean_stem, target_tdata_dir),
+                            )
                         return (
                             TdataConversionEntry(
                                 name=clean_stem, ok=False, reason="conversion_error"
@@ -673,7 +705,10 @@ async def process_session_to_tdata_conversion(
                             progress.done += 1
 
             tasks_results = await asyncio.gather(
-                *(_convert_one(idx, sess_file) for idx, sess_file in enumerate(session_files, start=1))
+                *(
+                    _convert_one(idx, sess_file)
+                    for idx, sess_file in enumerate(session_files, start=1)
+                )
             )
 
             for entry, conv_tuple in tasks_results:
@@ -704,7 +739,9 @@ async def process_session_to_tdata_conversion(
                             _, single_tdata = converted_dirs[0]
                             for file_path in single_tdata.rglob("*"):
                                 if file_path.is_file():
-                                    rel_path = file_path.relative_to(single_tdata.parent)
+                                    rel_path = file_path.relative_to(
+                                        single_tdata.parent
+                                    )
                                     zf.write(file_path, arcname=str(rel_path))
                         else:
                             seen_folders: set[str] = set()
@@ -718,7 +755,9 @@ async def process_session_to_tdata_conversion(
 
                                 for file_path in tdata_dir.rglob("*"):
                                     if file_path.is_file():
-                                        rel_path = file_path.relative_to(tdata_dir.parent)
+                                        rel_path = file_path.relative_to(
+                                            tdata_dir.parent
+                                        )
                                         arcname = Path(folder_name) / rel_path
                                         zf.write(file_path, arcname=str(arcname))
                 except OSError as exc:

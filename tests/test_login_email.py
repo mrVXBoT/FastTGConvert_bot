@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.login_email import (
+    LoginEmailDetail,
     _create_mail_tm_account,
     _poll_mail_tm_otp,
     process_batch_login_email,
@@ -112,3 +113,37 @@ async def test_process_batch_login_email_empty():
         )
         assert res.total == 0
         assert res.changed_count == 0
+
+
+@pytest.mark.asyncio
+async def test_process_batch_login_email_single_upload_keeps_original_name():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        # Quick-action uploads land under `{stem}-{uuid}.session`; the zip
+        # members and report must use the user's original upload name.
+        sess_file = tmp_path / "12345-787c6fda56944d6a9385340e6a98b82f.session"
+        sess_file.write_bytes(b"session-bytes")
+
+        detail = LoginEmailDetail(
+            session_name="acc",
+            phone="",
+            status="no_email",
+            message="",
+        )
+        with patch(
+            "app.services.login_email.process_single_login_email",
+            new_callable=AsyncMock,
+            return_value=detail,
+        ):
+            res = await process_batch_login_email(
+                sess_file,
+                [(123, "hash")],
+                tmp_path / "out",
+                original_name="+12167587713.session",
+            )
+
+        assert res.total == 1
+        assert res.no_email_count == 1
+        assert res.failed_zip is not None
+        with zipfile.ZipFile(res.failed_zip) as zf:
+            assert zf.namelist() == ["+12167587713.session"]

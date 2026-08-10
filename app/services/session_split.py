@@ -53,7 +53,10 @@ def _valid_session(path: Path) -> bool:
 
 def _original_session_name(path: Path) -> str:
     name = path.name
-    match = re.match(r"session_\d+_(.+\.session)$", name, flags=re.IGNORECASE)
+    # Only un-prefix legacy `session_<idx>_` names whose remainder is still a
+    # plausible account name (starts with `+` or a digit); genuinely uploaded
+    # names like `session_5_alice.session` stay byte-exact.
+    match = re.match(r"^session_\d+_([+]?\d[^/]*\.session)$", name, flags=re.IGNORECASE)
     return match.group(1) if match else name
 
 
@@ -138,6 +141,7 @@ async def _live_probe(
             client = None
             try:
                 from app.services.device_params import get_stable_device_params
+
                 device_kwargs = get_stable_device_params(session_path)
                 client = TelegramClient(
                     session_stem,
@@ -192,9 +196,7 @@ async def _check_session(
     if not credentials:
         if not _valid_session(session_path):
             return False, None
-        phone = _phone_from_filename(session_path) or _phone_from_entities(
-            session_path
-        )
+        phone = _phone_from_filename(session_path) or _phone_from_entities(session_path)
         return True, phone
     try:
         authorized, live_phone = await _live_probe(session_path, credentials)
@@ -204,9 +206,7 @@ async def _check_session(
         return False, None
     phone = live_phone
     if phone is None:
-        phone = _phone_from_filename(session_path) or _phone_from_entities(
-            session_path
-        )
+        phone = _phone_from_filename(session_path) or _phone_from_entities(session_path)
     return True, phone
 
 
@@ -236,9 +236,7 @@ def flag_for_phone(phone: str | None) -> str | None:
         region = phonenumbers.region_code_for_number(number)
         if not region or len(region) != 2 or not region.isalpha():
             return None
-        return "".join(
-            chr(0x1F1E6 + ord(char) - ord("A")) for char in region.upper()
-        )
+        return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in region.upper())
     except phonenumbers.NumberParseException:
         return None
 
@@ -322,9 +320,7 @@ async def process_session_split(
 
         async def check(session: Path) -> tuple[Path, bool, str | None]:
             async with semaphore:
-                authorized, phone = await _check_session(
-                    session, credentials or None
-                )
+                authorized, phone = await _check_session(session, credentials or None)
                 return session, authorized, phone
 
         checked = await asyncio.gather(*(check(session) for session in sessions))

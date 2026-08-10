@@ -9,6 +9,7 @@ from app.keyboards import file_split_choice_menu, file_split_result_menu
 from app.locales import LANGUAGES, SPLIT_MESSAGES, SPLIT_PROMPTS
 from app.services.files import UnsafeArchiveError
 from app.services.session_split import (
+    _original_session_name,
     country_for_phone,
     flag_for_phone,
     inspect_session_split,
@@ -215,6 +216,23 @@ async def test_quantity_split_without_credentials_stays_offline(
         good, "quantity", tmp_path / "out", quantity=10
     )
     assert (result.total, result.split, result.failed, result.groups) == (1, 1, 0, 1)
+
+
+def test_original_session_name_only_strips_legacy_phone_prefixes() -> None:
+    assert (
+        _original_session_name(Path("session_1_+989121234567.session"))
+        == "+989121234567.session"
+    )
+    assert (
+        _original_session_name(Path("session_1_989121234567.session"))
+        == "989121234567.session"
+    )
+    # A genuinely uploaded file named `session_5_alice.session` stays byte-exact.
+    assert (
+        _original_session_name(Path("session_5_alice.session"))
+        == "session_5_alice.session"
+    )
+    assert _original_session_name(Path("my_account.session")) == "my_account.session"
 
 
 def test_split_locales_and_keyboards() -> None:
