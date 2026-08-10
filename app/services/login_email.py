@@ -152,7 +152,7 @@ async def _poll_mail_tm_otp(
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("Mail.tm inbox polling error: %s", exc)
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
 
     return None
 
@@ -351,8 +351,9 @@ async def process_batch_login_email(
     *,
     progress_callback: Callable[[JobProgress], Any] | None = None,
     job_progress: JobProgress | None = None,
+    max_concurrency: int = 5,
 ) -> LoginEmailBatchResult:
-    """Process a batch zip archive or single session for login email management."""
+    """Process a batch zip archive or single session for login email management in parallel."""
     result = LoginEmailBatchResult()
 
     if not credentials:
@@ -397,10 +398,15 @@ async def process_batch_login_email(
         report_lines: list[str] = ["# Login Email Change Report"]
         report_lines.append("name | status | phone | note")
 
-        async with aiohttp.ClientSession() as session_http:
-            for idx, sess_file in enumerate(session_files, start=1):
+        semaphore = asyncio.Semaphore(max_concurrency)
+        lock = asyncio.Lock()
+        done_count = 0
+
+        async def worker(sess_file: Path, session_http: aiohttp.ClientSession) -> None:
+            nonlocal done_count
+            async with semaphore:
                 if job_progress.cancel_requested:
-                    raise JobCancelled("Login email processing cancelled by user")
+                    return
 
                 detail = await process_single_login_email(
                     sess_file,
@@ -408,40 +414,55 @@ async def process_batch_login_email(
                     session_http,
                     job_progress=job_progress,
                 )
-                result.details.append(detail)
-                note = detail.message.replace("|", "/")[:60]
 
-                sess_name = sess_file.name
-                if detail.status == "changed":
-                    result.changed_count += 1
-                    shutil.copy2(sess_file, success_dir / sess_name)
-                    updated_dir = classified_dir / "updated"
-                    updated_dir.mkdir(exist_ok=True)
-                    shutil.copy2(sess_file, updated_dir / sess_name)
-                elif detail.status == "no_email":
-                    result.no_email_count += 1
-                    shutil.copy2(sess_file, no_email_dir / sess_name)
-                    no_login_dir = classified_dir / "no_login_email"
-                    no_login_dir.mkdir(exist_ok=True)
-                    shutil.copy2(sess_file, no_login_dir / sess_name)
-                else:
-                    result.error_count += 1
-                    shutil.copy2(sess_file, failed_dir / sess_name)
-                    failed_cls = classified_dir / "failed"
-                    failed_cls.mkdir(exist_ok=True)
-                    shutil.copy2(sess_file, failed_cls / sess_name)
+                async with lock:
+                    if job_progress.cancel_requested:
+                        return
 
-                report_lines.append(
-                    f"{sess_name} | {detail.status} | {detail.phone or ''} | {note}"
-                )
+                    result.details.append(detail)
+                    note = detail.message.replace("|", "/")[:60]
+                    sess_name = sess_file.name
 
-                job_progress.done = idx
-                job_progress.processed_accounts = idx
-                if progress_callback:
-                    with suppress(Exception):
-                        res_p = progress_callback(job_progress)
-                        if asyncio.iscoroutine(res_p):
-                            await res_p
+                    if detail.status == "changed":
+                        result.changed_count += 1
+                        shutil.copy2(sess_file, success_dir / sess_name)
+                        updated_dir = classified_dir / "updated"
+                        updated_dir.mkdir(exist_ok=True)
+                        shutil.copy2(sess_file, updated_dir / sess_name)
+                    elif detail.status == "no_email":
+                        result.no_email_count += 1
+                        shutil.copy2(sess_file, no_email_dir / sess_name)
+                        no_login_dir = classified_dir / "no_login_email"
+                        no_login_dir.mkdir(exist_ok=True)
+                        shutil.copy2(sess_file, no_login_dir / sess_name)
+                    else:
+                        result.error_count += 1
+                        shutil.copy2(sess_file, failed_dir / sess_name)
+                        failed_cls = classified_dir / "failed"
+                        failed_cls.mkdir(exist_ok=True)
+                        shutil.copy2(sess_file, failed_cls / sess_name)
+
+                    report_lines.append(
+                        f"{sess_name} | {detail.status} | {detail.phone or ''} | {note}"
+                    )
+
+                    done_count += 1
+                    job_progress.done = done_count
+                    job_progress.processed_accounts = done_count
+                    if progress_callback:
+                        with suppress(Exception):
+                            res_p = progress_callback(job_progress)
+                            if asyncio.iscoroutine(res_p):
+                                await res_p
+
+        async with aiohttp.ClientSession() as session_http:
+            tasks = [
+                asyncio.create_task(worker(sf, session_http)) for sf in session_files
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        if job_progress.cancel_requested:
+            raise JobCancelled("Login email processing cancelled by user")
 
         # Build ZIP archives (English naming, consistent with the rest of the bot).
         token = uuid4().hex[:8]
