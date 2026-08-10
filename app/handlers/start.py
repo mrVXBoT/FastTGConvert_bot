@@ -1,6 +1,5 @@
 import logging
 import shutil
-import urllib.parse
 from pathlib import Path
 
 from aiogram import Bot, F, Router, html
@@ -265,19 +264,10 @@ async def command_referral(
 
 
 def validate_proxy_url(proxy_str: str) -> str | None:
-    if not proxy_str:
-        return None
-    try:
-        parsed = urllib.parse.urlparse(proxy_str)
-        if parsed.scheme.lower() not in ("socks5", "socks4", "http", "https"):
-            return None
-        if not parsed.hostname or not parsed.port:
-            return None
-        if not (1 <= parsed.port <= 65535):
-            return None
-        return proxy_str
-    except (ValueError, TypeError, AttributeError):
-        return None
+    from app.services.proxy import normalize_proxy_string
+
+    return normalize_proxy_string(proxy_str)
+
 
 
 @router.message(Command("proxy"))
@@ -335,6 +325,8 @@ async def callback_proxy_remove(
     with session_factory() as session:
         set_user_proxy(session, callback.from_user.id, None)
         language = get_user_language(session, callback.from_user.id)
+    user_str = f"{callback.from_user.full_name} (@{callback.from_user.username or callback.from_user.id})"
+    LOGGER.info("User %s removed custom proxy", user_str)
     await callback.answer(
         PROXY_REMOVED_MESSAGES.get(language, PROXY_REMOVED_MESSAGES["en"])
     )
@@ -353,24 +345,46 @@ async def process_proxy_input(
         return
     with session_factory() as session:
         language = get_user_language(session, message.from_user.id)
-    raw_proxy = (message.text or "").strip()
-    valid_proxy = validate_proxy_url(raw_proxy)
-    if valid_proxy is None:
+
+    raw_text = (message.text or "").strip()
+    if message.document:
+        try:
+            bot = message.bot
+            if bot:
+                downloaded = await bot.download(message.document)
+                if hasattr(downloaded, "read"):
+                    raw_text = downloaded.read().decode("utf-8", errors="ignore")
+                elif isinstance(downloaded, bytes):
+                    raw_text = downloaded.decode("utf-8", errors="ignore")
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Failed to read uploaded proxy file: %s", exc)
+
+    from app.services.proxy import (
+        parse_proxy_pool,
+        parse_telethon_proxy,
+        test_proxy_connection,
+    )
+
+    pool = parse_proxy_pool(raw_text)
+    user_str = f"{message.from_user.full_name} (@{message.from_user.username or message.from_user.id})"
+
+    if not pool:
+        LOGGER.warning("User %s entered invalid proxy format: %s", user_str, raw_text[:50])
         msg = PROXY_INVALID_MESSAGES.get(language, PROXY_INVALID_MESSAGES["en"])
         await message.answer(msg, reply_markup=cancel_menu(language))
         return
 
-    from app.services.proxy import parse_telethon_proxy, test_proxy_connection
-
+    sample_proxy = pool[0]
     testing_template = PROXY_TESTING_MESSAGES.get(
         language, PROXY_TESTING_MESSAGES["en"]
     )
     testing_msg = await message.answer(testing_template)
 
-    parsed_tuple = parse_telethon_proxy(valid_proxy)
+    parsed_tuple = parse_telethon_proxy(sample_proxy)
     is_ok, detail = await test_proxy_connection(parsed_tuple, timeout=5.0)
 
     if not is_ok:
+        LOGGER.warning("Proxy test failed for user %s (%s): %s", user_str, detail, sample_proxy)
         fail_template = PROXY_FAIL_MESSAGES.get(
             language, PROXY_FAIL_MESSAGES["en"]
         )
@@ -381,22 +395,36 @@ async def process_proxy_input(
             await message.answer(fail_msg, reply_markup=cancel_menu(language))
         return
 
+    proxy_to_save = "\n".join(pool) if len(pool) > 1 else pool[0]
     with session_factory() as session:
-        set_user_proxy(session, message.from_user.id, valid_proxy)
+        set_user_proxy(session, message.from_user.id, proxy_to_save)
     await state.clear()
-    success_template = PROXY_SUCCESS_MESSAGES.get(
-        language, PROXY_SUCCESS_MESSAGES["en"]
-    )
+
+    if len(pool) > 1:
+        LOGGER.info("User %s saved Proxy Pool of %d proxies", user_str, len(pool))
+        msg_text = (
+            f"✅ Multi-Proxy Pool Activated!\n"
+            f"Total proxies: {len(pool)}\n"
+            f"Requests will be rotated across all proxies automatically (Round-Robin)."
+        )
+    else:
+        LOGGER.info("User %s set custom proxy: %s", user_str, pool[0])
+        success_template = PROXY_SUCCESS_MESSAGES.get(
+            language, PROXY_SUCCESS_MESSAGES["en"]
+        )
+        msg_text = success_template.format(proxy=pool[0])
+
     if isinstance(testing_msg, Message):
         await testing_msg.edit_text(
-            success_template.format(proxy=valid_proxy),
+            msg_text,
             reply_markup=proxy_menu(has_proxy=True, language=language),
         )
     else:
         await message.answer(
-            success_template.format(proxy=valid_proxy),
+            msg_text,
             reply_markup=proxy_menu(has_proxy=True, language=language),
         )
+
 
 
 @router.callback_query(F.data.startswith("language:"))

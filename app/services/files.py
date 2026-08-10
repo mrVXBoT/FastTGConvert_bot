@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-SAFE_NAME_PATTERN = re.compile(r"[^\w.()\- ]+", re.UNICODE)
+SAFE_NAME_PATTERN = re.compile(r"[^\w.()\-+ ]+", re.UNICODE)
 MAX_ZIP_MEMBERS = 2_000
 MAX_ZIP_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 200

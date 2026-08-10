@@ -798,7 +798,9 @@ async def resume_mass_message_job(
             media_file_path = (
                 Path(tempfile.gettempdir()) / f"mass_media_res_{uuid4().hex[:6]}"
             )
-            await bot.download_file(file_info.file_path, destination=media_file_path)
+            await bot.download_file(
+                file_info.file_path, destination=media_file_path, timeout=180
+            )
 
     clients: list[tuple[Any, Path, tempfile.TemporaryDirectory[str]]] = []
 

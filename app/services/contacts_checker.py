@@ -66,9 +66,7 @@ from app.services.files import (
 
 LOGGER = logging.getLogger(__name__)
 
-ContactStatus = Literal[
-    "ok", "limited", "2fa", "banned", "invalid", "inconclusive"
-]
+ContactStatus = Literal["ok", "limited", "2fa", "banned", "invalid", "inconclusive"]
 
 # Status -> (ZIP file-name stem, report Status column).  Several internal
 # statuses collapse into the 4 user-facing buckets.
@@ -320,6 +318,7 @@ async def check_session_contacts_live(
             for _attempt in range(3):
                 try:
                     from app.services.device_params import get_stable_device_params
+
                     device_kwargs = get_stable_device_params(session_path)
 
                     client = TelegramClient(  # type: ignore[call-arg]
@@ -349,6 +348,7 @@ async def check_session_contacts_live(
                             _parse_spambot_reply,
                             _spambot_status_reply,
                         )
+
                         spambot_reply = await _spambot_status_reply(
                             client, timeout=5, FloodWaitError=flood_error or Exception
                         )
@@ -476,7 +476,8 @@ def extract_zip_sessions_safe(zip_path: Path, target_dir: Path) -> list[Path]:
     Safely extract the ``.session`` members from a ZIP with Zip Slip & Zip
     Bomb guards.
 
-    Returns the extracted file paths (renamed ``session_<idx>_<name>``).
+    Original file names are preserved; only duplicate names get a numeric
+    suffix (``name_1.session``) so nothing is overwritten.
     Returns an empty list when the archive contains no ``.session`` files.
     """
     with zipfile.ZipFile(zip_path, "r") as archive:
@@ -501,10 +502,18 @@ def extract_zip_sessions_safe(zip_path: Path, target_dir: Path) -> list[Path]:
 
         session_files: list[Path] = []
         target_dir.mkdir(parents=True, exist_ok=True)
-        for idx, info in enumerate(members):
+        name_counts: dict[str, int] = {}
+        for info in members:
             if Path(info.filename).suffix.lower() != ".session":
                 continue
-            dest = target_dir / f"session_{idx}_{Path(info.filename).name}"
+            member_path = Path(info.filename)
+            name = member_path.name
+            if name in name_counts:
+                name_counts[name] += 1
+                name = f"{member_path.stem}_{name_counts[name]}{member_path.suffix}"
+            else:
+                name_counts[name] = 0
+            dest = target_dir / name
             dest.parent.mkdir(parents=True, exist_ok=True)
             _extract_member_chunked(archive, info, dest)
             session_files.append(dest)
@@ -517,7 +526,8 @@ def extract_accounts_safe(zip_path: Path, target_dir: Path) -> list[_ExtractedSe
     Safely extract accounts (session + sibling files) from a ZIP.
 
     Files are grouped by their path without extension so sibling files
-    (e.g. ``123.session`` + ``123.json``) stay together.  Every group that
+    (e.g. ``123.session`` + ``123.json``) stay together.  Original file names
+    are preserved; only duplicate names get a numeric suffix.  Every group that
     contains a ``.session`` member becomes one ``_ExtractedSession``.
 
     Raises ``UnsafeArchiveError("zip_no_sessions")`` when the archive
@@ -549,7 +559,8 @@ def extract_accounts_safe(zip_path: Path, target_dir: Path) -> list[_ExtractedSe
             groups.setdefault(key, []).append(info)
 
         extracted: list[_ExtractedSession] = []
-        for idx, (key, infos) in enumerate(groups.items()):
+        name_counts: dict[str, int] = {}
+        for key, infos in groups.items():
             sessions = [
                 i for i in infos if Path(i.filename).suffix.lower() == ".session"
             ]
@@ -558,7 +569,14 @@ def extract_accounts_safe(zip_path: Path, target_dir: Path) -> list[_ExtractedSe
             files: list[tuple[Path, str]] = []
             session_path: Path | None = None
             for info in infos:
-                dest = target_dir / f"session_{idx}_{Path(info.filename).name}"
+                member_path = Path(info.filename)
+                name = member_path.name
+                if name in name_counts:
+                    name_counts[name] += 1
+                    name = f"{member_path.stem}_{name_counts[name]}{member_path.suffix}"
+                else:
+                    name_counts[name] = 0
+                dest = target_dir / name
                 _extract_member_chunked(archive, info, dest)
                 files.append((dest, info.filename))
                 if info in sessions:

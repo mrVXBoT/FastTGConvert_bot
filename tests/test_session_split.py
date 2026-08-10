@@ -188,7 +188,7 @@ async def test_quantity_split_with_credentials_only_counts_authorized(
         archive.write(dead, dead.name)
 
     async def fake_probe(path: Path, _credentials: object):
-        if path.name.startswith("session_1_"):
+        if path.name == "989121234567.session":
             return False, None
         return True, "+573118508561"
 

@@ -272,8 +272,10 @@ async def _probe_get_me(
 def extract_zip_sessions_safe(zip_path: Path, target_dir: Path) -> list[Path]:
     """
     Safely extract .session files from ZIP with Zip Slip & Zip Bomb guards.
+    Preserves original filenames unless duplicates exist.
     """
     session_files: list[Path] = []
+    seen_names: set[str] = set()
 
     with zipfile.ZipFile(zip_path, "r") as archive:
         members = archive.infolist()
@@ -296,8 +298,12 @@ def extract_zip_sessions_safe(zip_path: Path, target_dir: Path) -> list[Path]:
                     raise UnsafeArchiveError("zip_suspicious_ratio")
 
             if member_path.suffix.lower() == ".session":
-                safe_name = f"session_{idx}_{member_path.name}"
-                dest_path = target_dir / safe_name
+                name = member_path.name
+                if name in seen_names:
+                    name = f"{member_path.stem}_{idx}{member_path.suffix}"
+                seen_names.add(name)
+
+                dest_path = target_dir / name
                 with archive.open(info) as src, dest_path.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
                 session_files.append(dest_path)

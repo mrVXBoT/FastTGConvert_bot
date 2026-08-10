@@ -117,7 +117,7 @@ def render_account_line(profile: AccountProfile) -> str:
 
 def _original_stem(path: Path) -> str:
     stem = path.stem
-    match = re.fullmatch(r"session_\d+_(\d{7,15})", stem)
+    match = re.fullmatch(r"session_\d+_(.+)", stem)
     if match:
         return match.group(1)
     return stem
@@ -363,6 +363,7 @@ def extract_zip_sessions_with_sidecars(
 ) -> list[tuple[Path, list[Path]]]:
     """Extract every member of a ZIP (guarded) and pair each .session with its sidecars."""
     extracted: dict[Path, list[Path]] = {}
+    seen_names: set[str] = set()
     with zipfile.ZipFile(zip_path, "r") as archive:
         members = archive.infolist()
         if len(members) > MAX_ZIP_MEMBERS:
@@ -387,13 +388,17 @@ def extract_zip_sessions_with_sidecars(
             dest = target_dir / member_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             if member_path.suffix.lower() == ".session":
-                safe_name = f"session_{session_index}_{member_path.name}"
+                name = member_path.name
+                if name in seen_names:
+                    name = f"{member_path.stem}_{session_index}{member_path.suffix}"
+                seen_names.add(name)
                 session_index += 1
-                dest = target_dir / safe_name
+                dest = target_dir / name
             with archive.open(info) as src, dest.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
 
         session_index = 0
+        seen_names.clear()
         for info in members:
             member_path = Path(info.filename)
             if member_path.suffix.lower() != ".session":
@@ -404,9 +409,12 @@ def extract_zip_sessions_with_sidecars(
                 for name in _SIDECAR_PASSWORD_NAMES
                 if (target_dir / (session_dir / name)).is_file()
             ]
-            safe_name = f"session_{session_index}_{member_path.name}"
+            name = member_path.name
+            if name in seen_names:
+                name = f"{member_path.stem}_{session_index}{member_path.suffix}"
+            seen_names.add(name)
             session_index += 1
-            extracted[target_dir / safe_name] = sidecars
+            extracted[target_dir / name] = sidecars
     return sorted(extracted.items())
 
 

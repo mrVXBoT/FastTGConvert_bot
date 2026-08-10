@@ -66,12 +66,22 @@ class StructuredJSONFormatter(logging.Formatter):
         return json.dumps(log_payload, ensure_ascii=False)
 
 
+class CleanEnglishConsoleFormatter(logging.Formatter):
+    """Clean, plain English terminal formatter without emojis."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        time_str = datetime.fromtimestamp(record.created, tz=UTC).strftime("%H:%M:%S")
+        raw_msg = record.getMessage()
+        masked_msg = mask_sensitive_data(raw_msg)
+        return f"[{time_str}] [{record.levelname}] {masked_msg}"
+
+
 def setup_logging(
     log_level: str = "INFO",
     json_format: bool = True,
     log_dir: Path | str | None = "logs",
 ) -> None:
-    """Configure global application logging with stdout and RotatingFileHandler."""
+    """Configure global application logging with clean console output and RotatingFileHandler."""
     level = getattr(logging, log_level.upper(), logging.INFO)
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
@@ -80,17 +90,27 @@ def setup_logging(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    formatter = (
-        StructuredJSONFormatter()
-        if json_format
-        else logging.Formatter(
-            "%(asctime)s %(levelname)s [%(name)s] trace_id=%(trace_id)s user_id=%(user_id)s: %(message)s"
-        )
-    )
+    # Mute noisy third-party and internal tracing loggers to keep terminal clean
+    for noisy_logger in (
+        "telethon",
+        "aiogram",
+        "asyncio",
+        "urllib3",
+        "pyrogram",
+        "httpx",
+        "aiohttp",
+        "app.middlewares.tracing",
+    ):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
+    # Human-readable plain English format for stdout terminal, JSON for file logs
+    console_formatter = CleanEnglishConsoleFormatter()
+    file_formatter = StructuredJSONFormatter() if json_format else console_formatter
+
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
-    console_handler.setFormatter(formatter)
+    console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
     if log_dir:
@@ -103,5 +123,7 @@ def setup_logging(
             encoding="utf-8",
         )
         file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
+        file_handler.setFormatter(file_formatter)
         root_logger.addHandler(file_handler)
+
+

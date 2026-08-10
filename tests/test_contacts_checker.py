@@ -102,8 +102,17 @@ async def test_process_contacts_check_single_session() -> None:
         with res.report_path.open(newline="", encoding="utf-8-sig") as f:
             rows = list(csv.reader(f))
         assert rows[0] == [
-            "#", "File", "Status", "Contacts", "Phone", "Username",
-            "First Name", "Last Name", "Premium", "DC", "Note",
+            "#",
+            "File",
+            "Status",
+            "Contacts",
+            "Phone",
+            "Username",
+            "First Name",
+            "Last Name",
+            "Premium",
+            "DC",
+            "Note",
         ]
         assert rows[1][1] == "test.session"
         assert rows[1][2] == "Error"
@@ -466,7 +475,7 @@ async def test_process_contacts_check_zip_with_siblings_keeps_them_together() ->
 
 
 @pytest.mark.asyncio
-async def test_extract_zip_sessions_safe_keeps_old_behavior() -> None:
+async def test_extract_zip_sessions_safe_preserves_names() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         zip_file = tmp_path / "plain.zip"
@@ -477,7 +486,46 @@ async def test_extract_zip_sessions_safe_keeps_old_behavior() -> None:
         target.mkdir()
         files = extract_zip_sessions_safe(zip_file, target)
         assert len(files) == 1
-        assert files[0].name == "session_0_123.session"
+        assert files[0].name == "123.session"
+
+
+@pytest.mark.asyncio
+async def test_extract_zip_sessions_safe_dedupes_duplicates() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        zip_file = tmp_path / "dup.zip"
+        with zipfile.ZipFile(zip_file, "w") as z:
+            z.writestr("a/123.session", b"x")
+            z.writestr("b/123.session", b"y")
+            z.writestr("c/123.session", b"z")
+        target = tmp_path / "out"
+        target.mkdir()
+        files = extract_zip_sessions_safe(zip_file, target)
+        assert {f.name for f in files} == {
+            "123.session",
+            "123_1.session",
+            "123_2.session",
+        }
+
+
+@pytest.mark.asyncio
+async def test_extract_accounts_safe_preserves_names_and_dedupes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        zip_file = tmp_path / "accounts.zip"
+        with zipfile.ZipFile(zip_file, "w") as z:
+            z.writestr("a/123.session", b"s-a")
+            z.writestr("a/123.json", b"j-a")
+            z.writestr("b/123.session", b"s-b")
+        target = tmp_path / "out"
+        target.mkdir()
+        extracted = extract_accounts_safe(zip_file, target)
+        names = {p.name for ex in extracted for p, _ in ex.files}
+        assert "123.session" in names
+        assert "123.json" in names
+        assert "123_1.session" in names
+        sessions = [ex.session_path.name for ex in extracted]
+        assert sessions == ["123.session", "123_1.session"]
 
 
 @pytest.mark.asyncio
@@ -625,7 +673,11 @@ async def test_process_contacts_check_invariant_holds() -> None:
 
         res = await process_contacts_check(sess_file, tmp_path / "outbox")
         assert (
-            res.ok + res.limited + res.two_fa + res.banned + res.invalid
+            res.ok
+            + res.limited
+            + res.two_fa
+            + res.banned
+            + res.invalid
             + res.inconclusive
             == res.checked
         )

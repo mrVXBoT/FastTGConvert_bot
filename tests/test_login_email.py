@@ -47,9 +47,10 @@ async def test_create_mail_tm_account():
 
     res = await _create_mail_tm_account(mock_session)
     assert res is not None
-    address, token = res
+    address, token, base_url = res
     assert address.endswith("@test.com")
     assert token == "mock_jwt_token"
+    assert base_url == "https://api.mail.tm"
 
 
 @pytest.mark.asyncio

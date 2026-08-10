@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sqlite3
 import tempfile
 import zipfile
@@ -78,9 +79,7 @@ _ALLOWED_SUFFIXES = {".session", ".zip"}
 _OfflineStatus = Literal["structurally_valid", "incomplete", "invalid"]
 
 # Final labels after both phases – mirrors SpamStatus + offline-only labels.
-_FinalStatus = Literal[
-    "active", "spam", "frozen", "banned", "invalid", "inconclusive"
-]
+_FinalStatus = Literal["active", "spam", "frozen", "banned", "invalid", "inconclusive"]
 
 
 @dataclass(frozen=True)
@@ -96,6 +95,7 @@ class SessionCheckEntry:
 
     member: str
     status: _FinalStatus
+    phone: str | None = None
 
 
 @dataclass
@@ -147,6 +147,39 @@ def _classify_session_file(path: Path) -> _OfflineStatus:
         return "invalid"
     except OSError:
         return "invalid"
+
+
+def _detect_session_phone(path: Path) -> str | None:
+    """Best-effort phone number from a session DB, or ``None``.
+
+    Supports Telethon (``entities``), Pyrogram (``peers``) and generator
+    ``users`` tables.  Never raises; any error means "no phone".
+    """
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            for table in ("entities", "peers", "users"):
+                if table not in tables:
+                    continue
+                cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if "phone" not in cols:
+                    continue
+                row = conn.execute(
+                    f"SELECT phone FROM {table} "
+                    "WHERE phone IS NOT NULL AND phone != '' LIMIT 1"
+                ).fetchone()
+                if row and row[0]:
+                    digits = re.sub(r"\D", "", str(row[0]))
+                    if 7 <= len(digits) <= 15:
+                        return digits
+    except (sqlite3.DatabaseError, OSError):
+        return None
+    return None
 
 
 def _extract_member_chunked(archive: zipfile.ZipFile, name: str, dest: Path) -> None:
@@ -294,7 +327,10 @@ async def _resolve_final_status(
     # Run live check against Telegram servers.
     try:
         return await _live_status(
-            session_path, credentials, timeout, proxy=proxy,
+            session_path,
+            credentials,
+            timeout,
+            proxy=proxy,
             credential_offset=credential_offset,
         )
     except Exception:
@@ -369,7 +405,9 @@ async def _check_zip(
             with tempfile.TemporaryDirectory(prefix="ftgc_zip_") as tmp:
                 tmp_dir = Path(tmp)
 
-                async def _check_one_member(idx: int, info: zipfile.ZipInfo) -> SessionCheckEntry:
+                async def _check_one_member(
+                    idx: int, info: zipfile.ZipInfo
+                ) -> SessionCheckEntry:
                     dest = tmp_dir / f"sess_{idx}_{Path(info.filename).name}"
                     try:
                         await asyncio.to_thread(
@@ -385,7 +423,11 @@ async def _check_zip(
                                 proxy=proxy,
                                 credential_offset=idx,
                             )
-                        return SessionCheckEntry(info.filename, final)
+                        return SessionCheckEntry(
+                            info.filename,
+                            final,
+                            phone=_detect_session_phone(dest),
+                        )
                     except Exception:  # noqa: BLE001
                         LOGGER.debug("Failed to process one .session member in ZIP")
                         return SessionCheckEntry(info.filename, "invalid")
@@ -396,7 +438,10 @@ async def _check_zip(
 
                 entries = list(
                     await asyncio.gather(
-                        *(_check_one_member(idx, info) for idx, info in enumerate(session_members))
+                        *(
+                            _check_one_member(idx, info)
+                            for idx, info in enumerate(session_members)
+                        )
                     )
                 )
 
@@ -485,7 +530,18 @@ async def check_sessions_detailed(
             proxy=proxy,
             progress=progress,
         )
-        return _summarize([e.status for e in entries]), entries
+        res = _summarize([e.status for e in entries])
+        LOGGER.info(
+            "Session check summary: Total=%d | Active=%d | Banned=%d | Spam=%d | Frozen=%d | Invalid=%d | Inconclusive=%d",
+            res.checked,
+            res.active,
+            res.banned,
+            res.spam,
+            res.frozen,
+            res.invalid,
+            res.inconclusive,
+        )
+        return res, entries
 
     # Single .session file.
     offline = _classify_session_file(path)
@@ -496,7 +552,19 @@ async def check_sessions_detailed(
     )
     if progress is not None:
         progress.done = 1
-    return _summarize([final]), [SessionCheckEntry(path.name, final)]
+    res = _summarize([final])
+    proxy_name = "None"
+    if isinstance(proxy, list) and proxy:
+        proxy_name = f"Pool ({len(proxy)} proxies)"
+    elif isinstance(proxy, tuple) and len(proxy) > 1:
+        proxy_name = str(proxy[1])
+
+    LOGGER.info(
+        "Single session check: Total=1 | Status=%s | Proxy=%s",
+        final,
+        proxy_name,
+    )
+    return res, [SessionCheckEntry(path.name, final, phone=_detect_session_phone(path))]
 
 
 # --------------------------------------------------------------------------- #
@@ -525,14 +593,18 @@ def build_status_zips(
     path: Path,
     entries: list[SessionCheckEntry],
     output_dir: Path,
+    *,
+    original_name: str | None = None,
 ) -> list[tuple[Path, str, int]]:
     """
     Regroup the checked sessions into one ZIP archive per status bucket.
 
-    For a single ``.session`` upload the file is copied into its bucket.
-    For a ZIP archive every member is written under its ORIGINAL relative
-    path (so ``.session`` + sibling ``.json`` pairs stay together), grouped
-    by the status of the account's ``.session`` member.
+    For a single ``.session`` upload the file is copied into its bucket under
+    ``+<phone>.session`` when a phone number can be read from the session DB
+    (falling back to *original_name* — the downloaded temp path is never
+    leaked).  For a ZIP archive every member is written under its ORIGINAL
+    relative path (so ``.session`` + sibling ``.json`` pairs stay together),
+    grouped by the status of the account's ``.session`` member.
 
     Returns ``(zip_path, status, count)`` for every non-empty bucket, where
     *status* is one of the ``SessionCheckEntry`` status labels.
@@ -540,15 +612,19 @@ def build_status_zips(
     if not entries:
         return []
     if path.suffix.lower() != ".zip":
-        # Single .session upload.
+        # Single .session upload — name it by phone number when possible.
         entry = entries[0]
         meta = _STATUS_ZIP_META.get(entry.status)
         if meta is None:
             return []
         stem, _label = meta
         out = output_dir / f"{stem}_{1}.zip"
+        if entry.phone:
+            arcname = f"+{entry.phone}.session"
+        else:
+            arcname = Path(original_name or path.name).name
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.write(path, arcname=Path(path.name).name)
+            archive.write(path, arcname=arcname)
         return [(out, entry.status, 1)]
 
     # Group ZIP members by account (path without extension) so siblings such
@@ -589,11 +665,19 @@ def build_status_zips(
                         continue
                     key = str(Path(entry.member).with_suffix(""))
                     for info in account_members.get(key, []):
-                        if info.filename in written:
+                        if entry.phone:
+                            arcname = f"+{entry.phone}{Path(info.filename).suffix}"
+                        else:
+                            arcname = info.filename
+                        if arcname in written:
                             continue
-                        written.add(info.filename)
+                        written.add(arcname)
                         try:
-                            archive.writestr(info, src.read(info.filename))
+                            new_info = zipfile.ZipInfo(arcname)
+                            new_info.date_time = info.date_time
+                            new_info.compress_type = info.compress_type
+                            new_info.external_attr = info.external_attr
+                            archive.writestr(new_info, src.read(info.filename))
                         except (OSError, KeyError, RuntimeError) as exc:
                             LOGGER.debug(
                                 "Skipping member %r during separation: %s",

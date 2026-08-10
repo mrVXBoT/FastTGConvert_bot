@@ -230,7 +230,7 @@ from app.services.profile_setup import (
     prefetch_account_profiles,
     update_account_profile,
 )
-from app.services.proxy import resolve_user_proxy
+from app.services.proxy import resolve_user_proxy, resolve_user_proxy_pool
 from app.services.records import create_file_and_job, finish_job
 from app.services.session_split import (
     SessionSplitResult,
@@ -612,6 +612,8 @@ async def _send_status_zips(
     path: Path,
     entries: list[SessionCheckEntry],
     language: str = "en",
+    *,
+    original_name: str | None = None,
 ) -> None:
     """
     Regroup the checked sessions into per-status ZIP files and send them as
@@ -622,7 +624,11 @@ async def _send_status_zips(
 
         with tempfile.TemporaryDirectory(prefix="ftgc_status_zips_") as tmp:
             archives = await asyncio.to_thread(
-                build_status_zips, path, entries, Path(tmp)
+                build_status_zips,
+                path,
+                entries,
+                Path(tmp),
+                original_name=original_name,
             )
             for zip_path, status, count in archives:
                 caption = status_zip_caption(status, count, language)
@@ -651,7 +657,7 @@ async def download_document(
     suffix = Path(name).suffix[:16]
     destination = allocate_path(settings.storage_dir / "inbox", suffix)
     try:
-        await bot.download(document, destination=destination)
+        await bot.download(document, destination=destination, timeout=180)
         if destination.stat().st_size > settings.max_upload_bytes:
             raise ValueError(
                 errs["file_too_large"].format(max_mb=settings.max_upload_mb)
@@ -820,7 +826,7 @@ async def analyze_document(
         try:
             path, name = await download_document(message, bot, settings, language)
             state_data = await state.get_data()
-            user_proxy = resolve_user_proxy(session_factory, message.from_user.id)
+            user_proxy = resolve_user_proxy_pool(session_factory, message.from_user.id)
             if state_data.get("check_contacts"):
                 cnt_msgs = CHECK_CONTACTS_MESSAGES.get(
                     language, CHECK_CONTACTS_MESSAGES["en"]
@@ -913,7 +919,7 @@ async def analyze_document(
                         result, language, spam_mode=live_check
                     ),
                 )
-                await _send_status_zips(message, path, entries, language)
+                await _send_status_zips(message, path, entries, language, original_name=name)
                 await state.clear()
                 return
             analysis = await asyncio.to_thread(analyze_file, path, name)
@@ -3909,6 +3915,7 @@ async def _execute_login_email_job(
             settings.api_credential_list,
             output_dir,
             job_progress=progress,
+            max_concurrency=30,
         )
     except JobCancelled:
         await _stop_progress(progress_task)
@@ -6215,7 +6222,13 @@ async def process_quick_action(
                     result_check, language, spam_mode=spam_mode
                 ),
             )
-            await _send_status_zips(status_message, file_path, entries_check, language)
+            await _send_status_zips(
+                status_message,
+                file_path,
+                entries_check,
+                language,
+                original_name=original_name,
+            )
         finally:
             await _stop_progress(progress_task)
             file_path.unlink(missing_ok=True)

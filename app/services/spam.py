@@ -356,7 +356,7 @@ async def check_spam_via_spambot(
     session_path: Path,
     credentials: list[tuple[int, str]],
     timeout: int = 15,
-    proxy: tuple | None = None,
+    proxy: tuple | list[tuple] | None = None,
     credential_offset: int = 0,
 ) -> SpamStatus:
     """
@@ -365,6 +365,14 @@ async def check_spam_via_spambot(
     if not credentials:
         LOGGER.warning("No API credentials configured; cannot run live spam check")
         return "inconclusive"
+
+    # Select proxy from Proxy Pool if a list of proxy tuples is provided
+    resolved_proxy: tuple | None = None
+    if isinstance(proxy, list) and proxy:
+        resolved_proxy = proxy[credential_offset % len(proxy)]
+    elif isinstance(proxy, tuple):
+        resolved_proxy = proxy
+
 
     # Round-robin the starting credential so concurrent checks do not all pile
     # onto the first api_id at the same moment.
@@ -401,7 +409,7 @@ async def check_spam_via_spambot(
                 api_id=api_id,
                 api_hash=api_hash,
                 timeout=timeout,
-                proxy=proxy,
+                proxy=resolved_proxy,
                 TelegramClient=TelegramClient,
                 ApiIdInvalidError=ApiIdInvalidError,
                 AuthKeyDuplicatedError=AuthKeyDuplicatedError,

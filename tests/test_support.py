@@ -140,6 +140,7 @@ async def test_process_proxy_input_validates_and_saves() -> None:
     message = MagicMock(spec=Message)
     message.from_user = MagicMock(id=12345)
     message.text = "socks5://1.2.3.4:1080"
+    message.document = None
     message.answer = AsyncMock()
 
     state = AsyncMock(spec=FSMContext)

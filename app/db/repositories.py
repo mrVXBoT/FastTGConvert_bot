@@ -69,6 +69,13 @@ def set_user_proxy(
         user.proxy_port = None
         user.proxy_username = None
         user.proxy_password_encrypted = None
+    elif "\n" in proxy:
+        user.proxy = proxy
+        user.proxy_type = "pool"
+        user.proxy_host = None
+        user.proxy_port = None
+        user.proxy_username = None
+        user.proxy_password_encrypted = None
     else:
         parsed = parse_telethon_proxy(proxy)
         if parsed:
@@ -80,6 +87,8 @@ def set_user_proxy(
             user.proxy_username = puser
             user.proxy_password_encrypted = enc_pass
             user.proxy = proxy
+        else:
+            user.proxy = proxy
 
     session.commit()
     session.refresh(user)
@@ -90,6 +99,8 @@ def get_user_proxy(session: Session, telegram_id: int) -> str | None:
     user = session.scalar(select(User).where(User.telegram_id == telegram_id))
     if user is None:
         return None
+    if user.proxy and ("\n" in user.proxy or user.proxy_type == "pool"):
+        return user.proxy
     if user.proxy_host and user.proxy_port and user.proxy_type:
         auth_str = ""
         if user.proxy_username or user.proxy_password_encrypted:
@@ -98,6 +109,7 @@ def get_user_proxy(session: Session, telegram_id: int) -> str | None:
             auth_str = f"{user_str}:{pass_str}@"
         return f"{user.proxy_type}://{auth_str}{user.proxy_host}:{user.proxy_port}"
     return user.proxy
+
 
 
 def generate_unique_display_id(session: Session, prefix: str = "MM") -> str:

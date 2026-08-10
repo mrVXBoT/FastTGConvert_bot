@@ -33,6 +33,7 @@ from app.session_checker import (
     SessionProgress,
     _classify_session_file,
     _collect_offline_statuses,
+    _detect_session_phone,
     _summarize,
     build_status_zips,
     check_sessions,
@@ -291,9 +292,10 @@ class TestSpamBotGreeting:
     @pytest.mark.asyncio
     async def test_fresh_chat_retries_start_and_gets_status(self) -> None:
         # First attempt's poll only finds the welcome message, the second attempt gets the real status.
-        with patch("app.services.spam._wait_for_spambot_reply") as fake_wait, patch(
-            "app.services.spam._send_start"
-        ) as mock_send_start:
+        with (
+            patch("app.services.spam._wait_for_spambot_reply") as fake_wait,
+            patch("app.services.spam._send_start") as mock_send_start,
+        ):
             mock_send_start.side_effect = [10, 20]
             fake_wait.side_effect = [self.WELCOME, self.CLEAN_STATUS]
             reply = await _spambot_status_reply(
@@ -307,9 +309,12 @@ class TestSpamBotGreeting:
     async def test_existing_chat_gets_status_after_double_start(self) -> None:
         # Returning account: the first /start already produces the status, so
         # the second /start's poll finds it immediately.
-        with patch("app.services.spam._send_start", new=AsyncMock(return_value=5)), patch(
-            "app.services.spam._wait_for_spambot_reply",
-            new=AsyncMock(return_value=self.CLEAN_STATUS),
+        with (
+            patch("app.services.spam._send_start", new=AsyncMock(return_value=5)),
+            patch(
+                "app.services.spam._wait_for_spambot_reply",
+                new=AsyncMock(return_value=self.CLEAN_STATUS),
+            ),
         ):
             reply = await _spambot_status_reply(
                 AsyncMock(), timeout=15, FloodWaitError=Exception
@@ -320,9 +325,12 @@ class TestSpamBotGreeting:
     async def test_only_welcome_messages_is_inconclusive(self) -> None:
         # If SpamBot keeps answering with the welcome message, we must not
         # guess a status.
-        with patch("app.services.spam._send_start", new=AsyncMock(return_value=5)), patch(
-            "app.services.spam._wait_for_spambot_reply",
-            new=AsyncMock(return_value=self.WELCOME),
+        with (
+            patch("app.services.spam._send_start", new=AsyncMock(return_value=5)),
+            patch(
+                "app.services.spam._wait_for_spambot_reply",
+                new=AsyncMock(return_value=self.WELCOME),
+            ),
         ):
             reply = await _spambot_status_reply(
                 AsyncMock(), timeout=15, FloodWaitError=Exception
@@ -532,7 +540,9 @@ class TestCheckSessionsOffline:
         p = tmp_path / "ok.session"
         _make_session(p, auth_key=b"z" * 256)
         result = await check_sessions(p)
-        assert result == SessionCheckResult(checked=1, active=0, frozen=0, invalid=0, inconclusive=1)
+        assert result == SessionCheckResult(
+            checked=1, active=0, frozen=0, invalid=0, inconclusive=1
+        )
 
     async def test_single_incomplete_session(self, tmp_path: Path) -> None:
         p = tmp_path / "empty.session"
@@ -758,9 +768,7 @@ class TestStatusZipSeparation:
             assert result.active == 1
             assert entries == [SessionCheckEntry("ok.session", "active")]
 
-    def test_build_zips_groups_by_status_with_siblings(
-        self, tmp_path: Path
-    ) -> None:
+    def test_build_zips_groups_by_status_with_siblings(self, tmp_path: Path) -> None:
         # 9 active + 1 spam + 1 frozen, each .session with a sibling .json →
         # three zips: No_Restriction_9.zip, Spam_1.zip, Frozen_1.zip, with
         # siblings kept together.
@@ -807,7 +815,31 @@ class TestStatusZipSeparation:
             names = set(zf.namelist())
             assert names == {"+2347055555555.session", "+2347055555555.json"}
 
-    def test_build_zips_single_session_upload(self, tmp_path: Path) -> None:
+    def test_build_zips_single_session_upload_keeps_original_name(
+        self, tmp_path: Path
+    ) -> None:
+        # The downloaded temp file has a UUID-ish name; the user's original
+        # upload name must be restored inside the status ZIP.
+        p = tmp_path / "787c6fda56944d6a9385340e6a98b82f.session"
+        p.write_bytes(b"session-data")
+        entries = [SessionCheckEntry(p.name, "frozen")]
+        out = tmp_path / "out"
+        out.mkdir()
+
+        archives = build_status_zips(
+            p, entries, out, original_name="_12167587713.session"
+        )
+
+        assert len(archives) == 1
+        zip_path, status, count = archives[0]
+        assert status == "frozen" and count == 1
+        with zipfile.ZipFile(zip_path) as zf:
+            assert zf.namelist() == ["_12167587713.session"]
+            assert zf.read("_12167587713.session") == b"session-data"
+
+    def test_build_zips_single_session_upload_uses_path_name_without_original(
+        self, tmp_path: Path
+    ) -> None:
         p = tmp_path / "acc.session"
         p.write_bytes(b"session-data")
         out = tmp_path / "out"
@@ -837,3 +869,86 @@ class TestStatusZipSeparation:
         assert len(archives) == 1
         assert archives[0][1] == "invalid"
         assert archives[0][2] == 1
+
+
+class TestDetectSessionPhone:
+    def test_telethon_entities_table(self, tmp_path: Path) -> None:
+        p = tmp_path / "a.session"
+        with sqlite3.connect(p) as conn:
+            conn.execute("CREATE TABLE entities (id INTEGER, phone TEXT)")
+            conn.execute("INSERT INTO entities VALUES (777000, '+12167587713')")
+        assert _detect_session_phone(p) == "12167587713"
+
+    def test_pyrogram_peers_table(self, tmp_path: Path) -> None:
+        p = tmp_path / "b.session"
+        with sqlite3.connect(p) as conn:
+            conn.execute("CREATE TABLE peers (id INTEGER, phone TEXT)")
+            conn.execute("INSERT INTO peers VALUES (1, '+2347047848725')")
+        assert _detect_session_phone(p) == "2347047848725"
+
+    def test_strips_non_digits(self, tmp_path: Path) -> None:
+        p = tmp_path / "c.session"
+        with sqlite3.connect(p) as conn:
+            conn.execute("CREATE TABLE users (id INTEGER, phone TEXT)")
+            conn.execute("INSERT INTO users VALUES (1, '1216 758-7713')")
+        assert _detect_session_phone(p) == "12167587713"
+
+    def test_no_phone_returns_none(self, tmp_path: Path) -> None:
+        p = tmp_path / "d.session"
+        with sqlite3.connect(p) as conn:
+            conn.execute("CREATE TABLE entities (id INTEGER, phone TEXT)")
+            conn.execute("INSERT INTO entities VALUES (1, NULL)")
+            conn.execute("INSERT INTO entities VALUES (2, '')")
+        assert _detect_session_phone(p) is None
+
+    def test_corrupt_file_returns_none(self, tmp_path: Path) -> None:
+        p = tmp_path / "e.session"
+        p.write_bytes(b"not a db")
+        assert _detect_session_phone(p) is None
+
+
+class TestBuildZipsPhoneNaming:
+    def test_single_upload_named_by_phone(self, tmp_path: Path) -> None:
+        # Even when the original upload name was mangled by safe_filename,
+        # the status ZIP member must be named by the session's phone number.
+        p = tmp_path / "787c6fda56944d6a9385340e6a98b82f.session"
+        p.write_bytes(b"session-data")
+        out = tmp_path / "out"
+        out.mkdir()
+        entries = [SessionCheckEntry(p.name, "frozen", phone="12167587713")]
+
+        archives = build_status_zips(p, entries, out)
+
+        assert len(archives) == 1
+        zip_path, status, count = archives[0]
+        assert status == "frozen" and count == 1
+        assert zip_path.name == "Frozen_1.zip"
+        with zipfile.ZipFile(zip_path) as zf:
+            assert zf.namelist() == ["+12167587713.session"]
+            assert zf.read("+12167587713.session") == b"session-data"
+
+    def test_zip_members_renamed_by_phone(self, tmp_path: Path) -> None:
+        archive = tmp_path / "input.zip"
+        _make_zip(
+            archive,
+            {
+                "_12167587713.session": b"active-session",
+                "_12167587713.json": b"{}",
+            },
+        )
+        out = tmp_path / "out"
+        out.mkdir()
+        entries = [
+            SessionCheckEntry("_12167587713.session", "active", phone="12167587713")
+        ]
+
+        archives = build_status_zips(archive, entries, out)
+
+        assert len(archives) == 1
+        zip_path, status, count = archives[0]
+        assert status == "active" and count == 1
+        assert zip_path.name == "No_Restriction_1.zip"
+        with zipfile.ZipFile(zip_path) as zf:
+            names = set(zf.namelist())
+            assert names == {"+12167587713.session", "+12167587713.json"}
+            assert "_12167587713.session" not in names
