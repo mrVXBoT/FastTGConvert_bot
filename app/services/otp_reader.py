@@ -129,30 +129,37 @@ async def read_account_otps(
 
                 with suppress(Exception):
                     await client.disconnect()
+
+                code_list = [c.code for c in codes] if codes else []
+                LOGGER.info(
+                    "OTP Read: Phone=%s | User=%s | Username=%s | Codes=%s",
+                    user_info.get("phone", "N/A"),
+                    user_info.get("user", "N/A"),
+                    user_info.get("username", "N/A"),
+                    code_list if code_list else "None found",
+                )
                 return user_info, codes, "ok"
 
             except (AuthKeyDuplicatedError, AuthKeyError, AuthKeyUnregisteredError):
-                # Session auth key was invalidated / no longer registered →
-                # account deactivated or session revoked server-side.
-                LOGGER.debug("OTP read: session auth key invalid (api_id=%d)", api_id)
+                LOGGER.warning("OTP Read for %s failed: session auth key invalid/revoked", session_path.name)
                 with suppress(Exception):
                     await client.disconnect()
                 return default_user_info, [], "banned"
 
             except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
-                LOGGER.debug("OTP read: account deactivated (api_id=%d)", api_id)
+                LOGGER.warning("OTP Read for %s failed: account deactivated or banned", session_path.name)
                 with suppress(Exception):
                     await client.disconnect()
                 return default_user_info, [], "banned"
 
             except SessionPasswordNeededError:
-                LOGGER.debug("OTP read: two-step verification required (api_id=%d)", api_id)
+                LOGGER.warning("OTP Read for %s failed: 2FA password required", session_path.name)
                 with suppress(Exception):
                     await client.disconnect()
                 return default_user_info, [], "2fa"
 
             except Exception as exc:  # noqa: BLE001
-                LOGGER.debug("OTP read attempt failed with api_id=%d: %s", api_id, exc)
+                LOGGER.warning("OTP Read attempt for %s failed (api_id=%d): %s", session_path.name, api_id, exc)
                 with suppress(Exception):
                     await client.disconnect()
 

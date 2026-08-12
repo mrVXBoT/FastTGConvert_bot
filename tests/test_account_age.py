@@ -111,7 +111,7 @@ async def test_fetch_single_account_age(dummy_session: Path):
     class DummyMsg:
         import datetime
 
-        date = datetime.datetime(2017, 4, 15, 10, 0, 0, tzinfo=datetime.UTC)
+        date = datetime.datetime(2017, 4, 15, 10, 0, 0, tzinfo=datetime.timezone.utc)
 
     mock_client.get_messages.return_value = [DummyMsg()]
 

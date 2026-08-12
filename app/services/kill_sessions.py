@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.services.contacts_checker import extract_zip_sessions_safe
-from app.services.file_merge import _is_valid_sqlite_session
+from app.services.file_merge import (
+    _is_valid_sqlite_session,
+    extract_account_identifier,
+)
 from app.services.session_to_tdata import _ensure_opentele_patched
 
 LOGGER = logging.getLogger(__name__)
@@ -143,6 +146,8 @@ async def process_kill_sessions(
         failed = 0
         details: list[SessionKillDetail] = []
 
+        LOGGER.info("Starting Kill Other Sessions for %d session(s)...", total)
+
         # Each kill is a connect + ResetAuthorizationsRequest chain. Sequential
         # execution made large batches slow; a bounded semaphore (shared api
         # credentials / IP) keeps the flood risk in check while parallelizing.
@@ -156,12 +161,35 @@ async def process_kill_sessions(
 
         outcomes = await asyncio.gather(*(kill_one(i) for i in range(total)))
         for sess_file, (st, msg) in zip(session_files, outcomes):
+            identifier, uid, phone = extract_account_identifier(sess_file)
             if st == "ok":
                 killed += 1
+                LOGGER.info(
+                    "Kill Sessions: Account=%s | Phone=%s | UserID=%s → SUCCESS (%s)",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    msg,
+                )
             elif st == "fresh_forbidden":
                 fresh_forbidden += 1
+                LOGGER.warning(
+                    "Kill Sessions: Account=%s | Phone=%s | UserID=%s → FRESH_FORBIDDEN (%s)",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    msg,
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Kill Sessions: Account=%s | Phone=%s | UserID=%s → FAILED [%s] (%s)",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    st,
+                    msg,
+                )
 
             details.append(
                 SessionKillDetail(
@@ -170,6 +198,14 @@ async def process_kill_sessions(
                     message=msg,
                 )
             )
+
+        LOGGER.info(
+            "Kill Sessions Summary: Total=%d | Killed=%d | Fresh Forbidden=%d | Failed=%d",
+            total,
+            killed,
+            fresh_forbidden,
+            failed,
+        )
 
         return KillSessionsResult(
             total=total,

@@ -455,6 +455,12 @@ async def process_account_to_txt(
         if progress is not None:
             progress.total = total
 
+        LOGGER.info(
+            "Starting Account to TXT conversion for '%s' (%d session(s))...",
+            original_name or input_path.name,
+            total,
+        )
+
         active = 0
         invalid_converted = 0
         failed = 0
@@ -544,10 +550,28 @@ async def process_account_to_txt(
         for index, entry, row in sorted(outcomes, key=lambda item: item[0]):
             if entry.status == "active":
                 active += 1
+                LOGGER.info(
+                    "Account -> TXT: Account=%s | Phone=%s | UserID=%s → ACTIVE (OK)",
+                    entry.profile.identifier,
+                    entry.profile.phone,
+                    entry.profile.user_id or "N/A",
+                )
             elif entry.status == "invalid":
                 invalid_converted += 1
+                LOGGER.warning(
+                    "Account -> TXT: Account=%s | Phone=%s | UserID=%s → INVALID (%s)",
+                    entry.profile.identifier,
+                    entry.profile.phone,
+                    entry.profile.user_id or "N/A",
+                    entry.reason or "invalid",
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Account -> TXT: Account=%s → FAILED (%s)",
+                    entry.profile.identifier,
+                    entry.reason or "failed",
+                )
             entries.append(entry)
             if row is not None:
                 rows.append(row)
@@ -595,7 +619,7 @@ async def process_account_to_txt(
                     raise ValueError("storage_error") from exc
                 raise
 
-        return AccountTxtResult(
+        res = AccountTxtResult(
             total=total,
             active=active,
             invalid_converted=invalid_converted,
@@ -605,6 +629,15 @@ async def process_account_to_txt(
             status_path=status_path,
             entries=tuple(entries),
         )
+        LOGGER.info(
+            "Account to TXT Summary: Total=%d | Active=%d | Invalid Converted=%d | Failed=%d | Output=%s",
+            res.total,
+            res.active,
+            res.invalid_converted,
+            res.failed,
+            output_zip.name if output_zip else "None",
+        )
+        return res
     finally:
         if temp_dir is not None:
             temp_dir.cleanup()

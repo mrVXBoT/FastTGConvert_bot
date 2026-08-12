@@ -12,7 +12,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.services.contacts_checker import extract_zip_sessions_safe
-from app.services.file_merge import _is_valid_sqlite_session
+from app.services.file_merge import (
+    _is_valid_sqlite_session,
+    extract_account_identifier,
+)
 from app.services.session_to_tdata import _ensure_opentele_patched
 
 LOGGER = logging.getLogger(__name__)
@@ -77,6 +80,12 @@ async def process_channel_join(
         success_files: list[Path] = []
         failed = 0
 
+        LOGGER.info(
+            "Starting Channel JOIN for target '%s' (%d session(s))...",
+            target,
+            total,
+        )
+
         channel_identifier, is_private = parse_channel_target(target)
 
         # Joining is a connect + join RPC per session. Sequential execution
@@ -138,10 +147,26 @@ async def process_channel_join(
 
         join_results = await asyncio.gather(*(join_one(i) for i in range(total)))
         for index, joined in enumerate(join_results):
+            sess_file = session_files[index]
+            identifier, uid, phone = extract_account_identifier(sess_file)
             if joined:
-                success_files.append(session_files[index])
+                success_files.append(sess_file)
+                LOGGER.info(
+                    "Channel Join: Account=%s | Phone=%s | UserID=%s | Target='%s' → SUCCESS",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    target,
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Channel Join: Account=%s | Phone=%s | UserID=%s | Target='%s' → FAILED",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    target,
+                )
 
         success_count = len(success_files)
         output_path: Path | None = None
@@ -164,6 +189,14 @@ async def process_channel_join(
                             arcname = f"{sfile.stem}_{idx}.session"
                         used_names.add(arcname)
                         archive.write(sfile, arcname=arcname)
+
+        LOGGER.info(
+            "Channel Join Summary: Total=%d | Joined=%d | Failed=%d | Output=%s",
+            total,
+            success_count,
+            failed,
+            output_path.name if output_path else "None",
+        )
 
         return ChannelResult(
             total=total,
@@ -209,6 +242,12 @@ async def process_channel_leave(
         total = len(session_files)
         success_files: list[Path] = []
         failed = 0
+
+        LOGGER.info(
+            "Starting Channel LEAVE for target '%s' (%d session(s))...",
+            target,
+            total,
+        )
 
         leave_all = target.strip().lower() in ("all", "*", "همه")
         channel_identifier, is_private = parse_channel_target(target)
@@ -336,10 +375,26 @@ async def process_channel_leave(
 
         leave_results = await asyncio.gather(*(leave_one(i) for i in range(total)))
         for index, left in enumerate(leave_results):
+            sess_file = session_files[index]
+            identifier, uid, phone = extract_account_identifier(sess_file)
             if left:
-                success_files.append(session_files[index])
+                success_files.append(sess_file)
+                LOGGER.info(
+                    "Channel Leave: Account=%s | Phone=%s | UserID=%s | Target='%s' → SUCCESS",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    target,
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Channel Leave: Account=%s | Phone=%s | UserID=%s | Target='%s' → FAILED",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                    target,
+                )
 
         success_count = len(success_files)
         output_path: Path | None = None
@@ -362,6 +417,14 @@ async def process_channel_leave(
                             arcname = f"{sfile.stem}_{idx}.session"
                         used_names.add(arcname)
                         archive.write(sfile, arcname=arcname)
+
+        LOGGER.info(
+            "Channel Leave Summary: Total=%d | Left=%d | Failed=%d | Output=%s",
+            total,
+            success_count,
+            failed,
+            output_path.name if output_path else "None",
+        )
 
         return ChannelResult(
             total=total,

@@ -17,7 +17,10 @@ from uuid import uuid4
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import Job
-from app.services.file_merge import _is_valid_sqlite_session
+from app.services.file_merge import (
+    _is_valid_sqlite_session,
+    extract_account_identifier,
+)
 from app.services.session_to_tdata import _ensure_opentele_patched
 
 LOGGER = logging.getLogger(__name__)
@@ -332,6 +335,8 @@ async def extract_contacts_from_sessions(
         *(fetch_one(index) for index in range(len(session_files)))
     )
 
+    LOGGER.info("Starting Contact Extraction from %d session(s)...", len(session_files))
+
     for stat, session_recipients in fetched:
         # Global dedupe in session order keeps recipients deterministic.
         for r in session_recipients:
@@ -341,6 +346,26 @@ async def extract_contacts_from_sessions(
             seen.add(key)
             recipients.append(r)
         stats.append(stat)
+
+        if stat.status == "ok":
+            LOGGER.info(
+                "Extract Contacts: Session=%s | Status=SUCCESS | ContactsFound=%d",
+                stat.session_name,
+                stat.contacts_found,
+            )
+        else:
+            LOGGER.warning(
+                "Extract Contacts: Session=%s | Status=%s | Reason=%s",
+                stat.session_name,
+                stat.status,
+                stat.error_detail or "N/A",
+            )
+
+    LOGGER.info(
+        "Extract Contacts Summary: Total Sessions=%d | Unique Recipients Extracted=%d",
+        len(session_files),
+        len(recipients),
+    )
 
     return ContactExtractionResult(recipients=recipients, stats=stats)
 
@@ -884,10 +909,27 @@ async def resume_mass_message_job(
                 async with lock:
                     if st == "SENT":
                         sent += 1
+                        LOGGER.info(
+                            "Mass Message: Session=%s | Target=%s → SENT",
+                            session_path.name,
+                            rec.raw_identifier,
+                        )
                     elif st == "SKIPPED":
                         skipped += 1
+                        LOGGER.warning(
+                            "Mass Message: Session=%s | Target=%s → SKIPPED (%s)",
+                            session_path.name,
+                            rec.raw_identifier,
+                            detail,
+                        )
                     else:
                         failed += 1
+                        LOGGER.warning(
+                            "Mass Message: Session=%s | Target=%s → FAILED (%s)",
+                            session_path.name,
+                            rec.raw_identifier,
+                            detail,
+                        )
 
                     details.append(
                         {

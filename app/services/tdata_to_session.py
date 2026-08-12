@@ -206,6 +206,11 @@ async def process_tdata_to_session_conversion(
                 total=0, converted=0, failed=0, output_path=None
             )
 
+        LOGGER.info(
+            "Starting TData to Session conversion for %d tdata directory(ies)...",
+            len(tdata_dirs),
+        )
+
         if progress is not None:
             progress.total = len(tdata_dirs)
 
@@ -287,6 +292,18 @@ async def process_tdata_to_session_conversion(
                 total_accounts += expected
                 entries.append(entry)
                 converted_sessions.extend(sess_list)
+                if entry.ok:
+                    LOGGER.info(
+                        "TData -> Session: Folder=%s | Sessions Created=%d → OK",
+                        entry.name,
+                        len(sess_list),
+                    )
+                else:
+                    LOGGER.warning(
+                        "TData -> Session: Folder=%s → FAILED (%s)",
+                        entry.name,
+                        entry.reason or "conversion_error",
+                    )
 
             converted_count = len(converted_sessions)
             failed_count = total_accounts - converted_count
@@ -332,6 +349,12 @@ async def process_tdata_to_session_conversion(
                     raise ValueError("storage_error") from exc
                 raise
 
+            LOGGER.info(
+                "TData to Session conversion completed: %d total accounts, %d converted, %d failed.",
+                total_accounts,
+                converted_count,
+                failed_count,
+            )
             return TdataToSessionResult(
                 total=total_accounts,
                 converted=converted_count,

@@ -20,6 +20,7 @@ from telethon.errors import (
     AuthKeyUnregisteredError,
     FloodWaitError,
     PhoneNumberBannedError,
+    RPCError,
     SessionExpiredError,
     SessionRevokedError,
     UserDeactivatedBanError,
@@ -189,6 +190,18 @@ async def _create_mail_tm_account(
     )
 
 
+def _extract_otp_from_text(text: str) -> str | None:
+    if not text:
+        return None
+    match = re.search(r"(?:code|is|verification|login)\D*(\d{5,6})", text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(\d{5,6})\b", text)
+    if match:
+        return match.group(1)
+    return None
+
+
 async def _poll_mail_tm_otp(
     session_http: aiohttp.ClientSession,
     token: str,
@@ -218,9 +231,9 @@ async def _poll_mail_tm_otp(
                                 + " "
                                 + (em.get("subject") or "")
                             )
-                            match = re.search(r"\b(\d{5,6})\b", text)
-                            if match:
-                                return match.group(1)
+                            otp = _extract_otp_from_text(text)
+                            if otp:
+                                return otp
             except Exception as exc:  # noqa: BLE001
                 LOGGER.debug("tempmail.lol polling error: %s", exc)
 
@@ -249,9 +262,9 @@ async def _poll_mail_tm_otp(
                                 text = msg_detail.get("text", "") or msg_detail.get(
                                     "intro", ""
                                 )
-                                match = re.search(r"\b(\d{5,6})\b", text)
-                                if match:
-                                    return match.group(1)
+                                otp = _extract_otp_from_text(text)
+                                if otp:
+                                    return otp
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("Mail inbox polling error: %s", exc)
 
@@ -524,13 +537,12 @@ async def process_single_login_email(
             except FloodWaitError as exc:
                 seconds = getattr(exc, "seconds", 0)
                 last_flood_error = f"Telegram limit: Must wait {seconds}s required"
-                LOGGER.info(
-                    "FloodWait of %ds for %s on API key %s. Trying next API credential...",
+                LOGGER.warning(
+                    "FloodWait of %ds for %s on account; skipping further API key retries for this account.",
                     seconds,
                     session_name,
-                    api_id,
                 )
-                continue
+                break
 
             # Poll OTP code from email inbox
             otp_code = await _poll_mail_tm_otp(
@@ -580,6 +592,16 @@ async def process_single_login_email(
                 phone=phone,
                 status="unauthorized",
                 message="Session revoked or account deactivated",
+            )
+        except RPCError as exc:
+            LOGGER.warning("Login email RPC error for %s: %s", session_name, exc)
+            return LoginEmailDetail(
+                session_name=session_name,
+                phone=phone,
+                status="error",
+                old_email_pattern=old_pattern,
+                new_email=new_email if "new_email" in locals() else None,
+                message=f"Telegram API error: {exc}",
             )
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("Login email error for %s: %s", session_name, exc)
@@ -692,18 +714,35 @@ async def process_batch_login_email(
 
                     if detail.status == "changed":
                         result.changed_count += 1
+                        LOGGER.info(
+                            "Login Email -> Account=%s | Phone=%s | NewEmail=%s → CHANGED (OK)",
+                            sess_name,
+                            f"+{detail.phone}" if detail.phone else "N/A",
+                            detail.new_email or "N/A",
+                        )
                         shutil.copy2(sess_file, success_dir / sess_name)
                         updated_dir = classified_dir / "updated"
                         updated_dir.mkdir(exist_ok=True)
                         shutil.copy2(sess_file, updated_dir / sess_name)
                     elif detail.status == "no_email":
                         result.no_email_count += 1
+                        LOGGER.info(
+                            "Login Email -> Account=%s | Phone=%s → NO LOGIN EMAIL (SKIPPED)",
+                            sess_name,
+                            f"+{detail.phone}" if detail.phone else "N/A",
+                        )
                         shutil.copy2(sess_file, no_email_dir / sess_name)
                         no_login_dir = classified_dir / "no_login_email"
                         no_login_dir.mkdir(exist_ok=True)
                         shutil.copy2(sess_file, no_login_dir / sess_name)
                     else:
                         result.error_count += 1
+                        LOGGER.warning(
+                            "Login Email -> Account=%s | Phone=%s → FAILED (%s)",
+                            sess_name,
+                            f"+{detail.phone}" if detail.phone else "N/A",
+                            note,
+                        )
                         shutil.copy2(sess_file, failed_dir / sess_name)
                         failed_cls = classified_dir / "failed"
                         failed_cls.mkdir(exist_ok=True)
@@ -838,5 +877,13 @@ async def process_batch_login_email(
                         rel_path = full_path.relative_to(classified_dir)
                         z.write(full_path, arcname=str(rel_path))
             result.classified_zip = class_zip
+
+        LOGGER.info(
+            "Login Email Summary: Total=%d | Changed=%d | NoEmail=%d | Failed=%d",
+            result.total,
+            result.changed_count,
+            result.no_email_count,
+            result.error_count,
+        )
 
     return result

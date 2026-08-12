@@ -241,6 +241,13 @@ async def process_file_merge(
         if total == 0:
             return FileMergeResult(total=0, merged=0, failed=0, output_path=None)
 
+        LOGGER.info(
+            "Starting File Merge (Type='%s') for '%s' (%d session(s))...",
+            merge_type,
+            original_name or input_path.name,
+            total,
+        )
+
         entries: list[FileMergeAccountEntry] = []
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -264,6 +271,13 @@ async def process_file_merge(
 
                     zf.write(sess_file, arcname=arc_name)
                     merged_count += 1
+                    LOGGER.info(
+                        "File Merge (Multi-Type): File=%s | Identifier=%s | Phone=%s | UserID=%s → SUCCESS",
+                        sess_file.name,
+                        identifier,
+                        f"+{phone}" if phone else "N/A",
+                        uid or "N/A",
+                    )
                     entries.append(
                         FileMergeAccountEntry(
                             identifier=identifier,
@@ -273,7 +287,7 @@ async def process_file_merge(
                         )
                     )
 
-            return FileMergeResult(
+            res = FileMergeResult(
                 total=total,
                 merged=merged_count,
                 failed=failed_count,
@@ -281,6 +295,14 @@ async def process_file_merge(
                 is_zip=True,
                 entries=tuple(entries),
             )
+            LOGGER.info(
+                "File Merge Summary (Multi-Type): Total=%d | Merged=%d | Failed=%d | Output=%s",
+                res.total,
+                res.merged,
+                res.failed,
+                zip_out.name,
+            )
+            return res
 
         if merge_type == "session_json_tdata":
             zip_out = output_dir / f"merge_json_tdata_{uuid4().hex[:6]}.zip"
@@ -369,6 +391,14 @@ async def process_file_merge(
                 if clean_id is not None:
                     used_clean_ids.add(clean_id)
                 entries.append(entry)
+                status_str = "SUCCESS" if (conv is not None and clean_id is not None) else "FAILED"
+                LOGGER.info(
+                    "File Merge (Session+JSON+TData): Account=%s | Phone=%s | UserID=%s → %s",
+                    entry.identifier,
+                    f"+{entry.phone}" if entry.phone else "N/A",
+                    entry.user_id or "N/A",
+                    status_str,
+                )
                 if conv is not None and clean_id is not None:
                     sess_file, _, json_content, tdata_dir = conv
                     successful.append((sess_file, clean_id, json_content, tdata_dir))
@@ -376,6 +406,7 @@ async def process_file_merge(
             success_count = len(successful)
             failed_count = total - success_count
             if success_count == 0:
+                LOGGER.warning("File Merge (Session+JSON+TData) Summary: Total=%d | Merged=0 | Failed=%d", total, failed_count)
                 return FileMergeResult(
                     total=total,
                     merged=0,
@@ -395,7 +426,7 @@ async def process_file_merge(
                             rel = td_file.relative_to(tdata_dir)
                             zf.write(td_file, arcname=f"{prefix}tdata/{rel}")
 
-            return FileMergeResult(
+            res = FileMergeResult(
                 total=total,
                 merged=success_count,
                 failed=failed_count,
@@ -403,5 +434,13 @@ async def process_file_merge(
                 is_zip=True,
                 entries=tuple(entries),
             )
+            LOGGER.info(
+                "File Merge Summary (Session+JSON+TData): Total=%d | Merged=%d | Failed=%d | Output=%s",
+                res.total,
+                res.merged,
+                res.failed,
+                zip_out.name,
+            )
+            return res
 
         return FileMergeResult(total=total, merged=0, failed=total, output_path=None)

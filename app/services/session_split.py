@@ -315,6 +315,13 @@ async def process_session_split(
             _collect_sessions, input_path, Path(temporary), original_name=original_name
         )
         total = len(sessions)
+        LOGGER.info(
+            "Starting Session Split (mode='%s', quantity=%s) for file '%s' (%d session(s))...",
+            mode,
+            quantity,
+            original_name or input_path.name,
+            total,
+        )
 
         semaphore = asyncio.Semaphore(concurrency)
 
@@ -328,11 +335,22 @@ async def process_session_split(
         phone_by_session: dict[Path, str | None] = {}
         failed = 0
         for session, authorized, phone in checked:
+            c_name = country_for_phone(phone) if authorized else "N/A"
             if authorized:
                 valid.append(session)
                 phone_by_session[session] = phone
+                LOGGER.info(
+                    "Split Session: File=%s | Phone=%s | Country=%s → AUTHORIZED",
+                    session.name,
+                    phone or "N/A",
+                    c_name,
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Split Session: File=%s → UNAUTHORIZED/FAILED",
+                    session.name,
+                )
         outputs: list[SplitOutput] = []
 
         if mode == "quantity":
@@ -372,9 +390,17 @@ async def process_session_split(
                     )
                 )
 
-        return SessionSplitResult(
+        res = SessionSplitResult(
             total=total,
             split=len(valid),
             failed=failed,
             outputs=tuple(outputs),
         )
+        LOGGER.info(
+            "Session Split Summary: Total=%d | Valid Split=%d | Failed=%d | Created %d Output Part(s)",
+            res.total,
+            res.split,
+            res.failed,
+            len(res.outputs),
+        )
+        return res

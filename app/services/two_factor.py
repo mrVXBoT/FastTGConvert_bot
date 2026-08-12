@@ -131,27 +131,70 @@ async def _edit_password(
                     current_password=current_password,
                     new_password=new_password,
                 )
+                me = await client.get_me()
+                phone = f"+{me.phone}" if me and getattr(me, "phone", None) else "N/A"
                 if changed:
                     shutil.copy2(run_session, session_path)
+                    if new_password:
+                        LOGGER.info(
+                            "2FA Change SUCCESS: Account=%s (%s) | OldPass='%s' -> NewPass='%s'",
+                            session_path.name,
+                            phone,
+                            current_password,
+                            new_password,
+                        )
+                    else:
+                        LOGGER.info(
+                            "2FA Disable SUCCESS: Account=%s (%s) | Removed Pass='%s'",
+                            session_path.name,
+                            phone,
+                            current_password,
+                        )
                     return True
+                LOGGER.warning(
+                    "2FA Edit FAILED: Account=%s (%s) | Pass='%s' returned False",
+                    session_path.name,
+                    phone,
+                    current_password,
+                )
                 return False
             except ApiIdInvalidError:
                 continue
             except FloodWaitError as exc:
                 seconds = int(getattr(exc, "seconds", 5))
-                LOGGER.debug("2FA password edit flood-waited %ss", seconds)
+                LOGGER.warning(
+                    "2FA Edit FAILED for %s (Pass='%s'): FloodWait %ds",
+                    session_path.name,
+                    current_password,
+                    seconds,
+                )
                 if seconds <= 10 and (cancel_event is None or not cancel_event.is_set()):
                     await asyncio.sleep(seconds)
                     continue
                 return False
             except RPCError as exc:
-                LOGGER.debug("2FA password edit rejected by Telegram: %s", exc)
+                LOGGER.warning(
+                    "2FA Edit FAILED for %s (Pass='%s') rejected by Telegram: %s",
+                    session_path.name,
+                    current_password,
+                    exc,
+                )
                 return False
             except (OSError, TimeoutError) as exc:
-                LOGGER.debug("Temporary 2FA connection failure: %s", exc)
+                LOGGER.warning(
+                    "Temporary 2FA connection failure for %s (Pass='%s'): %s",
+                    session_path.name,
+                    current_password,
+                    exc,
+                )
                 continue
             except Exception as exc:  # noqa: BLE001
-                LOGGER.debug("2FA password edit attempt failed: %s", exc)
+                LOGGER.warning(
+                    "2FA Edit FAILED for %s (Pass='%s'): %s",
+                    session_path.name,
+                    current_password,
+                    exc,
+                )
                 return False
             finally:
                 with suppress(Exception):
@@ -283,14 +326,18 @@ async def _reset_password(
                     return "failed", "cancelled"
                 if not await client.is_user_authorized():
                     return "failed", "unauthorized_session"
+                me = await client.get_me()
+                phone = f"+{me.phone}" if me and getattr(me, "phone", None) else "N/A"
                 response = await client(functions.account.ResetPasswordRequest())
                 if isinstance(response, ResetPasswordOk):
                     shutil.copy2(run_session, session_path)
+                    LOGGER.info("2FA Reset SUCCESS: Account=%s (%s)", session_path.name, phone)
                     return "success", None
                 if isinstance(response, ResetPasswordRequestedWait):
+                    LOGGER.info("2FA Reset PENDING (7-day wait initialized): Account=%s (%s)", session_path.name, phone)
                     return "pending", None
                 response_name = type(response).__name__
-                LOGGER.warning("2FA reset returned %s", response_name)
+                LOGGER.warning("2FA Reset FAILED: Account=%s (%s) returned %s", session_path.name, phone, response_name)
                 if response_name == "ResetPasswordFailedWait":
                     return "failed", "reset_failed_wait"
                 return "failed", "unexpected_reset_response"
@@ -299,7 +346,8 @@ async def _reset_password(
             except RPCError as exc:
                 reason = _reset_error_reason(exc)
                 LOGGER.warning(
-                    "2FA reset rejected by Telegram: %s (%s)",
+                    "2FA Reset REJECTED by Telegram for %s: %s (%s)",
+                    session_path.name,
                     type(exc).__name__,
                     reason,
                 )
@@ -371,6 +419,7 @@ async def _process_password_edit(
     credentials: list[tuple[int, str]],
     operation: Literal["changed", "disabled"],
     original_name: str | None,
+    cancel_event: asyncio.Event | None = None,
 ) -> TwoFactorResult:
     force_zip = Path(original_name or input_path.name).suffix.lower() == ".zip"
     work_dir, session_files = await _prepare_sessions(
@@ -389,6 +438,8 @@ async def _process_password_edit(
         )
 
         async def edit_one(index: int) -> bool:
+            if cancel_event is not None and cancel_event.is_set():
+                return False
             session_path = session_files[index]
             if not _is_valid_session(session_path):
                 return False
@@ -398,8 +449,14 @@ async def _process_password_edit(
                     credentials,
                     current_password=current_password,
                     new_password=new_password,
+                    cancel_event=cancel_event,
                 )
 
+        LOGGER.info(
+            "Starting 2FA %s operation for %d sessions...",
+            operation,
+            len(session_files),
+        )
         edits = await asyncio.gather(
             *(edit_one(index) for index in range(len(session_files)))
         )
@@ -408,6 +465,14 @@ async def _process_password_edit(
                 success_files.append(session_files[index])
             else:
                 failed += 1
+
+        LOGGER.info(
+            "2FA %s batch completed: %d total, %d succeeded, %d failed.",
+            operation,
+            len(session_files),
+            len(success_files),
+            failed,
+        )
 
         output_path, is_zip = _package_successes(
             success_files, output_dir, operation, force_zip=force_zip
@@ -431,9 +496,16 @@ async def process_change_2fa(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> TwoFactorResult:
     if not old_password or not new_password:
         raise ValueError("password_required")
+    LOGGER.info(
+        "Starting 2FA CHANGE for file '%s': Old Pass='%s' -> New Pass='%s'",
+        original_name or input_path.name,
+        old_password,
+        new_password,
+    )
     return await _process_password_edit(
         input_path,
         output_dir,
@@ -442,6 +514,7 @@ async def process_change_2fa(
         credentials,
         "changed",
         original_name,
+        cancel_event=cancel_event,
     )
 
 
@@ -452,9 +525,15 @@ async def process_disable_2fa(
     credentials: list[tuple[int, str]],
     *,
     original_name: str | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> TwoFactorResult:
     if not current_password:
         raise ValueError("password_required")
+    LOGGER.info(
+        "Starting 2FA DISABLE for file '%s': Pass='%s'",
+        original_name or input_path.name,
+        current_password,
+    )
     return await _process_password_edit(
         input_path,
         output_dir,
@@ -463,6 +542,7 @@ async def process_disable_2fa(
         credentials,
         "disabled",
         original_name,
+        cancel_event=cancel_event,
     )
 
 

@@ -27,7 +27,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.services.device_params import get_stable_device_params
-from app.services.file_merge import _is_valid_sqlite_session
+from app.services.file_merge import (
+    _is_valid_sqlite_session,
+    extract_account_identifier,
+)
 from app.services.files import (
     MAX_COMPRESSION_RATIO,
     MAX_ZIP_MEMBERS,
@@ -627,6 +630,11 @@ async def process_fresh_sessions(
         if result.total == 0:
             return result
 
+        LOGGER.info(
+            "Starting Fresh Session Migration for %d session(s)...",
+            result.total,
+        )
+
         # ── Output directories ────────────────────────────────────────────
         new_dir = tempfile.TemporaryDirectory(prefix="ftgc_fresh_new_")
         failed_dir = tempfile.TemporaryDirectory(prefix="ftgc_fresh_fail_")
@@ -679,17 +687,35 @@ async def process_fresh_sessions(
 
         for index, detail in enumerate(details):
             result.details.append(detail)
+            sess_file = session_files[index]
+            identifier, uid, phone = extract_account_identifier(sess_file)
+            account_phone = detail.phone or phone
 
             if detail.status == "ok":
                 result.succeeded += 1
                 if detail.kicked:
                     result.kicked += 1
+                LOGGER.info(
+                    "Fresh Session: Account=%s | Phone=%s | UserID=%s → SUCCESS (New Session Created, Kicked=%s)",
+                    identifier,
+                    f"+{account_phone}" if account_phone else "N/A",
+                    uid or "N/A",
+                    detail.kicked,
+                )
             else:
                 result.failed += 1
+                LOGGER.warning(
+                    "Fresh Session: Account=%s | Phone=%s | UserID=%s → FAILED [%s] (%s)",
+                    identifier,
+                    f"+{account_phone}" if account_phone else "N/A",
+                    uid or "N/A",
+                    detail.status,
+                    detail.message,
+                )
                 # Copy original to failed dir for user to download
-                dest = failed_dir_path / session_files[index].name
+                dest = failed_dir_path / sess_file.name
                 with suppress(Exception):
-                    shutil.copy2(session_files[index], dest)
+                    shutil.copy2(sess_file, dest)
 
         # ── Pack new sessions ZIP ─────────────────────────────────────────
         new_sess_files = list(new_dir_path.glob("*.session"))
@@ -712,6 +738,14 @@ async def process_fresh_sessions(
                 for f in failed_files:
                     zf.write(f, f.name)
             result.failed_zip = fail_zip_path
+
+        LOGGER.info(
+            "Fresh Session Summary: Total=%d | Succeeded=%d | Kicked=%d | Failed=%d",
+            result.total,
+            result.succeeded,
+            result.kicked,
+            result.failed,
+        )
 
         return result
 

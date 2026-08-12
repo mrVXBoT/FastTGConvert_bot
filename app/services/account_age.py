@@ -220,7 +220,7 @@ def estimate_account_creation(
         total_days = (date2 - date1).days
         est_date = date1 + datetime.timedelta(days=int(ratio * total_days))
 
-    now = datetime.datetime.now(datetime.UTC).date()
+    now = datetime.datetime.now(datetime.timezone.utc).date()
     months_diff = max(0, (now.year - est_date.year) * 12 + (now.month - est_date.month))
 
     full_month = _MONTH_NAMES[est_date.month - 1]
@@ -589,7 +589,7 @@ def _build_outputs(
 
     Returns (report_path, classified_zip_path, failed_zip_path).
     """
-    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     report_path: Path | None = None
     if result.total > 0:

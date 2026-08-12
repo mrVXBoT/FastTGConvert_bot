@@ -347,24 +347,57 @@ async def test_new_password_is_deleted_and_old_password_removed_from_state(
 
 
 @pytest.mark.asyncio
-async def test_two_factor_flow_edits_existing_message_instead_of_answering() -> None:
+async def test_two_factor_flow_sends_new_message_and_clears_previous_markup() -> None:
     message = MagicMock(spec=Message)
     message.chat = MagicMock(id=456)
-    message.answer = AsyncMock()
-    edited = MagicMock(spec=Message)
+    new_msg = MagicMock(spec=Message)
+    new_msg.message_id = 999
+    message.answer = AsyncMock(return_value=new_msg)
     bot = MagicMock()
-    bot.edit_message_text = AsyncMock(return_value=edited)
+    bot.edit_message_reply_markup = AsyncMock()
     state = AsyncMock(spec=FSMContext)
     state.get_data.return_value = {"flow_message_id": 789}
     markup = two_factor_result_menu(1, 1, 0, "en")
 
     result = await _edit_two_factor_flow(message, bot, state, "updated", markup)
 
-    assert result is edited
-    bot.edit_message_text.assert_awaited_once_with(
+    assert result is new_msg
+    bot.edit_message_reply_markup.assert_awaited_once_with(
         chat_id=456,
         message_id=789,
-        text="updated",
-        reply_markup=markup,
+        reply_markup=None,
     )
-    message.answer.assert_not_awaited()
+    message.answer.assert_awaited_once_with("updated", reply_markup=markup)
+
+
+def test_extract_caption_passwords() -> None:
+    from app.handlers.files import _extract_caption_passwords
+
+    # Format: 2fa: password
+    old, new = _extract_caption_passwords("2fa: Sa1111")
+    assert old == "Sa1111"
+    assert new is None
+
+    # Format: old_pass: 1234, new_pass: 5678
+    old, new = _extract_caption_passwords("old_pass: 1234\nnew_pass: 5678")
+    assert old == "1234"
+    assert new == "5678"
+
+    # Single line raw password
+    old, new = _extract_caption_passwords("MySecretPass123")
+    assert old == "MySecretPass123"
+    assert new is None
+
+
+def test_two_factor_mode_menu() -> None:
+    from app.keyboards import two_factor_mode_menu
+    from app.locales import TWO_FACTOR_MODE_LABELS, TWO_FACTOR_MODE_PROMPT
+
+    for lang in LANGUAGES:
+        assert lang in TWO_FACTOR_MODE_LABELS
+        assert lang in TWO_FACTOR_MODE_PROMPT
+        kb = two_factor_mode_menu(lang, "change")
+        actions = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        assert "two_factor_mode:auto:change" in actions
+        assert "two_factor_mode:manual:change" in actions
+        assert "two_factor:cancel:change" in actions

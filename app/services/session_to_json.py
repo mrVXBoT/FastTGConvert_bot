@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import json
+import logging
 import shutil
 import sqlite3
 import tempfile
@@ -18,6 +19,8 @@ from app.services.account_to_txt import (
 )
 from app.services.contacts_checker import extract_zip_sessions_safe
 from app.services.jobs import JobCancelled, JobProgress
+
+LOGGER = logging.getLogger(__name__)
 
 DC_IP_MAP = {
     1: "149.154.175.50",
@@ -136,6 +139,12 @@ async def process_session_to_json(
         if progress is not None:
             progress.total = total
 
+        LOGGER.info(
+            "Starting Session to JSON conversion for '%s' (%d session(s))...",
+            original_name or input_path.name,
+            total,
+        )
+
         active = 0
         invalid_converted = 0
         failed = 0
@@ -243,10 +252,28 @@ async def process_session_to_json(
         for index, status, entry, output in sorted(outcomes, key=lambda item: item[0]):
             if status == "active":
                 active += 1
+                LOGGER.info(
+                    "Session -> JSON: Account=%s | Phone=%s | UserID=%s → ACTIVE (OK)",
+                    entry.profile.identifier,
+                    entry.profile.phone,
+                    entry.profile.user_id or "N/A",
+                )
             elif status == "invalid":
                 invalid_converted += 1
+                LOGGER.warning(
+                    "Session -> JSON: Account=%s | Phone=%s | UserID=%s → INVALID (%s)",
+                    entry.profile.identifier,
+                    entry.profile.phone,
+                    entry.profile.user_id or "N/A",
+                    entry.reason or "invalid",
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Session -> JSON: Account=%s → FAILED (%s)",
+                    entry.profile.identifier,
+                    entry.reason or "failed",
+                )
             entries.append(entry)
             if output is not None:
                 outputs.append(output)
@@ -273,7 +300,7 @@ async def process_session_to_json(
                     raise ValueError("storage_error") from exc
                 raise
 
-        return SessionJsonResult(
+        res = SessionJsonResult(
             total=len(session_files),
             active=active,
             invalid_converted=invalid_converted,
@@ -281,6 +308,15 @@ async def process_session_to_json(
             entries=tuple(entries),
             output_zip_path=output_zip,
         )
+        LOGGER.info(
+            "Session to JSON Summary: Total=%d | Active=%d | Invalid Converted=%d | Failed=%d | Output=%s",
+            res.total,
+            res.active,
+            res.invalid_converted,
+            res.failed,
+            output_zip.name if output_zip else "None",
+        )
+        return res
     finally:
         if temp_dir is not None:
             temp_dir.cleanup()

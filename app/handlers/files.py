@@ -3,6 +3,7 @@ import contextlib
 import json
 import logging
 import random
+import re
 import shutil
 import tempfile
 import time
@@ -79,6 +80,7 @@ from app.keyboards import (
     session_to_tdata_result_menu,
     tdata_to_session_result_menu,
     two_factor_cancel_menu,
+    two_factor_mode_menu,
     two_factor_result_menu,
 )
 from app.locales import (
@@ -150,8 +152,12 @@ from app.locales import (
     TDATA_TO_SESSION_PROMPTS,
     TWO_FACTOR_ACCOUNT_CURRENT_PROMPT,
     TWO_FACTOR_ACCOUNT_NEW_PROMPT,
+    TWO_FACTOR_BATCH_DISABLE_PROMPT,
+    TWO_FACTOR_BATCH_NEW_PROMPT,
+    TWO_FACTOR_BATCH_OLD_PROMPT,
     TWO_FACTOR_ERRORS,
     TWO_FACTOR_MESSAGES,
+    TWO_FACTOR_MODE_PROMPT,
     action_message,
 )
 from app.login_email_results import (
@@ -247,6 +253,8 @@ from app.services.two_factor import (
     TwoFactorResult,
     edit_two_factor_session,
     package_two_factor_batch,
+    process_change_2fa,
+    process_disable_2fa,
     process_reset_2fa,
     stage_two_factor_sessions,
 )
@@ -902,12 +910,14 @@ async def analyze_document(
                     update_session_progress(status, sess_progress, msgs["analyzing"])
                 )
                 try:
+                    u_tag = f"User {message.from_user.id}" + (f" (@{message.from_user.username})" if message.from_user and message.from_user.username else "")
                     result, entries = await check_sessions_detailed(
                         path,
                         credentials=settings.api_credential_list,
                         timeout=settings.spambot_timeout,
                         proxy=user_proxy,
                         progress=sess_progress,
+                        user_tag=u_tag,
                     )
                 finally:
                     await _stop_progress(progress_task)
@@ -1293,17 +1303,12 @@ async def _edit_two_factor_flow(
     data = await state.get_data()
     flow_message_id = data.get("flow_message_id")
     if isinstance(flow_message_id, int):
-        try:
-            edited = await bot.edit_message_text(
+        with suppress(Exception):
+            await bot.edit_message_reply_markup(
                 chat_id=message.chat.id,
                 message_id=flow_message_id,
-                text=text,
-                reply_markup=reply_markup,
+                reply_markup=None,
             )
-            if isinstance(edited, Message):
-                return edited
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.debug("Could not edit 2FA flow message: %s", exc)
     answered = await message.answer(text, reply_markup=reply_markup)
     if isinstance(answered, Message):
         await state.update_data(flow_message_id=answered.message_id)
@@ -1334,7 +1339,8 @@ async def cancel_two_factor_job(
     if callback.from_user is None or callback.data is None:
         return
     tool = callback.data.rsplit(":", 1)[-1]
-    event = ACTIVE_2FA_JOBS.pop((callback.from_user.id, tool), None)
+    norm_tool = "change" if tool in ("change", "changed") else ("disable" if tool in ("disable", "disabled") else tool)
+    event = ACTIVE_2FA_JOBS.pop((callback.from_user.id, norm_tool), None)
     if event is not None:
         event.set()
     await callback.answer()
@@ -1390,6 +1396,228 @@ def _two_factor_account_prompt(
     )
 
 
+def _extract_caption_passwords(caption: str | None) -> tuple[str | None, str | None]:
+    """Parse old and new 2FA passwords from document caption if present."""
+    if not caption:
+        return None, None
+    old_pw: str | None = None
+    new_pw: str | None = None
+    lines = [line.strip() for line in caption.splitlines() if line.strip()]
+
+    for line in lines:
+        m_old = re.search(
+            r"(?:old_2fa|old_pass|old_password|old|current)\s*[:=]\s*(\S+)",
+            line,
+            re.IGNORECASE,
+        )
+        if m_old:
+            old_pw = m_old.group(1).strip()
+        m_new = re.search(
+            r"(?:new_2fa|new_pass|new_password|new)\s*[:=]\s*(\S+)",
+            line,
+            re.IGNORECASE,
+        )
+        if m_new:
+            new_pw = m_new.group(1).strip()
+
+    if old_pw and new_pw:
+        return old_pw, new_pw
+
+    for line in lines:
+        match = re.search(
+            r"(?:2fa|password|pass|twofa)\s*[:=]\s*(\S+)", line, re.IGNORECASE
+        )
+        if match:
+            return match.group(1).strip(), None
+
+    if len(lines) == 1 and 3 <= len(lines[0]) <= 100 and ":" not in lines[0]:
+        return lines[0], None
+
+    return old_pw, new_pw
+
+
+async def _run_automatic_batch_2fa(
+    message: Message,
+    bot: Bot,
+    state: FSMContext,
+    settings: Settings,
+    language: str,
+    old_password: str,
+    new_password: str,
+) -> None:
+    data = await state.get_data()
+    if data.get("two_factor_busy"):
+        return
+    await state.update_data(two_factor_busy=True)
+    msgs = TWO_FACTOR_MESSAGES.get(language, TWO_FACTOR_MESSAGES["en"])
+
+    source_path_str = data.get("two_factor_source_file")
+    original_name = str(data.get("two_factor_original_name") or "sessions.zip")
+    batch_dir = Path(str(data.get("two_factor_batch_dir", "")))
+
+    if not source_path_str or not Path(source_path_str).exists():
+        await _clear_two_factor_state(state)
+        await message.answer(
+            EmojiRegistry.enrich(msgs["no_sessions"]), reply_markup=main_menu(language)
+        )
+        return
+
+    input_path = Path(source_path_str)
+
+    await _edit_two_factor_flow(
+        message,
+        bot,
+        state,
+        EmojiRegistry.enrich(msgs["processing"]),
+        two_factor_cancel_menu(language, "change"),
+    )
+
+    cancel_event = asyncio.Event()
+    if message.from_user:
+        ACTIVE_2FA_JOBS[(message.from_user.id, "change")] = cancel_event
+
+    output_path: Path | None = None
+    try:
+        result = await process_change_2fa(
+            input_path,
+            settings.storage_dir / "outbox",
+            old_password,
+            new_password,
+            settings.api_credential_list,
+            original_name=original_name,
+            cancel_event=cancel_event,
+        )
+        if cancel_event.is_set():
+            return
+        output_path = result.output_path
+        report = EmojiRegistry.enrich(
+            msgs["done_change_disable"].format(
+                success=result.success, failed=result.failed
+            )
+        )
+        status = await _edit_two_factor_flow(
+            message,
+            bot,
+            state,
+            report,
+            two_factor_result_menu(
+                result.total, result.success, result.failed, language
+            ),
+        )
+        if output_path and output_path.exists():
+            await status.answer_document(
+                FSInputFile(output_path, filename=output_path.name)
+            )
+    except Exception:
+        user_id = message.from_user.id if message.from_user else 0
+        LOGGER.exception("Batch 2FA change failed for user %s", user_id)
+        await _edit_two_factor_flow(
+            message,
+            bot,
+            state,
+            EmojiRegistry.enrich(msgs["request_failed"]),
+            reply_markup=main_menu(language),
+        )
+    finally:
+        if message.from_user:
+            ACTIVE_2FA_JOBS.pop((message.from_user.id, "change"), None)
+        if output_path and output_path.exists():
+            output_path.unlink(missing_ok=True)
+        if batch_dir and batch_dir.exists():
+            shutil.rmtree(batch_dir, ignore_errors=True)
+        await _clear_two_factor_state(state)
+
+
+async def _run_automatic_batch_disable_2fa(
+    message: Message,
+    bot: Bot,
+    state: FSMContext,
+    settings: Settings,
+    language: str,
+    current_password: str,
+) -> None:
+    data = await state.get_data()
+    if data.get("two_factor_busy"):
+        return
+    await state.update_data(two_factor_busy=True)
+    msgs = TWO_FACTOR_MESSAGES.get(language, TWO_FACTOR_MESSAGES["en"])
+
+    source_path_str = data.get("two_factor_source_file")
+    original_name = str(data.get("two_factor_original_name") or "sessions.zip")
+    batch_dir = Path(str(data.get("two_factor_batch_dir", "")))
+
+    if not source_path_str or not Path(source_path_str).exists():
+        await _clear_two_factor_state(state)
+        await message.answer(
+            EmojiRegistry.enrich(msgs["no_sessions"]), reply_markup=main_menu(language)
+        )
+        return
+
+    input_path = Path(source_path_str)
+
+    await _edit_two_factor_flow(
+        message,
+        bot,
+        state,
+        EmojiRegistry.enrich(msgs["processing"]),
+        two_factor_cancel_menu(language, "disable"),
+    )
+
+    cancel_event = asyncio.Event()
+    if message.from_user:
+        ACTIVE_2FA_JOBS[(message.from_user.id, "disable")] = cancel_event
+
+    output_path: Path | None = None
+    try:
+        result = await process_disable_2fa(
+            input_path,
+            settings.storage_dir / "outbox",
+            current_password,
+            settings.api_credential_list,
+            original_name=original_name,
+            cancel_event=cancel_event,
+        )
+        if cancel_event.is_set():
+            return
+        output_path = result.output_path
+        report = EmojiRegistry.enrich(
+            msgs["done_change_disable"].format(
+                success=result.success, failed=result.failed
+            )
+        )
+        status = await _edit_two_factor_flow(
+            message,
+            bot,
+            state,
+            report,
+            two_factor_result_menu(
+                result.total, result.success, result.failed, language
+            ),
+        )
+        if output_path and output_path.exists():
+            await status.answer_document(
+                FSInputFile(output_path, filename=output_path.name)
+            )
+    except Exception:
+        user_id = message.from_user.id if message.from_user else 0
+        LOGGER.exception("Batch 2FA disable failed for user %s", user_id)
+        await _edit_two_factor_flow(
+            message,
+            bot,
+            state,
+            EmojiRegistry.enrich(msgs["request_failed"]),
+            reply_markup=main_menu(language),
+        )
+    finally:
+        if message.from_user:
+            ACTIVE_2FA_JOBS.pop((message.from_user.id, "disable"), None)
+        if output_path and output_path.exists():
+            output_path.unlink(missing_ok=True)
+        if batch_dir and batch_dir.exists():
+            shutil.rmtree(batch_dir, ignore_errors=True)
+        await _clear_two_factor_state(state)
+
+
 async def _begin_two_factor_batch(
     source: Path,
     original_name: str,
@@ -1397,43 +1625,119 @@ async def _begin_two_factor_batch(
     message: Message,
     bot: Bot,
     state: FSMContext,
+    settings: Settings,
     language: str,
 ) -> None:
     batch_dir = Path(tempfile.mkdtemp(prefix=f"ftgc_2fa_{operation}_batch_"))
     try:
+        staged_source = batch_dir / original_name
+        shutil.copy2(source, staged_source)
         sessions = await stage_two_factor_sessions(
-            source, batch_dir, original_name=original_name
+            staged_source, batch_dir / "sessions", original_name=original_name
         )
         if not sessions:
             raise ValueError("no_sessions")
         await state.update_data(
             two_factor_batch_dir=str(batch_dir),
+            two_factor_source_file=str(staged_source),
             two_factor_session_files=[str(path) for path in sessions],
             two_factor_index=0,
             two_factor_successful_indexes=[],
             two_factor_operation=operation,
+            two_factor_original_name=original_name,
             two_factor_force_zip=Path(original_name).suffix.lower() == ".zip",
             two_factor_busy=False,
             session_count=len(sessions),
             old_password=None,
         )
-        if operation == "changed":
-            await state.set_state(Change2FA.waiting_for_old_password)
+
+
+
+        if len(sessions) > 1:
+            if operation == "changed":
+                await state.set_state(Change2FA.waiting_for_mode)
+            else:
+                await state.set_state(Disable2FA.waiting_for_mode)
+            prompt = EmojiRegistry.enrich(
+                TWO_FACTOR_MODE_PROMPT.get(
+                    language, TWO_FACTOR_MODE_PROMPT["en"]
+                ).format(count=len(sessions))
+            )
+            await _edit_two_factor_flow(
+                message,
+                bot,
+                state,
+                prompt,
+                two_factor_mode_menu(language, tool=operation),
+            )
         else:
-            await state.set_state(Disable2FA.waiting_for_password)
-        data = await state.get_data()
-        await _edit_two_factor_flow(
-            message,
-            bot,
-            state,
-            EmojiRegistry.enrich(_two_factor_account_prompt(data, language)),
-            cancel_menu(language),
-        )
+            await state.update_data(two_factor_mode="auto")
+            if operation == "changed":
+                await state.set_state(Change2FA.waiting_for_old_password)
+            else:
+                await state.set_state(Disable2FA.waiting_for_password)
+            data = await state.get_data()
+            await _edit_two_factor_flow(
+                message,
+                bot,
+                state,
+                EmojiRegistry.enrich(_two_factor_account_prompt(data, language)),
+                two_factor_cancel_menu(language, operation),
+            )
     except Exception:
         shutil.rmtree(batch_dir, ignore_errors=True)
         raise
     finally:
         source.unlink(missing_ok=True)
+
+
+@router.callback_query(F.data.startswith("two_factor_mode:"))
+async def select_two_factor_mode(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    session_factory: sessionmaker[Session],
+) -> None:
+    if callback.from_user is None or callback.data is None:
+        return
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        return
+    mode = parts[1]  # "auto" or "manual"
+    tool = parts[2]  # "change" or "disable"
+    language = user_language(session_factory, callback.from_user.id)
+    await callback.answer()
+
+    await state.update_data(two_factor_mode=mode)
+    data = await state.get_data()
+    count = int(data.get("session_count", 1))
+
+    if mode == "auto":
+        if tool in ("change", "changed"):
+            await state.set_state(Change2FA.waiting_for_old_password)
+            prompt = TWO_FACTOR_BATCH_OLD_PROMPT.get(
+                language, TWO_FACTOR_BATCH_OLD_PROMPT["en"]
+            ).format(count=count)
+        else:
+            await state.set_state(Disable2FA.waiting_for_password)
+            prompt = TWO_FACTOR_BATCH_DISABLE_PROMPT.get(
+                language, TWO_FACTOR_BATCH_DISABLE_PROMPT["en"]
+            ).format(count=count)
+    else:
+        if tool in ("change", "changed"):
+            await state.set_state(Change2FA.waiting_for_old_password)
+        else:
+            await state.set_state(Disable2FA.waiting_for_password)
+        prompt = _two_factor_account_prompt(data, language)
+
+    if isinstance(callback.message, Message):
+        await _edit_two_factor_flow(
+            callback.message,
+            bot,
+            state,
+            EmojiRegistry.enrich(prompt),
+            two_factor_cancel_menu(language, tool),
+        )
 
 
 async def _finish_two_factor_batch(
@@ -1554,7 +1858,7 @@ async def receive_change_2fa_file(
             )
             return
         await _begin_two_factor_batch(
-            path, name, "changed", message, bot, state, language
+            path, name, "changed", message, bot, state, settings, language
         )
         path = None
     except Exception as exc:  # noqa: BLE001
@@ -1590,14 +1894,22 @@ async def receive_change_2fa_old_password(
     await state.update_data(old_password=old_password)
     await state.set_state(Change2FA.waiting_for_new_password)
     data = await state.get_data()
+    mode = data.get("two_factor_mode", "auto")
+    count = int(data.get("session_count", 1))
+
+    if mode == "auto" and count > 1:
+        prompt = TWO_FACTOR_BATCH_NEW_PROMPT.get(
+            language, TWO_FACTOR_BATCH_NEW_PROMPT["en"]
+        ).format(count=count)
+    else:
+        prompt = _two_factor_account_prompt(data, language, new_password=True)
+
     await _edit_two_factor_flow(
         message,
         bot,
         state,
-        EmojiRegistry.enrich(
-            _two_factor_account_prompt(data, language, new_password=True)
-        ),
-        cancel_menu(language),
+        EmojiRegistry.enrich(prompt),
+        two_factor_cancel_menu(language, "change"),
     )
 
 
@@ -1626,6 +1938,22 @@ async def receive_change_2fa_new_password(
     if data.get("two_factor_busy"):
         return
     old_password = data.get("old_password")
+    mode = data.get("two_factor_mode", "auto")
+    count = int(data.get("session_count", 1))
+
+    if mode == "auto" and count > 1:
+        if not isinstance(old_password, str) or not old_password:
+            await _clear_two_factor_state(state)
+            await message.answer(
+                EmojiRegistry.enrich(msgs_2fa["no_sessions"]),
+                reply_markup=main_menu(language),
+            )
+            return
+        await _run_automatic_batch_2fa(
+            message, bot, state, settings, language, old_password, new_password
+        )
+        return
+
     await state.update_data(old_password=None, two_factor_busy=True)
     files = [Path(str(item)) for item in data.get("two_factor_session_files", [])]
     index = int(data.get("two_factor_index", 0))
@@ -1701,7 +2029,7 @@ async def receive_disable_2fa_file(
             )
             return
         await _begin_two_factor_batch(
-            path, name, "disabled", message, bot, state, language
+            path, name, "disabled", message, bot, state, settings, language
         )
         path = None
     except Exception as exc:  # noqa: BLE001
@@ -1738,6 +2066,15 @@ async def receive_disable_2fa_password(
     data = await state.get_data()
     if data.get("two_factor_busy"):
         return
+    mode = data.get("two_factor_mode", "auto")
+    count = int(data.get("session_count", 1))
+
+    if mode == "auto" and count > 1:
+        await _run_automatic_batch_disable_2fa(
+            message, bot, state, settings, language, current_password
+        )
+        return
+
     await state.update_data(two_factor_busy=True)
     files = [Path(str(item)) for item in data.get("two_factor_session_files", [])]
     index = int(data.get("two_factor_index", 0))
@@ -6091,6 +6428,7 @@ async def process_direct_document_upload(
         )
         path.replace(named_path)
         path = named_path
+        caption = getattr(message, "caption", None)
         token = uuid4().hex
         await state.set_state(DirectFile.waiting_for_action)
         await state.set_data(
@@ -6098,8 +6436,10 @@ async def process_direct_document_upload(
                 "temp_file_path": str(path),
                 "original_name": filename,
                 "direct_token": token,
+                "caption": caption,
             }
         )
+
         prompt_fmt = DIRECT_FILE_PROMPTS.get(language, DIRECT_FILE_PROMPTS["en"])
         prompt = await message.answer(
             prompt_fmt.format(filename=html.quote(filename)),
@@ -6213,12 +6553,14 @@ async def process_quick_action(
                     status_message, sess_progress, messages["analyzing"]
                 )
             )
+            u_tag = f"User {callback.from_user.id}" + (f" (@{callback.from_user.username})" if callback.from_user.username else "")
             result_check, entries_check = await check_sessions_detailed(
                 file_path,
                 credentials=settings.api_credential_list,
                 timeout=settings.spambot_timeout,
                 proxy=user_proxy,
                 progress=sess_progress,
+                user_tag=u_tag,
             )
             await _stop_progress(progress_task)
             spam_mode = action == "spam_check"
@@ -6823,6 +7165,7 @@ async def process_quick_action(
             callback.message,
             bot,
             state,
+            settings,
             language,
         )
 

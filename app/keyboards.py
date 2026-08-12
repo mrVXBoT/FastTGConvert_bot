@@ -672,6 +672,42 @@ def two_factor_cancel_menu(
     )
 
 
+def two_factor_mode_menu(
+    language: str = "en", tool: str = "change"
+) -> InlineKeyboardMarkup:
+    from app.locales import TWO_FACTOR_MODE_LABELS
+
+    labels = TWO_FACTOR_MODE_LABELS.get(language, TWO_FACTOR_MODE_LABELS["en"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(
+                    text=labels["auto"],
+                    action=f"two_factor_mode:auto:{tool}",
+                    style=ButtonStyle.SUCCESS,
+                    emoji_key="REFRESH",
+                )
+            ],
+            [
+                button(
+                    text=labels["manual"],
+                    action=f"two_factor_mode:manual:{tool}",
+                    style=ButtonStyle.PRIMARY,
+                    emoji_key="SETTINGS",
+                )
+            ],
+            [
+                button(
+                    text=CANCEL_LABELS.get(language, CANCEL_LABELS["en"]),
+                    action=f"two_factor:cancel:{tool}",
+                    style=ButtonStyle.DANGER,
+                    emoji_key="CANCEL",
+                )
+            ],
+        ]
+    )
+
+
 def channel_result_menu(
     total: int, success: int, failed: int, language: str = "en"
 ) -> InlineKeyboardMarkup:
@@ -2082,40 +2118,46 @@ def privacy_result_menu(
 def proxy_menu(has_proxy: bool = False, language: str = "en") -> InlineKeyboardMarkup:
     labels = {
         "en": {
-            "set": "⚙️ Set Proxy",
-            "view": "📡 View Current Proxy",
-            "remove": "🗑️ Remove Proxy",
-            "back": "⬅️ Back",
+            "set": "Set Proxy",
+            "view": "View Current Proxy",
+            "remove": "Remove Proxy",
+            "back": "Back",
+        },
+        "fa": {
+            "set": "تنظیم پروکسی",
+            "view": "مشاهده پروکسی فعلی",
+            "remove": "حذف پروکسی",
+            "back": "بازگشت",
         },
         "bn": {
-            "set": "⚙️ প্রক্সি সেট করুন",
-            "view": "📡 বর্তমান প্রক্সি দেখুন",
-            "remove": "🗑️ প্রক্সি রিমুভ করুন",
-            "back": "⬅️ ব্যাক",
+            "set": "প্রক্সি সেট করুন",
+            "view": "বর্তমান প্রক্সি দেখুন",
+            "remove": "প্রক্সি রিমুভ করুন",
+            "back": "ব্যাক",
         },
         "hi": {
-            "set": "⚙️ प्रॉक्सी सेट करें",
-            "view": "📡 वर्तमान प्रॉक्सी देखें",
-            "remove": "🗑️ प्रॉक्सी हटाएं",
-            "back": "⬅️ वापस",
+            "set": "प्रॉक्सी सेट करें",
+            "view": "वर्तमान प्रॉक्सी देखें",
+            "remove": "प्रॉक्सी हटाएं",
+            "back": "वापस",
         },
         "ur": {
-            "set": "⚙️ پروکسی سیٹ کریں",
-            "view": "📡 موجودہ پروکسی دیکھیں",
-            "remove": "🗑️ پروکسی ختم کریں",
-            "back": "⬅️ واپس",
+            "set": "پروکسی سیٹ کریں",
+            "view": "موجودہ پروکسی دیکھیں",
+            "remove": "پروکسی ختم کریں",
+            "back": "واپس",
         },
         "ar": {
-            "set": "⚙️ ضبط البروكسي",
-            "view": "📡 عرض البروكسي الحالي",
-            "remove": "🗑️ إزالة البروكسي",
-            "back": "⬅️ عودة",
+            "set": "ضبط البروكسي",
+            "view": "عرض البروكسي الحالي",
+            "remove": "إزالة البروكسي",
+            "back": "عودة",
         },
         "zh": {
-            "set": "⚙️ 设置代理",
-            "view": "📡 查看当前代理",
-            "remove": "🗑️ 删除代理",
-            "back": "⬅️ 返回",
+            "set": "设置代理",
+            "view": "查看当前代理",
+            "remove": "删除代理",
+            "back": "返回",
         },
     }
     l = labels.get(language, labels["en"])

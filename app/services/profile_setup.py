@@ -10,7 +10,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from app.services.file_merge import _is_valid_sqlite_session
+from app.services.file_merge import (
+    _is_valid_sqlite_session,
+    extract_account_identifier,
+)
 from app.services.jobs import JobCancelled, JobProgress
 from app.services.session_to_tdata import _ensure_opentele_patched
 
@@ -211,8 +214,22 @@ async def update_account_profile(
                     except Exception as exc:  # noqa: BLE001
                         LOGGER.warning("Photo upload skipped: %s", exc)
 
+                identifier, uid, phone = extract_account_identifier(session_file)
                 if applied:
                     shutil.copy2(run_sess, session_file)
+                    LOGGER.info(
+                        "Profile Setup: Account=%s | Phone=%s | UserID=%s → SUCCESS (Updated)",
+                        identifier,
+                        f"+{phone}" if phone else "N/A",
+                        uid or "N/A",
+                    )
+                else:
+                    LOGGER.warning(
+                        "Profile Setup: Account=%s | Phone=%s | UserID=%s → FAILED (No changes applied)",
+                        identifier,
+                        f"+{phone}" if phone else "N/A",
+                        uid or "N/A",
+                    )
                 await client.disconnect()
                 return applied
             except Exception as exc:  # noqa: BLE001
@@ -221,6 +238,13 @@ async def update_account_profile(
                     with suppress(Exception):
                         await client.disconnect()
 
+    identifier, uid, phone = extract_account_identifier(session_file)
+    LOGGER.warning(
+        "Profile Setup: Account=%s | Phone=%s | UserID=%s → FAILED",
+        identifier,
+        f"+{phone}" if phone else "N/A",
+        uid or "N/A",
+    )
     return False
 
 
@@ -260,6 +284,15 @@ def package_profile_setup_results(
                         arcname = f"{sfile.stem}_{idx}.session"
                     used_names.add(arcname)
                     archive.write(sfile, arcname=arcname)
+
+    LOGGER.info(
+        "Profile Setup Summary: Total=%d | Modified=%d | Skipped=%d | Failed=%d | Output=%s",
+        total,
+        modified_count,
+        skipped_count,
+        failed_count,
+        output_path.name if output_path else "None",
+    )
 
     return ProfileSetupResult(
         total=total,

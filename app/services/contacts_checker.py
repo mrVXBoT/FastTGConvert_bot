@@ -732,6 +732,8 @@ async def process_contacts_check(
         if progress is not None:
             progress.total = total
 
+        LOGGER.info("Starting Contact Check for %d account(s)...", total)
+
         sem = asyncio.Semaphore(concurrency)
         cancelled = False
 
@@ -750,6 +752,15 @@ async def process_contacts_check(
                     per_session_timeout=per_session_timeout,
                     flood_wait_ceiling=flood_wait_ceiling,
                     credential_offset=index,
+                )
+                phone = info.phone if info and info.phone else "N/A"
+                cnt = info.contacts_count if info else 0
+                LOGGER.info(
+                    "Contact Check: Account=%s | Phone=%s | Contacts=%d | Status=%s",
+                    ex.member_name,
+                    phone,
+                    cnt,
+                    status.upper(),
                 )
                 if progress is not None:
                     progress.done += 1
@@ -776,6 +787,17 @@ async def process_contacts_check(
             invalid=counts["invalid"],
             inconclusive=counts["inconclusive"],
             entries=tuple(entries),
+        )
+
+        LOGGER.info(
+            "Contact Check Summary: Total=%d | Healthy=%d | Restricted=%d | Invalid=%d | 2FA=%d | Banned=%d | Error=%d",
+            result.checked,
+            result.ok,
+            result.limited,
+            result.invalid,
+            result.two_fa,
+            result.banned,
+            result.inconclusive,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)

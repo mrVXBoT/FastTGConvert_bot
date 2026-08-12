@@ -43,12 +43,14 @@ class DirectFile(StatesGroup):
 
 class Change2FA(StatesGroup):
     waiting_for_file = State()
+    waiting_for_mode = State()
     waiting_for_old_password = State()
     waiting_for_new_password = State()
 
 
 class Disable2FA(StatesGroup):
     waiting_for_file = State()
+    waiting_for_mode = State()
     waiting_for_password = State()
 
 

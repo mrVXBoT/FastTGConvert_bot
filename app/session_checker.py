@@ -366,6 +366,7 @@ async def _check_zip(
     timeout: int,
     proxy: tuple | None = None,
     progress: SessionProgress | None = None,
+    user_tag: str | None = None,
 ) -> list[SessionCheckEntry]:
     """
     Handle a ZIP archive: extract each .session, run both phases, return results.
@@ -423,13 +424,22 @@ async def _check_zip(
                                 proxy=proxy,
                                 credential_offset=idx,
                             )
+                        phone = _detect_session_phone(dest)
+                        phone_str = f" (+{phone})" if phone else ""
+                        LOGGER.info(
+                            "[%s] Checked %s%s → %s",
+                            user_tag or "Check",
+                            info.filename,
+                            phone_str,
+                            final.upper(),
+                        )
                         return SessionCheckEntry(
                             info.filename,
                             final,
-                            phone=_detect_session_phone(dest),
+                            phone=phone,
                         )
                     except Exception:  # noqa: BLE001
-                        LOGGER.debug("Failed to process one .session member in ZIP")
+                        LOGGER.warning("[%s] Failed to process %s in ZIP", user_tag or "Check", info.filename)
                         return SessionCheckEntry(info.filename, "invalid")
                     finally:
                         dest.unlink(missing_ok=True)
@@ -466,32 +476,13 @@ async def check_sessions(
     timeout: int = 15,
     proxy: tuple | None = None,
     progress: SessionProgress | None = None,
+    user_tag: str | None = None,
 ) -> SessionCheckResult:
     """
     Classify all session files found at *path*.
 
     *path* must be a ``.session`` file or a ``.zip`` archive containing one
     or more ``.session`` files.  Any other extension → invalid.
-
-    Parameters
-    ----------
-    path:
-        Path to the uploaded file.
-    credentials:
-        List of ``(api_id, api_hash)`` pairs.  Each structurally valid session
-        is checked live via @SpamBot using these credentials with automatic
-        rotation on transient errors.  When ``None`` or empty, only the offline
-        structural classification is returned.
-    timeout:
-        Seconds to wait for @SpamBot's reply during the live check.
-    progress:
-        Optional shared counter; ``total`` is set once the member count is
-        known and ``done`` is incremented after every member finishes.
-
-    Returns
-    -------
-    A ``SessionCheckResult`` always satisfying
-    ``checked == active + spam + frozen + banned + invalid + inconclusive``.
     """
     result, _ = await check_sessions_detailed(
         path,
@@ -499,6 +490,7 @@ async def check_sessions(
         timeout=timeout,
         proxy=proxy,
         progress=progress,
+        user_tag=user_tag,
     )
     return result
 
@@ -510,6 +502,7 @@ async def check_sessions_detailed(
     timeout: int = 15,
     proxy: tuple | None = None,
     progress: SessionProgress | None = None,
+    user_tag: str | None = None,
 ) -> tuple[SessionCheckResult, list[SessionCheckEntry]]:
     """
     Like :func:`check_sessions` but also returns per-session entries with the
@@ -523,16 +516,24 @@ async def check_sessions_detailed(
         return _summarize(["invalid"]), [SessionCheckEntry("", "invalid")]
 
     if suffix == ".zip":
+        LOGGER.info(
+            "[%s] Starting batch session check for file '%s'...",
+            user_tag or "Check",
+            path.name,
+        )
         entries = await _check_zip(
             path,
             credentials=creds,
             timeout=timeout,
             proxy=proxy,
             progress=progress,
+            user_tag=user_tag,
         )
         res = _summarize([e.status for e in entries])
         LOGGER.info(
-            "Session check summary: Total=%d | Active=%d | Banned=%d | Spam=%d | Frozen=%d | Invalid=%d | Inconclusive=%d",
+            "[%s] Session check summary for '%s': Total=%d | Active=%d | Banned=%d | Spam=%d | Frozen=%d | Invalid=%d | Inconclusive=%d",
+            user_tag or "Check",
+            path.name,
             res.checked,
             res.active,
             res.banned,
@@ -559,12 +560,17 @@ async def check_sessions_detailed(
     elif isinstance(proxy, tuple) and len(proxy) > 1:
         proxy_name = str(proxy[1])
 
+    phone = _detect_session_phone(path)
+    phone_str = f" (+{phone})" if phone else ""
     LOGGER.info(
-        "Single session check: Total=1 | Status=%s | Proxy=%s",
-        final,
+        "[%s] Single session check '%s'%s → %s (Proxy: %s)",
+        user_tag or "Check",
+        path.name,
+        phone_str,
+        final.upper(),
         proxy_name,
     )
-    return res, [SessionCheckEntry(path.name, final, phone=_detect_session_phone(path))]
+    return res, [SessionCheckEntry(path.name, final, phone=phone)]
 
 
 # --------------------------------------------------------------------------- #

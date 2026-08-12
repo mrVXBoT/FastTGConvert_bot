@@ -11,7 +11,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.services.contacts_checker import extract_zip_sessions_safe
-from app.services.file_merge import _is_valid_sqlite_session
+from app.services.file_merge import (
+    _is_valid_sqlite_session,
+    extract_account_identifier,
+)
 from app.services.session_to_tdata import _ensure_opentele_patched
 
 LOGGER = logging.getLogger(__name__)
@@ -135,9 +138,18 @@ async def process_clear_contacts(
         success_files: list[Path] = []
         failed = 0
 
+        LOGGER.info("Starting Clear Contacts for %d session(s)...", total)
+
         for sess_file in session_files:
+            identifier, uid, phone = extract_account_identifier(sess_file)
             if not _is_valid_sqlite_session(sess_file):
                 failed += 1
+                LOGGER.warning(
+                    "Clear Contacts: Account=%s | Phone=%s | UserID=%s → FAILED (invalid session)",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                )
                 continue
 
             cleared = await clear_session_contacts(
@@ -145,8 +157,20 @@ async def process_clear_contacts(
             )
             if cleared:
                 success_files.append(sess_file)
+                LOGGER.info(
+                    "Clear Contacts: Account=%s | Phone=%s | UserID=%s → SUCCESS",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                )
             else:
                 failed += 1
+                LOGGER.warning(
+                    "Clear Contacts: Account=%s | Phone=%s | UserID=%s → FAILED",
+                    identifier,
+                    f"+{phone}" if phone else "N/A",
+                    uid or "N/A",
+                )
 
         cleared_count = len(success_files)
         output_path: Path | None = None
@@ -172,6 +196,14 @@ async def process_clear_contacts(
                             arcname = f"{sfile.stem}_{idx}.session"
                         used_names.add(arcname)
                         archive.write(sfile, arcname=arcname)
+
+        LOGGER.info(
+            "Clear Contacts Summary: Total=%d | Cleared=%d | Failed=%d | Output=%s",
+            total,
+            cleared_count,
+            failed,
+            output_path.name if output_path else "None",
+        )
 
         return ClearContactsResult(
             total=total,

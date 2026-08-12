@@ -131,6 +131,7 @@ def compare_archives(data1: bytes, data2: bytes) -> ListCheckerResult:
     Matching is case-insensitive by item identifier.
     Returns ListCheckerResult with counts and output ZIP bytes (or None if no match).
     """
+    LOGGER.info("Starting List Checker Comparison (Archive 1 vs Archive 2)...")
     tdata_map1, session_map1, json_map1, all_files1 = _index_archive(data1)
     tdata_map2, session_map2, json_map2, _ = _index_archive(data2)
 
@@ -145,6 +146,7 @@ def compare_archives(data1: bytes, data2: bytes) -> ListCheckerResult:
     total = tdata_count + session_count + json_count
 
     if total == 0:
+        LOGGER.info("List Checker Summary: Total Matches=0 | TData Matches=0 | Session Matches=0 | JSON Matches=0")
         return ListCheckerResult(
             tdata_count=0, session_count=0, json_count=0, total=0, output_bytes=None
         )
@@ -180,8 +182,11 @@ def compare_archives(data1: bytes, data2: bytes) -> ListCheckerResult:
                         written_entries.add(base_name)
 
     LOGGER.info(
-        "ListChecker: tdata=%d sessions=%d json=%d total=%d",
-        tdata_count, session_count, json_count, total,
+        "List Checker Summary: Total Matches=%d | TData Matches=%d | Session Matches=%d | JSON Matches=%d",
+        total,
+        tdata_count,
+        session_count,
+        json_count,
     )
     return ListCheckerResult(
         tdata_count=tdata_count,

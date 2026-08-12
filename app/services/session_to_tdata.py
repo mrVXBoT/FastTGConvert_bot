@@ -596,6 +596,8 @@ async def process_session_to_tdata_conversion(
                 total=0, converted=0, failed=0, output_zip_path=None
             )
 
+        LOGGER.info("Starting Session to TData conversion for %d session(s)...", total)
+
         converted = 0
         failed = 0
         entries: list[TdataConversionEntry] = []
@@ -716,8 +718,10 @@ async def process_session_to_tdata_conversion(
                 if entry.ok and conv_tuple is not None:
                     converted += 1
                     converted_dirs.append(conv_tuple)
+                    LOGGER.info("Session -> TData: Session=%s → OK", entry.name)
                 else:
                     failed += 1
+                    LOGGER.warning("Session -> TData: Session=%s → FAILED (%s)", entry.name, entry.reason or "conversion_error")
 
             output_zip_path: Path | None = None
             if converted > 0 and converted_dirs:
@@ -765,6 +769,12 @@ async def process_session_to_tdata_conversion(
                         raise ValueError("storage_error") from exc
                     raise
 
+            LOGGER.info(
+                "Session to TData conversion completed: %d total, %d converted, %d failed.",
+                total,
+                converted,
+                failed,
+            )
             return SessionToTdataResult(
                 total=total,
                 converted=converted,
