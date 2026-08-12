@@ -93,6 +93,18 @@ _CLEAN_KEYWORDS = (
     "get less strict limits",
     "your phone number has no spam reports",
     "has not been reported as spam",
+    # Dutch — "some phone numbers may trigger a harsh response" clean reply
+    "sommige telefoonnummers",  # some phone numbers
+    "minder strikte limieten",  # less strict limits
+    # Arabic — "some phone numbers may trigger a harsh response" clean reply.
+    # Distinct from the limitation reply which talks about "some actions".
+    "بعض أرقام الهواتف",  # some phone numbers
+    "استجابة قاسية",  # harsh response
+    # Farsi — same clean template ("some phone numbers …"). Listed before the
+    # frozen keyword "مسدود" (blocked) that the complaint part of this reply
+    # contains, so a clean account is never mislabelled frozen.
+    "شمارههاى تلفن",  # some phone numbers
+    "عكس العمل ناملايم",  # harsh reaction
     # Farsi
     "خبر خوب",  # good news
     "هیچ محدودیتی",  # no restriction

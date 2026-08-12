@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -27,7 +28,7 @@ async def setup_bot_commands(bot: Bot) -> None:
 
 
 async def main() -> None:
-    setup_logging(log_level="INFO", json_format=True)
+    setup_logging(log_level=os.getenv("LOG_LEVEL", "INFO"), json_format=True)
     settings = get_settings()
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -89,7 +90,6 @@ async def main() -> None:
     with session_factory() as session:
         EmojiRegistry.load_from_db(session)
 
-    import os
     proxy_url = settings.bot_proxy or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY") or os.getenv("all_proxy")
     if proxy_url:
         from aiogram.client.session.aiohttp import AiohttpSession
